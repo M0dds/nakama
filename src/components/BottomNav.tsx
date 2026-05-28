@@ -1,10 +1,8 @@
 import {
   createEffect,
   createSignal,
-  on,
   onCleanup,
   onMount,
-  Show,
 } from "solid-js";
 import { useLocation } from "@solidjs/router";
 import { Calendar, House, List, Plus, User } from "lucide-solid";
@@ -20,14 +18,16 @@ import { NavButton } from "@/components/NavButton";
  * no-op callback so the trigger pattern is in place.
  *
  * Liquid sliding accent indicator: a single absolute-positioned span lives
- * inside the pill (z-0) and "rests" on whichever button carries the
- * [data-accent] attribute (NavButton sets it when isActive). On a route
- * change the indicator stretches into a capsule spanning OLD → NEW, then
- * contracts to the destination. That two-phase motion is what makes the
- * accent feel like liquid mercury instead of a hard slide. On detail
- * routes no tab matches, so the bubble stays at the last position — a
- * back-button "satellite" that the bubble flows OUT of the pill onto is
- * the natural next step (parked as polish).
+ * inside the pill (behind the buttons) and "rests" on whichever button
+ * carries the [data-accent] attribute (NavButton sets it when isActive).
+ * On a route change the indicator stretches into a capsule spanning
+ * OLD → NEW, then contracts to the destination. That two-phase motion
+ * is what makes the accent feel like mercury instead of a hard slide.
+ *
+ * The bubble is ALWAYS rendered (not conditionally) so we never lose the
+ * transition-able element across path changes — the geometry just gets
+ * patched in place via `style`. Opacity gates whether it's visible (0 on
+ * detail routes that don't match any tab; 1 once a target is measured).
  */
 const SETTLE_MS = 100; // capsule lingers this long before contracting
 
@@ -47,6 +47,9 @@ export function BottomNav(props: { onAddClick?: () => void }) {
   // Mutable refs that persist across reactive runs without triggering them.
   let prevRest: IndicatorBox | null = null;
   let settleTimer: number | null = null;
+  // First placement should snap (no transition from 0/0/0/0). After that
+  // we enable transitions for the next render.
+  const [animated, setAnimated] = createSignal(false);
 
   const place = () => {
     if (settleTimer !== null) {
@@ -85,22 +88,24 @@ export function BottomNav(props: { onAddClick?: () => void }) {
       setBubble(target);
     }
     prevRest = target;
+
+    // Enable transitions for subsequent renders. We do this on the next
+    // frame so the initial snap-to-target isn't itself animated.
+    if (!animated()) {
+      requestAnimationFrame(() => setAnimated(true));
+    }
   };
 
-  // Re-place whenever the path changes. `on()` makes the dependency
-  // explicit so the compiler can't tree-shake the bare expression.
-  // requestAnimationFrame fires after layout, guaranteeing the new
-  // data-accent target is in the DOM before we querySelector for it.
-  createEffect(
-    on(
-      () => location.pathname,
-      () => requestAnimationFrame(place),
-    ),
-  );
+  // Plain createEffect (no `on()` wrapper) — fires on initial setup AND
+  // on every pathname change. Reading `location.pathname` inside the
+  // body is what makes it reactive. requestAnimationFrame waits for the
+  // DOM patch (new data-accent target) before we querySelector.
+  createEffect(() => {
+    void location.pathname; // explicit reactive read
+    requestAnimationFrame(place);
+  });
 
   onMount(() => {
-    // First placement on mount — also via rAF for the same reason.
-    requestAnimationFrame(place);
     const onResize = () => place();
     window.addEventListener("resize", onResize);
     onCleanup(() => {
@@ -118,23 +123,24 @@ export function BottomNav(props: { onAddClick?: () => void }) {
         ref={pillEl!}
         class="relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating"
       >
-        {/* Sliding accent — z-0, BEHIND the buttons (which are z-10). The
-            transition handles both stretch and contract phases; the JS
-            just sets the geometry. */}
-        <Show when={bubble()}>
-          {(box) => (
-            <span
-              aria-hidden
-              class="pointer-events-none absolute rounded-full bg-accent transition-all duration-200 ease-quart"
-              style={{
-                left: `${box().left}px`,
-                top: `${box().top}px`,
-                width: `${box().width}px`,
-                height: `${box().height}px`,
-              }}
-            />
-          )}
-        </Show>
+        {/* Sliding accent. Always rendered so the element persists across
+            path changes (Solid would otherwise tear down + remount the
+            <Show> child, killing the transition). Geometry is patched via
+            inline style; transitions kick in after the first render so the
+            initial measurement doesn't animate from 0. */}
+        <span
+          aria-hidden
+          class={`pointer-events-none absolute rounded-full bg-accent ${
+            animated() ? "transition-all duration-200 ease-out" : ""
+          }`}
+          style={{
+            left: `${bubble()?.left ?? 0}px`,
+            top: `${bubble()?.top ?? 0}px`,
+            width: `${bubble()?.width ?? 0}px`,
+            height: `${bubble()?.height ?? 0}px`,
+            opacity: bubble() ? 1 : 0,
+          }}
+        />
 
         <NavButton
           icon={House}

@@ -45,10 +45,11 @@ export function DeleteListButton(props: {
     },
   }));
 
-  // No outer h-7 wrapper here — PageHeader's aside slot provides h-7 +
-  // items-end, so both states (text trigger / confirm cluster) bottom-
-  // align consistently with the title baseline. Means this component
-  // also slots into any other h-7-shaped container without extra glue.
+  // The PageHeader aside slot is h-6 items-center. The trigger renders
+  // as plain text (centered in 24px). The confirm cluster uses items-
+  // center too so size-6 buttons (24px) fill the slot exactly and the
+  // text sits centered in the same band — no baseline shift between
+  // the two states.
   return (
     <Show
       when={confirming()}
