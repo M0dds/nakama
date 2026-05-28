@@ -1,5 +1,6 @@
 import { createSignal, onMount, For } from "solid-js";
 import { A } from "@solidjs/router";
+import { CircleCheck, CircleX } from "lucide-solid";
 import {
   THEMES,
   type ThemeId,
@@ -8,13 +9,15 @@ import {
   readTheme,
   readModePref,
 } from "@/lib/themes";
+import { Button } from "@/components/Button";
+import { Badge } from "@/components/Badge";
+import { BentoModule } from "@/components/BentoModule";
+import { PageHeader } from "@/components/PageHeader";
 
 /**
- * Phase-0 Styleguide. Three sections to start: Themes, Typography, Tokens.
- * Each section grows organically as we build primitives in Phase 1+.
- * The page lives behind /styleguide and is the source of truth for design
- * decisions — every new primitive lands here first with all variants, then
- * gets used in features.
+ * Styleguide — the source of truth for every visual decision. New primitives
+ * land here FIRST with all variants + states; only then are they allowed in
+ * features. The Anti-Patterns section documents what's deliberately NOT done.
  */
 export default function Styleguide() {
   const [theme, setTheme] = createSignal<ThemeId>("default");
@@ -57,7 +60,7 @@ export default function Styleguide() {
         </A>
       </header>
 
-      {/* ── Section: Themes ─────────────────────────────────────────── */}
+      {/* ── 01 · Themes ──────────────────────────────────────────────── */}
       <Section number="01" label="Themes">
         <div class="grid gap-6 md:grid-cols-2">
           <div>
@@ -69,7 +72,7 @@ export default function Styleguide() {
                     type="button"
                     onClick={() => pickTheme(t.id)}
                     aria-pressed={theme() === t.id}
-                    class="flex items-center gap-2 rounded-sm border border-border px-2 py-2 text-left text-body transition-colors hover:bg-surface aria-pressed:border-accent"
+                    class="flex items-center gap-2 rounded-sm border border-border px-2 py-2 text-left transition-colors hover:bg-surface aria-pressed:border-accent"
                   >
                     <span class="flex h-5 w-5 shrink-0 overflow-hidden rounded-xs border border-border">
                       <span
@@ -108,7 +111,7 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── Section: Color tokens ───────────────────────────────────── */}
+      {/* ── 02 · Color Tokens ───────────────────────────────────────── */}
       <Section number="02" label="Color Tokens">
         <div class="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
           <Swatch token="bg" />
@@ -123,7 +126,7 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── Section: Typography ────────────────────────────────────── */}
+      {/* ── 03 · Typography ────────────────────────────────────────── */}
       <Section number="03" label="Typography">
         <div class="space-y-6">
           <TypeRow scale="text-heading-lg" weight="font-medium" sample="Heading L · 24/32" />
@@ -136,22 +139,181 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── Section: Mini-Codes ─────────────────────────────────────── */}
-      <Section number="04" label="Mini-Codes">
+      {/* ── 04 · Spacing Grid ──────────────────────────────────────── */}
+      <Section number="04" label="Spacing Grid">
         <p class="mb-4 text-body text-text-muted">
-          Kürzel für Medien-Typen. ALL CAPS, mono, immer 12px.
+          4 px base unit. Tailwind utilities heißen <code class="font-mono text-mini">gap-N</code>,
+          <code class="font-mono text-mini">p-N</code>, etc. — N × 4 px. Default-Innenabstand
+          eines Bento-Moduls ist <code class="font-mono text-mini">p-5</code> (20 px).
+        </p>
+        <div class="space-y-2">
+          <For each={[1, 2, 3, 4, 5, 6, 8, 12, 16, 20]}>
+            {(n) => (
+              <div class="flex items-center gap-4">
+                <code class="w-16 font-mono text-mini text-text-muted">
+                  {n} · {n * 4}px
+                </code>
+                <div
+                  class="h-3 bg-accent"
+                  style={{ width: `${n * 4}px` }}
+                />
+              </div>
+            )}
+          </For>
+        </div>
+      </Section>
+
+      {/* ── 05 · Buttons ──────────────────────────────────────────── */}
+      <Section number="05" label="Buttons">
+        <div class="space-y-6">
+          <Row label="Variants">
+            <Button variant="primary">Primary</Button>
+            <Button variant="secondary">Secondary</Button>
+            <Button variant="ghost">Ghost</Button>
+          </Row>
+          <Row label="States">
+            <Button>Default</Button>
+            <Button disabled>Disabled</Button>
+            <Button variant="secondary">Hover ↗</Button>
+          </Row>
+          <p class="text-body text-text-muted">
+            Eine Höhenstufe. Primary für die empfohlene Aktion einer Seite,
+            Secondary für die Alternative, Ghost für Closing/Cancel. Mehr als
+            ein Primary pro Bereich = Designfehler.
+          </p>
+        </div>
+      </Section>
+
+      {/* ── 06 · Badges ──────────────────────────────────────────── */}
+      <Section number="06" label="Badges">
+        <div class="space-y-6">
+          <Row label="Tones">
+            <Badge>AN</Badge>
+            <Badge>TV</Badge>
+            <Badge>FM</Badge>
+            <Badge>GM</Badge>
+            <Badge tone="accent">Neue Folge</Badge>
+            <Badge tone="muted">Archiv</Badge>
+          </Row>
+          <p class="text-body text-text-muted">
+            Immer mono, ALL CAPS, 12 px. „Default" rahmt den Mini-Code,
+            „Accent" ohne Rahmen für CTA-artige Hinweise, „Muted" ohne
+            Rahmen für sekundäre Stempel.
+          </p>
+        </div>
+      </Section>
+
+      {/* ── 07 · BentoModule ─────────────────────────────────────── */}
+      <Section number="07" label="BentoModule">
+        <p class="mb-4 text-body text-text-muted">
+          Strukturelle Einheit jeder Seite. Kein Hintergrund, kein Schatten —
+          Trennung kommt allein über 1 px-Lines.
+        </p>
+        <div class="grid grid-cols-1 border border-rule md:grid-cols-2">
+          <BentoModule label="Einträge" number="01">
+            <p class="text-body text-text">
+              Inhalt eines Bento-Moduls. Liste, Text, Grid, beliebig.
+            </p>
+          </BentoModule>
+          <BentoModule
+            label="Details"
+            number="02"
+            class="border-t border-rule md:border-l md:border-t-0"
+          >
+            <p class="text-body text-text-muted">
+              Zweite Spalte. Border-Rule trennt zwischen Modulen.
+            </p>
+          </BentoModule>
+        </div>
+      </Section>
+
+      {/* ── 08 · PageHeader ──────────────────────────────────────── */}
+      <Section number="08" label="PageHeader">
+        <p class="mb-4 text-body text-text-muted">
+          Instrument-Kopf auf jeder Seite. Hanko-Punkt + Kicker, dann Titel.
+          Detailseiten überschreiben den Kicker mit Breadcrumb-Kontext.
+        </p>
+        <div class="border border-rule">
+          <PageHeader title="Beispiel-Seite" />
+        </div>
+        <div class="mt-4 border border-rule">
+          <PageHeader
+            kicker="LISTEN"
+            title="Lieblings-Anime"
+            backHref="/"
+            aside={
+              <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+                12 Einträge
+              </span>
+            }
+          />
+        </div>
+      </Section>
+
+      {/* ── 09 · Mini-Codes ──────────────────────────────────────── */}
+      <Section number="09" label="Mini-Codes">
+        <p class="mb-4 text-body text-text-muted">
+          Kürzel für Medien-Typen. ALL CAPS, mono, immer 12 px.
         </p>
         <div class="flex flex-wrap gap-2">
           <For each={miniCodes}>
             {([code, label]) => (
-              <span class="inline-flex items-center gap-2 rounded-xs border border-border px-2 py-1">
-                <span class="font-mono text-mini font-medium uppercase tracking-wider text-text">
-                  {code}
-                </span>
+              <span class="inline-flex items-center gap-2">
+                <Badge>{code}</Badge>
                 <span class="text-mini text-text-muted">{label}</span>
               </span>
             )}
           </For>
+        </div>
+      </Section>
+
+      {/* ── 10 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="10" label="Anti-Patterns · Verbote">
+        <p class="mb-6 text-body text-text-muted">
+          Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
+          hier kurz nachschauen.
+        </p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <AntiCard
+            bad="24 px Pill-Buttons"
+            good="rounded-sm (4 px) Ecken"
+            why="Die TE/Material-Ästhetik verlangt harte Ecken. Pillen rufen 'Slack 2018' auf."
+          />
+          <AntiCard
+            bad="Box-Shadows für Karten"
+            good="Borders & Grain"
+            why="Tiefe entsteht über Linien + Textur, nicht Schatten. Schatten flatten die japanische Minimal-Optik aus."
+          />
+          <AntiCard
+            bad="Uniformes Card-Grid"
+            good="Bento-Asymmetrie"
+            why="Gleichgroße Karten in 3-Spalten = generisches AI-Layout. Die 2/3 · 1/3-Bento liest als Instrument."
+          />
+          <AntiCard
+            bad="Cards-in-Cards-in-Cards"
+            good="Hairlines (border-border)"
+            why="Subnesting frisst Lesbarkeit. Eine 1 px-Linie trennt genauso klar, kostet keinen Raum."
+          />
+          <AntiCard
+            bad="Modals für Confirmation"
+            good="Inline-Confirm (✓/✗)"
+            why="Modal-Footprint reduzieren. Delete/Leave/Reset/Entfernen alle inline mit Reverse-Action sichtbar."
+          />
+          <AntiCard
+            bad="Native &lt;select&gt;"
+            good="SelectMenu-Komponente"
+            why="Native Selects ignorieren das Theme. Selbst gebauter Picker erbt Tokens, Fokus-Styles, Animation."
+          />
+          <AntiCard
+            bad="title=-Attribut für Hints"
+            good="Tooltip-Komponente"
+            why="Native title ist langsam, untouchbar, untraversal. Tooltip kennt Viewport-Clamping, Hover & Focus."
+          />
+          <AntiCard
+            bad="Disabled ohne Erklärung"
+            good="Tooltip mit Grund"
+            why="Disabled-State braucht einen Tooltip, der den Grund erklärt (außer der Grund ist visuell offensichtlich)."
+          />
         </div>
       </Section>
     </main>
@@ -159,8 +321,7 @@ export default function Styleguide() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Local primitives (only used on this page — promoted later when needed
-// in features). Keeping them inline avoids inventing components prematurely.
+// Local primitives (only used on this page).
 // ──────────────────────────────────────────────────────────────────────
 
 const dtClass = "font-mono text-mini uppercase tracking-wider text-text-muted";
@@ -169,7 +330,7 @@ function Section(props: { number: string; label: string; children: any }) {
   return (
     <section class="border-t border-rule py-8">
       <header class="mb-6 flex items-baseline justify-between">
-        <h2 class="text-label font-mono uppercase tracking-wider text-text-muted">
+        <h2 class="font-mono text-label uppercase tracking-wider text-text-muted">
           {props.label}
         </h2>
         <span class="font-mono text-mini text-text-muted">{props.number}</span>
@@ -215,6 +376,36 @@ function TypeRow(props: {
       <code class="shrink-0 font-mono text-mini text-text-muted">
         {props.scale}
       </code>
+    </div>
+  );
+}
+
+function Row(props: { label: string; children: any }) {
+  return (
+    <div>
+      <p class={dtClass}>{props.label}</p>
+      <div class="mt-3 flex flex-wrap items-center gap-3">{props.children}</div>
+    </div>
+  );
+}
+
+function AntiCard(props: { bad: string; good: string; why: string }) {
+  return (
+    <div class="rounded-sm border border-border p-4">
+      <div class="flex items-start gap-2">
+        <CircleX class="size-4 shrink-0 text-accent" strokeWidth={1.75} />
+        <p class="text-body font-medium text-text">{props.bad}</p>
+      </div>
+      <div class="mt-2 flex items-start gap-2">
+        <CircleCheck
+          class="size-4 shrink-0 text-text-muted"
+          strokeWidth={1.75}
+        />
+        <p class="text-body text-text-muted">{props.good}</p>
+      </div>
+      <p class="mt-3 border-t border-border pt-3 text-mini text-text-muted">
+        {props.why}
+      </p>
     </div>
   );
 }

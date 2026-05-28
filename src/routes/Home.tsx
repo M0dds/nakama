@@ -1,36 +1,52 @@
 import { A } from "@solidjs/router";
+import { PageHeader } from "@/components/PageHeader";
+import { BentoModule } from "@/components/BentoModule";
+import { Button } from "@/components/Button";
 
 /**
- * Placeholder Home. The real Home (Was kommt / Fortsetzen / Logbuch modules)
- * gets built in Phase 5 once we have items + episodes + sharing.
+ * Placeholder Home using the real structural primitives — PageHeader sits on
+ * top, two BentoModule sections compose the body, Buttons handle the CTAs.
+ * When Phase 5 lands (Was kommt / Fortsetzen / Logbuch), the section
+ * *contents* swap in but the frame stays as it is.
  */
 export default function Home() {
   return (
-    <main class="mx-auto max-w-4xl px-5 py-12">
-      <p class="font-mono text-mini uppercase tracking-wider text-text-muted">
-        NAKAMA · v2 · Foundation
-      </p>
-      <h1 class="mt-2 text-heading-lg font-medium text-text">
-        Willkommen.
-      </h1>
-      <p class="mt-3 max-w-md text-body text-text-muted">
-        Du schaust auf das frische Scaffold. Die echten Module landen in
-        Phase 3+. Erstmal: Tokens und Themes sind live, der Styleguide ist
-        bereit.
-      </p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <A
-          href="/styleguide"
-          class="rounded-sm bg-accent px-4 py-2 text-body font-medium text-accent-on transition-opacity hover:opacity-90"
-        >
-          Styleguide öffnen
-        </A>
-        <A
-          href="/login"
-          class="rounded-sm border border-border px-4 py-2 text-body font-medium text-text transition-colors hover:bg-surface"
-        >
-          Login (Stub)
-        </A>
+    <main class="w-full">
+      <PageHeader
+        title="Willkommen."
+        aside={
+          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+            Phase 1 · Foundation
+          </span>
+        }
+      />
+
+      <div class="flex flex-col md:flex-row md:items-start">
+        <div class="md:w-2/3">
+          <BentoModule label="Status" number="01">
+            <p class="text-body text-text">
+              Das Scaffold steht. Tokens, Themes, Router, Supabase-Client und
+              QueryClient sind bereit. Echte Inhalte landen ab Phase 3.
+            </p>
+            <div class="mt-5 flex flex-wrap gap-3">
+              <A href="/styleguide">
+                <Button variant="primary">Styleguide öffnen</Button>
+              </A>
+              <A href="/login">
+                <Button variant="secondary">Login (Stub)</Button>
+              </A>
+            </div>
+          </BentoModule>
+        </div>
+
+        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+          <BentoModule label="Nächste Phase" number="02">
+            <p class="text-body text-text-muted">
+              Phase 2 — Auth & Shell: Discord OAuth + Magic-Link wieder
+              anschließen, dann die Floating-Bottom-Nav und der App-Shell.
+            </p>
+          </BentoModule>
+        </div>
       </div>
     </main>
   );
