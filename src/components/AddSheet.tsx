@@ -392,7 +392,7 @@ function ResultRow(props: {
           onClick={props.onAdd}
           disabled={!props.canAdd || props.added || props.pending}
           aria-label={props.added ? "Hinzugefügt" : "Zur Liste hinzufügen"}
-          class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-full border transition-colors ${
+          class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border transition-colors ${
             props.added
               ? "border-accent bg-accent text-accent-on"
               : "border-border text-text-muted hover:border-accent hover:bg-accent hover:text-accent-on disabled:opacity-40"
