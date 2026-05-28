@@ -46,6 +46,14 @@ export const routes: RouteDefinition[] = [
     component: protect(lazy(() => import("./Home"))),
   },
   {
+    path: "/lists",
+    component: protect(lazy(() => import("./Lists"))),
+  },
+  {
+    path: "/lists/:id",
+    component: protect(lazy(() => import("./ListDetail"))),
+  },
+  {
     path: "/profile",
     component: protect(lazy(() => import("./Profile"))),
   },

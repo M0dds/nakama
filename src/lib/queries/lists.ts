@@ -1,0 +1,290 @@
+import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
+
+/**
+ * Lists data layer — typed query options + mutation functions. Components
+ * call these via createQuery / createMutation from @tanstack/solid-query.
+ *
+ * Naming convention:
+ *   - listsQueryKey()             — overview (all visible lists)
+ *   - listQueryKey(id)            — single list detail
+ *   - listItemsQueryKey(id)       — items inside one list
+ *
+ * Mutations invalidate the keys they touch. Realtime subscriptions (added in
+ * the chunk after this) call queryClient.invalidateQueries on the same keys
+ * so a partner's write flows to your screen the same way your own does —
+ * one source of truth for "this data changed", whether the trigger was local
+ * or remote.
+ *
+ * RLS does the visibility filtering on every query — we never pass user_id
+ * filters explicitly; lists_select_member + list_items_select_member +
+ * list_members_select_co already scope the rows correctly.
+ */
+
+// ──────────────────────────────────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ListSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  isShared: boolean;
+  /** Caller's per-user tracks_home flag. Off → archive (lists I created but
+   *  don't want to surface on Home / Calendar). */
+  tracksHome: boolean;
+  ownerId: string;
+  createdAt: string;
+  itemCount: number;
+  memberCount: number;
+  /** True when the caller is the list's creator. Used to gate the "Liste
+   *  löschen" action (everyone else gets "Liste verlassen" once sharing
+   *  lands). */
+  isOwner: boolean;
+}
+
+export interface ListEntry {
+  listItemId: string;
+  itemId: string;
+  title: string;
+  type: string;
+  coverUrl: string | null;
+  syncEnabled: boolean;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Query keys — exported so realtime + mutations can invalidate by key
+// ──────────────────────────────────────────────────────────────────────────
+
+export const listsQueryKey = ["lists"] as const;
+export const listQueryKey = (id: string) => ["list", id] as const;
+export const listItemsQueryKey = (id: string) =>
+  ["list", id, "items"] as const;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Query options — pass to createQuery() in components
+// ──────────────────────────────────────────────────────────────────────────
+
+/** PostgREST embed shape — list_items(count) and list_members(count) return
+ *  as a single-element array of { count }. */
+interface RawListRow {
+  id: string;
+  name: string;
+  description: string | null;
+  is_shared: boolean;
+  owner_id: string;
+  created_at: string;
+  list_items: { count: number }[] | null;
+  list_members: { count: number }[] | null;
+}
+
+const LIST_SELECT =
+  "id, name, description, is_shared, owner_id, created_at, list_items(count), list_members(count)";
+
+function toSummary(
+  row: RawListRow,
+  user: User,
+  tracksHome: boolean,
+): ListSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isShared: row.is_shared,
+    tracksHome,
+    ownerId: row.owner_id,
+    createdAt: row.created_at,
+    itemCount: row.list_items?.[0]?.count ?? 0,
+    memberCount: row.list_members?.[0]?.count ?? 0,
+    isOwner: row.owner_id === user.id,
+  };
+}
+
+/**
+ * All lists visible to the current user (RLS scopes via lists_select_member).
+ * Split into private / shared so the UI can render the two groups; the split
+ * is by is_shared, not ownership — a list you created becomes "geteilt" the
+ * moment you invite someone (Phase 7+).
+ *
+ * Two parallel queries: lists+embedded counts, and the caller's own
+ * list_members rows for tracks_home. The original Logbook also fetched
+ * "newCounts" for episode badges — deferred until items + episodes land
+ * in Phases 4–5.
+ */
+export function listsQueryOptions(user: User) {
+  return {
+    queryKey: listsQueryKey,
+    queryFn: async (): Promise<{
+      private: ListSummary[];
+      shared: ListSummary[];
+    }> => {
+      const [listsRes, membershipsRes] = await Promise.all([
+        supabase
+          .from("lists")
+          .select(LIST_SELECT)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("list_members")
+          .select("list_id, tracks_home")
+          .eq("user_id", user.id),
+      ]);
+
+      if (listsRes.error) throw listsRes.error;
+      if (membershipsRes.error) throw membershipsRes.error;
+
+      const tracksByList = new Map<string, boolean>();
+      for (const m of membershipsRes.data ?? [])
+        tracksByList.set(m.list_id as string, m.tracks_home as boolean);
+
+      const lists = (listsRes.data as unknown as RawListRow[]).map((r) =>
+        toSummary(r, user, tracksByList.get(r.id) ?? true),
+      );
+
+      return {
+        private: lists.filter((l) => !l.isShared),
+        shared: lists.filter((l) => l.isShared),
+      };
+    },
+  };
+}
+
+/** A single list by id, or null if not visible (RLS) / not a valid uuid. */
+export function listQueryOptions(user: User, id: string) {
+  return {
+    queryKey: listQueryKey(id),
+    queryFn: async (): Promise<ListSummary | null> => {
+      const [listRes, membershipRes] = await Promise.all([
+        supabase
+          .from("lists")
+          .select(LIST_SELECT)
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("list_members")
+          .select("tracks_home")
+          .eq("list_id", id)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+
+      if (listRes.error) throw listRes.error;
+      if (!listRes.data) return null;
+
+      const tracksHome = membershipRes.data?.tracks_home ?? true;
+      return toSummary(listRes.data as unknown as RawListRow, user, tracksHome);
+    },
+  };
+}
+
+interface RawListItemRow {
+  id: string;
+  sync_enabled: boolean;
+  item_id: string;
+  items: { title: string; type: string; cover_url: string | null } | null;
+}
+
+/** Items placed in a list (newest first). RLS scopes to members; items is a
+ *  to-one embed. Empty until Phase 4 wires the AddSheet. */
+export function listItemsQueryOptions(id: string) {
+  return {
+    queryKey: listItemsQueryKey(id),
+    queryFn: async (): Promise<ListEntry[]> => {
+      const { data, error } = await supabase
+        .from("list_items")
+        .select("id, sync_enabled, item_id, items(title, type, cover_url)")
+        .eq("list_id", id)
+        .order("added_at", { ascending: false });
+      if (error) throw error;
+      return ((data as unknown as RawListItemRow[]) ?? []).map((r) => ({
+        listItemId: r.id,
+        itemId: r.item_id,
+        title: r.items?.title ?? "Unbekannt",
+        type: r.items?.type ?? "anime",
+        coverUrl: r.items?.cover_url ?? null,
+        syncEnabled: r.sync_enabled,
+      }));
+    },
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Mutations — components compose these via createMutation
+// ──────────────────────────────────────────────────────────────────────────
+
+export async function createList(
+  user: User,
+  input: { name: string; description?: string },
+): Promise<ListSummary> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Name darf nicht leer sein.");
+
+  const { data, error } = await supabase
+    .from("lists")
+    .insert({
+      owner_id: user.id,
+      name,
+      description: input.description?.trim() || null,
+    })
+    .select(LIST_SELECT)
+    .single();
+
+  if (error) throw error;
+  // The on_list_created trigger added the owner to list_members with
+  // tracks_home=true automatically, so we can safely assume it.
+  return toSummary(data as unknown as RawListRow, user, true);
+}
+
+/**
+ * Rename. RLS (lists_update_member) lets any member rename. We `.select()`
+ * the persisted name back so an RLS-blocked write (0 rows, no error)
+ * surfaces as a returned `name: null` — components compare to detect the
+ * silent block.
+ */
+export async function renameList(input: {
+  listId: string;
+  name: string;
+}): Promise<{ name: string | null }> {
+  const next = input.name.trim();
+  if (!next) return { name: null };
+
+  const { data, error } = await supabase
+    .from("lists")
+    .update({ name: next })
+    .eq("id", input.listId)
+    .select("name")
+    .maybeSingle();
+  if (error) throw error;
+  return { name: (data as { name: string } | null)?.name ?? null };
+}
+
+/** Delete a list. RLS (lists_delete_owner) restricts to the creator; the
+ *  cascade on list_items / list_members / list_invitations cleans the rest. */
+export async function deleteList(listId: string): Promise<void> {
+  const { error } = await supabase.from("lists").delete().eq("id", listId);
+  if (error) throw error;
+}
+
+/**
+ * Toggle the per-user tracks_home flag. Off = archive mode for the caller
+ * only — items in this list drop off Home / Calendar / Logbook for them.
+ * Other members keep their own setting.
+ *
+ * `.select()` to detect silent RLS blocks (0 rows updated, no error).
+ */
+export async function setListTracking(
+  user: User,
+  input: { listId: string; enabled: boolean },
+): Promise<{ tracksHome: boolean | null }> {
+  const { data, error } = await supabase
+    .from("list_members")
+    .update({ tracks_home: input.enabled })
+    .eq("list_id", input.listId)
+    .eq("user_id", user.id)
+    .select("tracks_home")
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    tracksHome:
+      (data as { tracks_home: boolean } | null)?.tracks_home ?? null,
+  };
+}
