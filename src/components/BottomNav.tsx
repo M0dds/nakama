@@ -1,6 +1,7 @@
 import {
   createEffect,
   createSignal,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -86,15 +87,20 @@ export function BottomNav(props: { onAddClick?: () => void }) {
     prevRest = target;
   };
 
-  // Re-place whenever the path changes. queueMicrotask defers until after
-  // Solid finishes patching the DOM (so the new data-accent target exists).
-  createEffect(() => {
-    // touch the reactive dependency
-    location.pathname;
-    queueMicrotask(place);
-  });
+  // Re-place whenever the path changes. `on()` makes the dependency
+  // explicit so the compiler can't tree-shake the bare expression.
+  // requestAnimationFrame fires after layout, guaranteeing the new
+  // data-accent target is in the DOM before we querySelector for it.
+  createEffect(
+    on(
+      () => location.pathname,
+      () => requestAnimationFrame(place),
+    ),
+  );
 
   onMount(() => {
+    // First placement on mount — also via rAF for the same reason.
+    requestAnimationFrame(place);
     const onResize = () => place();
     window.addEventListener("resize", onResize);
     onCleanup(() => {

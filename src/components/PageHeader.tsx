@@ -69,7 +69,12 @@ export function PageHeader(props: {
           </h1>
         </div>
       </div>
-      {props.aside}
+      {/* Aside slot owns its own height (h-7) and bottom-aligns its content.
+          That gives a consistent baseline across pages — Home's plain
+          status text and ListDetail's "Liste löschen" both sit at the
+          same vertical position relative to the title. Callers can pass
+          ANY JSX here without thinking about heights. */}
+      <div class="inline-flex h-7 items-end">{props.aside}</div>
     </header>
   );
 }

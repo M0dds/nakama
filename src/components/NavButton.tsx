@@ -25,10 +25,11 @@ export function NavButton(props: NavButtonProps) {
       href={props.href}
       aria-label={props.label}
       aria-current={props.isActive ? "page" : undefined}
-      // data-accent marks this button as the indicator's target. We render
-      // the attribute conditionally — querySelector("[data-accent]") then
-      // finds exactly one element per render.
-      {...(props.isActive ? { "data-accent": "" } : {})}
+      // data-accent marks this button as the indicator's target. Direct
+      // attribute binding (not spread) — Solid's compiler handles the
+      // `undefined` case by NOT emitting the attribute, so the spread
+      // form was producing inconsistent output.
+      data-accent={props.isActive ? "" : undefined}
       class={`relative z-10 flex size-11 items-center justify-center rounded-full transition-colors ${
         props.isActive
           ? "text-accent-on"
