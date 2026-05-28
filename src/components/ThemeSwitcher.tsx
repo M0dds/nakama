@@ -40,6 +40,30 @@ export function ThemeSwitcher() {
     <div class="space-y-6">
       <div>
         <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
+          Modus
+        </p>
+        <div class="inline-flex rounded-sm border border-border p-0.5">
+          <For each={["light", "dark", "system"] as ThemeModePref[]}>
+            {(m) => (
+              <button
+                type="button"
+                onClick={() => pickMode(m)}
+                aria-pressed={mode() === m}
+                class="rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors aria-pressed:bg-text aria-pressed:text-bg"
+              >
+                {m === "light"
+                  ? "Hell"
+                  : m === "dark"
+                    ? "Dunkel"
+                    : "System"}
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+
+      <div>
+        <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
           Theme
         </p>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -62,30 +86,6 @@ export function ThemeSwitcher() {
                   />
                 </span>
                 <span class="truncate text-mini font-medium">{t.name}</span>
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
-
-      <div>
-        <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
-          Modus
-        </p>
-        <div class="inline-flex rounded-sm border border-border p-0.5">
-          <For each={["light", "dark", "system"] as ThemeModePref[]}>
-            {(m) => (
-              <button
-                type="button"
-                onClick={() => pickMode(m)}
-                aria-pressed={mode() === m}
-                class="rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors aria-pressed:bg-text aria-pressed:text-bg"
-              >
-                {m === "light"
-                  ? "Hell"
-                  : m === "dark"
-                    ? "Dunkel"
-                    : "System"}
               </button>
             )}
           </For>
