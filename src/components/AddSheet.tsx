@@ -196,17 +196,21 @@ export function AddSheet(props: { onClose: () => void }) {
         entered() ? "opacity-100" : "opacity-0"
       }`}
     >
-      {/* Backdrop — click to close. */}
+      {/* Backdrop — click to close. Theme-agnostic dark dim (not bg/80) so
+          there's enough contrast between the page underneath and the panel,
+          which itself sits on bg now. */}
       <button
         type="button"
         aria-label="Schließen"
         onClick={props.onClose}
-        class="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        class="absolute inset-0 bg-black/50 backdrop-blur-sm"
       />
 
-      {/* Panel — bottom-sheet on mobile, centered card on desktop. */}
+      {/* Panel — bottom-sheet on mobile, centered card on desktop. Sits on
+          `bg` (the "table" tier) so row-hover can step UP to surface,
+          mirroring the /lists pattern. */}
       <div
-        class={`relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden bg-surface shadow-floating transition-transform duration-300 [transition-timing-function:var(--ease-quart)] md:max-w-xl md:rounded-md ${
+        class={`relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden bg-bg shadow-floating transition-transform duration-300 [transition-timing-function:var(--ease-quart)] md:max-w-xl md:rounded-md ${
           entered() ? "translate-y-0" : "translate-y-6 md:translate-y-3"
         }`}
       >
@@ -221,7 +225,7 @@ export function AddSheet(props: { onClose: () => void }) {
             type="button"
             onClick={props.onClose}
             aria-label="Schließen"
-            class="-mr-1 inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-text"
+            class="-mr-1 inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-text"
           >
             <X class="size-4" strokeWidth={1.75} />
           </button>
@@ -359,60 +363,74 @@ function ResultRow(props: {
   canAdd: boolean;
   onAdd: () => void;
 }) {
+  // Whole row is the affordance — same shape as the list rows on /lists.
+  // The indicator on the right is a visual status, not a separate button
+  // (nested interactive elements aren't great for a11y anyway). Hover lifts
+  // the row a tier DOWN to bg (the panel itself is on surface), and the
+  // indicator flips to accent via group-hover so the action has a clear
+  // pre-commit signal.
   return (
     <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-      <div class="flex items-center gap-3 px-5 py-3">
-        <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-bg">
-          <Show
-            when={props.result.coverUrl}
-            fallback={
-              <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-                {props.result.type === "manga" ? "M" : "A"}
-              </div>
-            }
-          >
-            <img
-              src={props.result.coverUrl!}
-              alt=""
-              class="size-full object-cover"
-              loading="lazy"
-            />
-          </Show>
-        </div>
-        <div class="min-w-0 flex-1">
-          <h4 class="truncate text-body text-text">{props.result.title}</h4>
-          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-            {props.result.type === "manga" ? "Manga" : "Anime"}
-            {props.result.year ? ` · ${props.result.year}` : ""}
-            {props.result.format ? ` · ${props.result.format}` : ""}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={props.onAdd}
-          disabled={!props.canAdd || props.added || props.pending}
-          aria-label={props.added ? "Hinzugefügt" : "Zur Liste hinzufügen"}
-          class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border transition-colors ${
-            props.added
-              ? "border-accent bg-accent text-accent-on"
-              : "border-border text-text-muted hover:border-accent hover:bg-accent hover:text-accent-on disabled:opacity-40"
-          }`}
-        >
-          <Show
-            when={!props.pending}
-            fallback={
-              <Loader2 class="size-4 animate-spin" strokeWidth={1.75} />
-            }
+      <button
+        type="button"
+        onClick={props.onAdd}
+        disabled={!props.canAdd || props.added || props.pending}
+        aria-label={
+          props.added
+            ? `${props.result.title} – bereits hinzugefügt`
+            : `${props.result.title} zur Liste hinzufügen`
+        }
+        class="group block w-full text-left transition-colors hover:bg-surface disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <div class="flex items-center gap-3 px-5 py-3">
+          <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
+            <Show
+              when={props.result.coverUrl}
+              fallback={
+                <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+                  {props.result.type === "manga" ? "M" : "A"}
+                </div>
+              }
+            >
+              <img
+                src={props.result.coverUrl!}
+                alt=""
+                class="size-full object-cover"
+                loading="lazy"
+              />
+            </Show>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="truncate text-body text-text">{props.result.title}</h4>
+            <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+              {props.result.type === "manga" ? "Manga" : "Anime"}
+              {props.result.year ? ` · ${props.result.year}` : ""}
+            </p>
+          </div>
+          <span
+            aria-hidden
+            class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border transition-colors ${
+              props.added
+                ? "border-accent bg-accent text-accent-on"
+                : "border-border text-text-muted group-hover:border-accent group-hover:bg-accent group-hover:text-accent-on"
+            }`}
           >
             <Show
-              when={props.added}
-              fallback={<Plus class="size-4" strokeWidth={1.75} />}
+              when={!props.pending}
+              fallback={
+                <Loader2 class="size-4 animate-spin" strokeWidth={1.75} />
+              }
             >
-              <Check class="size-4" strokeWidth={2} />
+              <Show
+                when={props.added}
+                fallback={<Plus class="size-4" strokeWidth={1.75} />}
+              >
+                <Check class="size-4" strokeWidth={2} />
+              </Show>
             </Show>
-          </Show>
-        </button>
-      </div>
+          </span>
+        </div>
+      </button>
     </li>
   );
 }
