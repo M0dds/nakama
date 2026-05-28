@@ -364,8 +364,52 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── 13 · Anti-Patterns ───────────────────────────────────── */}
-      <Section number="13" label="Anti-Patterns · Verbote">
+      {/* ── 13 · ColumnGuide ─────────────────────────────────────── */}
+      <Section number="13" label="ColumnGuide">
+        <p class="mb-4 text-body text-text-muted">
+          Vertikale Trennlinie bei 2/3-Breite zwischen den Bento-Spalten.
+          Real per <code class="font-mono text-mini">position: fixed inset-y-0</code> —
+          läuft von der Viewport-Oberkante bis zur Unterkante, ignoriert
+          Content-Höhe komplett. Damit lesen Spalten links/rechts immer als
+          eindeutige Instrumentenpanel-Sektoren, egal wie ungleich gefüllt.
+          Ab <code class="font-mono text-mini">md</code> sichtbar; auf Mobile
+          stapeln die Spalten vertikal und die Linie verschwindet.
+        </p>
+        <div class="relative h-40 overflow-hidden border border-rule">
+          {/* Contained mock — relative-positioned line, not the real
+              fixed one. Same visual at 66.6667% to show the proportion. */}
+          <div
+            aria-hidden
+            class="pointer-events-none absolute inset-y-0 w-px bg-rule"
+            style={{ left: "66.6667%" }}
+          />
+          <div class="flex h-full">
+            <div class="w-2/3 p-5">
+              <p class="font-mono text-label uppercase tracking-wider text-text-muted">
+                Spalte 01 · 2/3
+              </p>
+              <p class="mt-2 text-body text-text-muted">
+                Linker Bereich (Was kommt, Einträge, Episodenliste …)
+              </p>
+            </div>
+            <div class="w-1/3 p-5">
+              <p class="font-mono text-label uppercase tracking-wider text-text-muted">
+                Spalte 02 · 1/3
+              </p>
+              <p class="mt-2 text-body text-text-muted">
+                Rechter Bereich (Logbuch, Details, Mitglieder …)
+              </p>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-mini text-text-muted">
+          Echtes Beispiel laufend auf{" "}
+          <A href="/" class="text-text underline">Home</A>.
+        </p>
+      </Section>
+
+      {/* ── 14 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="14" label="Anti-Patterns · Verbote">
         <p class="mb-6 text-body text-text-muted">
           Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
           hier kurz nachschauen.

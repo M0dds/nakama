@@ -43,7 +43,7 @@ export function PageHeader(props: {
   };
 
   return (
-    <header class="flex items-end justify-between border-b border-rule px-5 pb-3">
+    <header class="flex items-end justify-between border-b border-rule px-5 pb-3 pt-6">
       <div>
         <div class="flex items-center gap-2">
           <span

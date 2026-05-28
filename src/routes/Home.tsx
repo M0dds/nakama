@@ -2,6 +2,7 @@ import { A } from "@solidjs/router";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { Button } from "@/components/Button";
+import { ColumnGuide } from "@/components/ColumnGuide";
 
 /**
  * Placeholder Home using the real structural primitives — PageHeader sits on
@@ -20,6 +21,8 @@ export default function Home() {
           </span>
         }
       />
+
+      <ColumnGuide />
 
       <div class="flex flex-col md:flex-row md:items-start">
         <div class="md:w-2/3">
