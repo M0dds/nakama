@@ -1,6 +1,6 @@
 import { createSignal, onMount, For } from "solid-js";
 import { A } from "@solidjs/router";
-import { CircleCheck, CircleX } from "lucide-solid";
+import { CircleCheck, CircleX, Info } from "lucide-solid";
 import {
   THEMES,
   type ThemeId,
@@ -9,10 +9,13 @@ import {
   readTheme,
   readModePref,
 } from "@/lib/themes";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/Button";
 import { Badge } from "@/components/Badge";
 import { BentoModule } from "@/components/BentoModule";
 import { PageHeader } from "@/components/PageHeader";
+import { Tooltip } from "@/components/Tooltip";
+import { SelectMenu } from "@/components/SelectMenu";
 
 /**
  * Styleguide — the source of truth for every visual decision. New primitives
@@ -22,6 +25,8 @@ import { PageHeader } from "@/components/PageHeader";
 export default function Styleguide() {
   const [theme, setTheme] = createSignal<ThemeId>("default");
   const [mode, setMode] = createSignal<ThemeModePref>("system");
+  const [demoOption, setDemoOption] = createSignal("anime");
+  const auth = useAuth();
 
   onMount(() => {
     setTheme(readTheme());
@@ -267,8 +272,100 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── 10 · Anti-Patterns ───────────────────────────────────── */}
-      <Section number="10" label="Anti-Patterns · Verbote">
+      {/* ── 10 · Tooltip ─────────────────────────────────────────── */}
+      <Section number="10" label="Tooltip">
+        <p class="mb-4 text-body text-text-muted">
+          In-house statt natives <code class="font-mono text-mini">title</code>-Attribut.
+          JS-positioniert + viewport-clamped — wird nie am Bildschirmrand
+          abgeschnitten. Hover ODER Fokus öffnen ihn.
+        </p>
+        <div class="flex flex-wrap items-center gap-6">
+          <Tooltip label="Hover oder fokussiere mich">
+            <Button variant="secondary">Default · top</Button>
+          </Tooltip>
+          <Tooltip label="Bottom-Variante" side="bottom">
+            <Button variant="secondary">Bottom</Button>
+          </Tooltip>
+          <Tooltip label="Disabled? Erklär den Grund">
+            <Button disabled>Disabled mit Grund</Button>
+          </Tooltip>
+          <Tooltip label="Selbst Icon-only kriegt einen sichtbaren Hint">
+            <button
+              type="button"
+              aria-label="Info"
+              class="inline-flex size-9 items-center justify-center rounded-sm border border-border text-text transition-colors hover:bg-surface"
+            >
+              <Info class="size-4" strokeWidth={1.75} />
+            </button>
+          </Tooltip>
+        </div>
+      </Section>
+
+      {/* ── 11 · SelectMenu ──────────────────────────────────────── */}
+      <Section number="11" label="SelectMenu">
+        <p class="mb-4 text-body text-text-muted">
+          Styled Single-Select. Ersetzt das native{" "}
+          <code class="font-mono text-mini">&lt;select&gt;</code> damit die
+          Optik dem Theme folgt. Klick-außen + Escape schließen.
+        </p>
+        <div class="max-w-xs">
+          <SelectMenu
+            value={demoOption()}
+            onChange={setDemoOption}
+            ariaLabel="Demo-Auswahl"
+            options={[
+              { id: "anime", label: "Anime" },
+              { id: "manga", label: "Manga" },
+              { id: "series", label: "Serien" },
+              { id: "movie", label: "Filme" },
+              { id: "game", label: "Spiele" },
+            ]}
+          />
+          <p class="mt-3 text-mini text-text-muted">
+            Ausgewählt:{" "}
+            <code class="font-mono text-text">{demoOption()}</code>
+          </p>
+        </div>
+      </Section>
+
+      {/* ── 12 · Auth State ──────────────────────────────────────── */}
+      <Section number="12" label="Auth State">
+        <p class="mb-4 text-body text-text-muted">
+          Globaler Solid-Signal via{" "}
+          <code class="font-mono text-mini">useAuth()</code>. Reagiert live
+          auf Login / Logout / Token-Refresh — Komponenten re-rendern nur
+          die Stellen, die <code class="font-mono text-mini">user()</code> /{" "}
+          <code class="font-mono text-mini">session()</code> tatsächlich
+          lesen.
+        </p>
+        <div class="rounded-sm border border-border p-4">
+          <div class="flex items-baseline justify-between gap-3">
+            <span class={dtClass}>Status</span>
+            <span class="text-body text-text">
+              {auth.loading()
+                ? "Lade Session …"
+                : auth.user()
+                  ? "Eingeloggt"
+                  : "Nicht eingeloggt"}
+            </span>
+          </div>
+          <div class="mt-2 flex items-baseline justify-between gap-3">
+            <span class={dtClass}>User-ID</span>
+            <code class="truncate font-mono text-mini text-text-muted">
+              {auth.user()?.id ?? "—"}
+            </code>
+          </div>
+          <div class="mt-2 flex items-baseline justify-between gap-3">
+            <span class={dtClass}>E-Mail</span>
+            <code class="truncate font-mono text-mini text-text-muted">
+              {auth.user()?.email ?? "—"}
+            </code>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── 13 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="13" label="Anti-Patterns · Verbote">
         <p class="mb-6 text-body text-text-muted">
           Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
           hier kurz nachschauen.
