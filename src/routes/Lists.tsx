@@ -113,28 +113,38 @@ function metaLine(list: ListSummary): string {
     : `${count} · ${visibility} · Archiv`;
 }
 
+/**
+ * Row layout, projektweit pattern: the hover bg fills the FULL column
+ * width (so it bleeds through the BentoModule's p-5 via `-mx-5`), while
+ * the divider hairlines + the content stay inset at `px-5`. The divider
+ * is a `::after` pseudo-element on each `<li>` so it's independent of the
+ * row's bg fill, and hidden on the last row. Apply this same shape any
+ * time a list lives inside a BentoModule.
+ */
 function ListRows(props: { lists: ListSummary[] }) {
   return (
-    <ul class="divide-y divide-border">
+    <ul class="-mx-5">
       <For each={props.lists}>
         {(list) => (
-          <li>
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
             <A
               href={`/lists/${list.id}`}
-              class="group flex items-center justify-between gap-4 px-4 py-3.5 transition-colors hover:bg-surface"
+              class="group block transition-colors hover:bg-surface"
             >
-              <div class="min-w-0">
-                <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-                  {list.name}
-                </h3>
-                <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-                  {metaLine(list)}
-                </p>
+              <div class="flex items-center justify-between gap-4 px-5 py-3.5">
+                <div class="min-w-0">
+                  <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+                    {list.name}
+                  </h3>
+                  <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                    {metaLine(list)}
+                  </p>
+                </div>
+                <ChevronRight
+                  class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
+                  strokeWidth={1.75}
+                />
               </div>
-              <ChevronRight
-                class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
-                strokeWidth={1.75}
-              />
             </A>
           </li>
         )}

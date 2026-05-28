@@ -45,44 +45,49 @@ export function DeleteListButton(props: {
     },
   }));
 
+  // Outer span owns the row height (h-7) so the slot never grows when the
+  // confirm row swaps in. Both states render inside that fixed-height
+  // wrapper — text-button OR the icon-button cluster.
   return (
-    <Show
-      when={confirming()}
-      fallback={
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-        >
-          Liste löschen
-        </button>
-      }
-    >
-      <span class="inline-flex h-7 items-center gap-2">
-        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-          Wirklich löschen?
+    <span class="inline-flex h-7 items-center">
+      <Show
+        when={confirming()}
+        fallback={
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+          >
+            Liste löschen
+          </button>
+        }
+      >
+        <span class="inline-flex items-center gap-2">
+          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+            Wirklich löschen?
+          </span>
+          <button
+            type="button"
+            aria-label="Ja, löschen"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+            class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            <Check class="size-3.5" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            aria-label="Abbrechen"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setConfirming(false);
+            }}
+            class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            <X class="size-3.5" strokeWidth={2} />
+          </button>
         </span>
-        <button
-          type="button"
-          aria-label="Ja, löschen"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate()}
-          class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <Check class="size-3.5" strokeWidth={2.5} />
-        </button>
-        <button
-          type="button"
-          aria-label="Abbrechen"
-          onClick={(e) => {
-            e.currentTarget.blur();
-            setConfirming(false);
-          }}
-          class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-        >
-          <X class="size-3.5" strokeWidth={2} />
-        </button>
-      </span>
-    </Show>
+      </Show>
+    </span>
   );
 }

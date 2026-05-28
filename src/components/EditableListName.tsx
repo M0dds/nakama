@@ -115,6 +115,12 @@ export function EditableListName(props: {
     <Show
       when={editing()}
       fallback={
+        // No border on the display button — the input below uses `ring`
+        // (a box-shadow, draws OUTSIDE the box) instead of a real border,
+        // so swapping between states doesn't shift the heading by a pixel.
+        // That also keeps the heading height identical to the plain <h1>
+        // used on routes like /lists, so navigating in/out reads as one
+        // continuous baseline.
         <button
           type="button"
           onClick={startEdit}
@@ -143,7 +149,7 @@ export function EditableListName(props: {
             cancel();
           }
         }}
-        class="-ml-1 w-full max-w-md rounded-xs border border-accent bg-transparent px-1 text-heading font-medium tracking-tight text-text outline-none"
+        class="-ml-1 w-full max-w-md rounded-xs bg-transparent px-1 text-heading font-medium tracking-tight text-text outline-none ring-1 ring-accent"
         autofocus
       />
     </Show>
