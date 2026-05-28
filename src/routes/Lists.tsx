@@ -9,7 +9,6 @@ import {
   type ListSummary,
 } from "@/lib/queries/lists";
 import { useRealtimeInvalidation } from "@/lib/realtime";
-import { AppShell } from "@/components/AppShell";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -43,61 +42,59 @@ export default function Lists() {
   ]);
 
   return (
-    <AppShell>
-      <main class="w-full">
-        <PageHeader title="Listen" />
+    <main class="w-full">
+      <PageHeader title="Listen" />
 
-        <ColumnGuide />
+      <ColumnGuide />
 
-        <div class="flex flex-col md:flex-row md:items-start">
-          {/* Linke Spalte 2/3 — Deine Listen + Geteilte Listen */}
-          <div class="md:w-2/3">
-            <Show
-              when={lists.data}
-              fallback={
-                <BentoModule label="Deine Listen" number="01">
-                  <p class="text-body text-text-muted">Lade Listen …</p>
-                </BentoModule>
-              }
-            >
-              {(data) => (
-                <>
-                  <BentoModule
-                    label="Deine Listen"
-                    number="01"
-                    class={
-                      data().shared.length > 0
-                        ? "border-b border-rule"
-                        : undefined
-                    }
+      <div class="flex flex-col md:flex-row md:items-start">
+        {/* Linke Spalte 2/3 — Deine Listen + Geteilte Listen */}
+        <div class="md:w-2/3">
+          <Show
+            when={lists.data}
+            fallback={
+              <BentoModule label="Deine Listen" number="01">
+                <p class="text-body text-text-muted">Lade Listen …</p>
+              </BentoModule>
+            }
+          >
+            {(data) => (
+              <>
+                <BentoModule
+                  label="Deine Listen"
+                  number="01"
+                  class={
+                    data().shared.length > 0
+                      ? "border-b border-rule"
+                      : undefined
+                  }
+                >
+                  <Show
+                    when={data().private.length > 0}
+                    fallback={<PrivateEmpty />}
                   >
-                    <Show
-                      when={data().private.length > 0}
-                      fallback={<PrivateEmpty />}
-                    >
-                      <ListRows lists={data().private} />
-                    </Show>
-                  </BentoModule>
-
-                  <Show when={data().shared.length > 0}>
-                    <BentoModule label="Geteilte Listen" number="02">
-                      <ListRows lists={data().shared} />
-                    </BentoModule>
+                    <ListRows lists={data().private} />
                   </Show>
-                </>
-              )}
-            </Show>
-          </div>
+                </BentoModule>
 
-          {/* Rechte Spalte 1/3 — Neue Liste */}
-          <div class="border-t border-rule md:w-1/3 md:border-t-0">
-            <BentoModule label="Neue Liste" number="03">
-              <CreateListForm />
-            </BentoModule>
-          </div>
+                <Show when={data().shared.length > 0}>
+                  <BentoModule label="Geteilte Listen" number="02">
+                    <ListRows lists={data().shared} />
+                  </BentoModule>
+                </Show>
+              </>
+            )}
+          </Show>
         </div>
-      </main>
-    </AppShell>
+
+        {/* Rechte Spalte 1/3 — Neue Liste */}
+        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+          <BentoModule label="Neue Liste" number="03">
+            <CreateListForm />
+          </BentoModule>
+        </div>
+      </div>
+    </main>
   );
 }
 

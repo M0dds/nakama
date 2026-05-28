@@ -10,7 +10,6 @@ import {
   listsQueryKey,
 } from "@/lib/queries/lists";
 import { useRealtimeInvalidation } from "@/lib/realtime";
-import { AppShell } from "@/components/AppShell";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -82,106 +81,104 @@ export default function ListDetail() {
     "font-mono text-mini uppercase tracking-wider text-text-muted";
 
   return (
-    <AppShell>
-      <main class="w-full">
-        <PageHeader
-          kicker="LISTEN"
-          title={
-            <Show when={list.data} fallback={<span>…</span>}>
-              {(data) => (
-                <EditableListName
-                  listId={data().id}
-                  initialName={data().name}
-                />
-              )}
-            </Show>
-          }
-          backHref="/lists"
-          aside={
-            <Show when={list.data?.isOwner}>
-              <DeleteListButton
-                listId={list.data!.id}
-                listName={list.data!.name}
+    <main class="w-full">
+      <PageHeader
+        kicker="LISTEN"
+        title={
+          <Show when={list.data} fallback={<span>…</span>}>
+            {(data) => (
+              <EditableListName
+                listId={data().id}
+                initialName={data().name}
               />
+            )}
+          </Show>
+        }
+        backHref="/lists"
+        aside={
+          <Show when={list.data?.isOwner}>
+            <DeleteListButton
+              listId={list.data!.id}
+              listName={list.data!.name}
+            />
+          </Show>
+        }
+      />
+
+      <ColumnGuide />
+
+      <div class="flex flex-col md:flex-row md:items-start">
+        {/* Einträge — left 2/3 */}
+        <div class="md:w-2/3">
+          <BentoModule label="Einträge" number="01">
+            <Show
+              when={list.data?.description}
+            >
+              <p class="mb-5 text-body text-text-muted">
+                {list.data!.description}
+              </p>
             </Show>
-          }
-        />
-
-        <ColumnGuide />
-
-        <div class="flex flex-col md:flex-row md:items-start">
-          {/* Einträge — left 2/3 */}
-          <div class="md:w-2/3">
-            <BentoModule label="Einträge" number="01">
+            <Show
+              when={!items.isLoading}
+              fallback={
+                <p class="px-4 py-8 text-body text-text-muted">
+                  Lade Einträge …
+                </p>
+              }
+            >
               <Show
-                when={list.data?.description}
+                when={items.data && items.data.length > 0}
+                fallback={<EntriesEmpty />}
               >
-                <p class="mb-5 text-body text-text-muted">
-                  {list.data!.description}
+                <p class="px-4 py-8 text-body text-text-muted">
+                  Einträge folgen in Phase 4 — Item-Suche + AddSheet.
                 </p>
               </Show>
-              <Show
-                when={!items.isLoading}
-                fallback={
-                  <p class="px-4 py-8 text-body text-text-muted">
-                    Lade Einträge …
-                  </p>
-                }
-              >
-                <Show
-                  when={items.data && items.data.length > 0}
-                  fallback={<EntriesEmpty />}
-                >
-                  <p class="px-4 py-8 text-body text-text-muted">
-                    Einträge folgen in Phase 4 — Item-Suche + AddSheet.
-                  </p>
-                </Show>
-              </Show>
-            </BentoModule>
-          </div>
-
-          {/* Details — right 1/3 */}
-          <div class="border-t border-rule md:w-1/3 md:border-t-0">
-            <BentoModule label="Details" number="02">
-              <Show
-                when={list.data}
-                fallback={<p class="text-body text-text-muted">Lade …</p>}
-              >
-                {(data) => (
-                  <>
-                    <dl class="space-y-3 text-body">
-                      <div class="flex items-baseline justify-between gap-3">
-                        <dt class={dtClass}>Sichtbarkeit</dt>
-                        <dd class="text-text">
-                          {data().isShared ? "Geteilt" : "Privat"}
-                        </dd>
-                      </div>
-                      <div class="flex items-baseline justify-between gap-3">
-                        <dt class={dtClass}>Einträge</dt>
-                        <dd class="tabular-nums text-text">
-                          {data().itemCount}
-                        </dd>
-                      </div>
-                      <div class="flex items-baseline justify-between gap-3">
-                        <dt class={`${dtClass} shrink-0`}>Erstellt</dt>
-                        <dd class="min-w-0 text-right text-text">
-                          {createdLabel(data().createdAt)}
-                        </dd>
-                      </div>
-                    </dl>
-
-                    <ListTrackingToggle
-                      listId={data().id}
-                      initialEnabled={data().tracksHome}
-                    />
-                  </>
-                )}
-              </Show>
-            </BentoModule>
-          </div>
+            </Show>
+          </BentoModule>
         </div>
-      </main>
-    </AppShell>
+
+        {/* Details — right 1/3 */}
+        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+          <BentoModule label="Details" number="02">
+            <Show
+              when={list.data}
+              fallback={<p class="text-body text-text-muted">Lade …</p>}
+            >
+              {(data) => (
+                <>
+                  <dl class="space-y-3 text-body">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class={dtClass}>Sichtbarkeit</dt>
+                      <dd class="text-text">
+                        {data().isShared ? "Geteilt" : "Privat"}
+                      </dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class={dtClass}>Einträge</dt>
+                      <dd class="tabular-nums text-text">
+                        {data().itemCount}
+                      </dd>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <dt class={`${dtClass} shrink-0`}>Erstellt</dt>
+                      <dd class="min-w-0 text-right text-text">
+                        {createdLabel(data().createdAt)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <ListTrackingToggle
+                    listId={data().id}
+                    initialEnabled={data().tracksHome}
+                  />
+                </>
+              )}
+            </Show>
+          </BentoModule>
+        </div>
+      </div>
+    </main>
   );
 }
 

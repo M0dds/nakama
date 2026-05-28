@@ -3,7 +3,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { Button } from "@/components/Button";
 import { ColumnGuide } from "@/components/ColumnGuide";
-import { AppShell } from "@/components/AppShell";
 
 /**
  * Placeholder Home using the real structural primitives — PageHeader sits on
@@ -13,8 +12,7 @@ import { AppShell } from "@/components/AppShell";
  */
 export default function Home() {
   return (
-    <AppShell>
-      <main class="w-full">
+    <main class="w-full">
         <PageHeader
           title="Willkommen."
           aside={
@@ -54,7 +52,6 @@ export default function Home() {
             </BentoModule>
           </div>
         </div>
-      </main>
-    </AppShell>
+    </main>
   );
 }

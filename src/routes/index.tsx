@@ -1,6 +1,7 @@
-import { lazy, type Component } from "solid-js";
-import type { RouteDefinition } from "@solidjs/router";
+import { lazy } from "solid-js";
+import type { RouteDefinition, RouteSectionProps } from "@solidjs/router";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { AppShell } from "@/components/AppShell";
 
 /**
  * Programmatic route map. Solid Router doesn't ship file-based routing
@@ -8,16 +9,26 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
  * in src/index.tsx. lazy() splits each route into its own chunk so the
  * initial bundle stays slim.
  *
- * App routes (everything the user reaches after login) wrap their component
- * with <ProtectedRoute /> so unauth visits bounce to /login. Public surfaces
- * — /login, /auth/callback, /styleguide — skip the guard.
+ * The four authed surfaces (Home / Lists / ListDetail / Profile) share a
+ * single layout parent — AppLayout — so the AppShell + BottomNav mount
+ * ONCE on first protected-route entry and stay mounted across navigation
+ * between them. Without this nesting the shell tears down on every route
+ * change, which (a) flashes the nav off-screen on first visit and (b) wipes
+ * the indicator's `prevRest` so the stretch-and-contract animation never
+ * has an "old position" to stretch from — explains the previous session's
+ * "nav animation never runs" puzzle.
+ *
+ * Public surfaces — /login, /auth/callback, /styleguide — sit outside the
+ * shell (no nav).
  */
 
-/** Helper that takes a lazy-loaded page and wraps it in <ProtectedRoute>. */
-function protect(Page: Component): Component {
-  return () => (
+/** Long-lived layout for the authed app. ProtectedRoute gates entry; AppShell
+ *  provides the BottomNav + bottom spacing. `props.children` is the matched
+ *  child route — only THAT subtree re-mounts on navigation. */
+function AppLayout(props: RouteSectionProps) {
+  return (
     <ProtectedRoute>
-      <Page />
+      <AppShell>{props.children}</AppShell>
     </ProtectedRoute>
   );
 }
@@ -40,22 +51,28 @@ export const routes: RouteDefinition[] = [
     component: lazy(() => import("./Styleguide")),
   },
 
-  // ─ Protected app surfaces ──────────────────────────────────
+  // ─ Protected app surfaces (share AppLayout so the shell persists) ─
   {
     path: "/",
-    component: protect(lazy(() => import("./Home"))),
-  },
-  {
-    path: "/lists",
-    component: protect(lazy(() => import("./Lists"))),
-  },
-  {
-    path: "/lists/:id",
-    component: protect(lazy(() => import("./ListDetail"))),
-  },
-  {
-    path: "/profile",
-    component: protect(lazy(() => import("./Profile"))),
+    component: AppLayout,
+    children: [
+      {
+        path: "/",
+        component: lazy(() => import("./Home")),
+      },
+      {
+        path: "/lists",
+        component: lazy(() => import("./Lists")),
+      },
+      {
+        path: "/lists/:id",
+        component: lazy(() => import("./ListDetail")),
+      },
+      {
+        path: "/profile",
+        component: lazy(() => import("./Profile")),
+      },
+    ],
   },
 
   // ─ Catch-all ───────────────────────────────────────────────
