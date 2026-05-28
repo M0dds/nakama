@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de" data-theme="default" class="antialiased">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Media-Tracker für Anime, Manga, Serien, Filme, Spiele — gemeinsam schauen."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>Nakama</title>
+    <!--
+      Theme bootstrap — runs before React mounts so the page never flashes the
+      default theme. Reads localStorage; falls back to default + system mode.
+    -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem("nakama:theme") || "default";
+          root.setAttribute("data-theme", theme);
+          var pref = localStorage.getItem("nakama:mode") || "system";
+          var dark =
+            pref === "dark" ||
+            (pref === "system" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) root.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
