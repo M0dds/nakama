@@ -12,6 +12,7 @@ import {
   DragDropSensors,
   SortableProvider,
   transformStyle,
+  useDragDropContext,
   type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -430,16 +431,35 @@ function SortableEntryRow(props: {
   const sortable = createSortable(props.entry.listItemId, {
     pinned: props.entry.pinned,
   });
+  const ctx = useDragDropContext();
+  // Suppress hover bg while any drag is in flight — otherwise the moment
+  // of drop reads as a double flicker as bg-surface walks from the source
+  // row to whatever the cursor lands on.
+  const isAnyDragging = () => ctx?.[0].active.draggable != null;
+
   return (
     <li
       ref={sortable}
-      style={transformStyle(sortable.transform)}
+      // Inline transition because the timing is conditional: 0s when
+      // active (cursor follow must be 1:1), ease-quart otherwise (smooth
+      // displacement during drag + smooth settle after).
+      style={{
+        ...transformStyle(sortable.transform),
+        transition: sortable.isActiveDraggable
+          ? "transform 0s"
+          : "transform 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+      }}
       class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border"
       classList={{
         "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
       }}
     >
-      <div class="group flex items-center gap-2 px-5 py-3 transition-colors hover:bg-surface">
+      <div
+        class="group flex items-center gap-2 px-5 py-3"
+        classList={{
+          "transition-colors hover:bg-surface": !isAnyDragging(),
+        }}
+      >
         <A
           href={`/item/${props.entry.type}/${props.entry.slug}`}
           class="flex min-w-0 flex-1 items-center gap-3"

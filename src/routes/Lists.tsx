@@ -12,6 +12,7 @@ import {
   DragDropSensors,
   SortableProvider,
   transformStyle,
+  useDragDropContext,
   type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -360,16 +361,38 @@ function SortableListRow(props: {
   const sortable = createSortable(props.list.id, {
     section: sectionKey(props.visibility, props.list.pinned),
   });
+  const ctx = useDragDropContext();
+  // True for *any* active drag in this provider — used to suppress the
+  // row's hover bg while something is being dragged. Without that, the
+  // moment of drop has two perceived flashes: the source row's bg fades
+  // out as it leaves the cursor, and the row now under the cursor fades
+  // in. Reads as flicker.
+  const isAnyDragging = () => ctx?.[0].active.draggable != null;
+
   return (
     <li
       ref={sortable}
-      style={transformStyle(sortable.transform)}
+      // transition is set inline because the timing depends on whether
+      // this sortable is currently being dragged: 0s when active (cursor
+      // follow has to be 1:1 with the pointer), ease-quart for the rest
+      // (smooth slide as siblings are displaced + reordered).
+      style={{
+        ...transformStyle(sortable.transform),
+        transition: sortable.isActiveDraggable
+          ? "transform 0s"
+          : "transform 220ms cubic-bezier(0.16, 1, 0.3, 1)",
+      }}
       class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
       classList={{
         "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
       }}
     >
-      <div class="group flex items-center gap-2 px-5 py-3.5 transition-colors hover:bg-surface">
+      <div
+        class="group flex items-center gap-2 px-5 py-3.5"
+        classList={{
+          "transition-colors hover:bg-surface": !isAnyDragging(),
+        }}
+      >
         <A
           href={`/lists/${props.list.shortCode}`}
           class="block min-w-0 flex-1"
