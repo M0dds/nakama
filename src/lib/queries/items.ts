@@ -13,6 +13,50 @@ import type { AniListResult } from "@/lib/anilist";
  * lazy episode fetch + episodes upsert; Phase 5 adds item progress queries.
  */
 
+// ──────────────────────────────────────────────────────────────────────────
+// Item-detail query (used on /item/:id)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface ItemDetails {
+  id: string;
+  source: string;
+  sourceId: string;
+  type: string;
+  title: string;
+  coverUrl: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export const itemQueryKey = (id: string) => ["item", id] as const;
+
+/** Single item by id. RLS scopes via membership (items are visible iff the
+ *  caller is a member of at least one list that contains this item) — no
+ *  explicit user filter needed. Returns null on not-found / not-visible /
+ *  bad-uuid; the route bounces in that case. */
+export function itemQueryOptions(id: string) {
+  return {
+    queryKey: itemQueryKey(id),
+    queryFn: async (): Promise<ItemDetails | null> => {
+      const { data, error } = await supabase
+        .from("items")
+        .select("id, source, source_id, type, title, cover_url, metadata")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return {
+        id: data.id as string,
+        source: data.source as string,
+        sourceId: data.source_id as string,
+        type: data.type as string,
+        title: data.title as string,
+        coverUrl: (data.cover_url as string | null) ?? null,
+        metadata: (data.metadata as Record<string, unknown> | null) ?? null,
+      };
+    },
+  };
+}
+
 /** Upsert an AniList result into `items`, then link it to a list. The items
  *  upsert uses `(source, source_id)` as the conflict key, so the same work
  *  added by different users into different lists stays a single row.
