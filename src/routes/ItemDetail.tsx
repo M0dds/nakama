@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import { useParams } from "@solidjs/router";
+import { useLocation, useParams } from "@solidjs/router";
 import {
   createMutation,
   createQuery,
@@ -25,6 +25,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
+import { SyncToggle } from "@/components/SyncToggle";
 
 const PAGE_SIZE = 26;
 
@@ -55,6 +56,10 @@ export default function ItemDetail() {
   const params = useParams<{ type: string; slug: string }>();
   const auth = useAuth();
   const queryClient = useQueryClient();
+  // List context carried via router link state when the item was opened from a
+  // list row (see ListDetail). Drives the per-item sync toggle — absent on
+  // deep-links / Home / Kalender entries, which deliberately show no toggle.
+  const location = useLocation<{ listItemId?: string }>();
 
   const item = createQuery(() => ({
     ...itemQueryOptions(params.type, params.slug),
@@ -355,6 +360,19 @@ export default function ItemDetail() {
                       </dd>
                     </div>
                   </dl>
+
+                  {/* Sync toggle — only when opened via a shared list (the
+                      SyncToggle self-gates on isShared && memberCount > 1). */}
+                  <Show when={location.state?.listItemId}>
+                    {(listItemId) => (
+                      <SyncToggle
+                        listItemId={listItemId()}
+                        itemId={data().id}
+                        type={params.type}
+                        slug={params.slug}
+                      />
+                    )}
+                  </Show>
                 </>
               )}
             </Show>
