@@ -4,9 +4,17 @@ import {
   onCleanup,
   onMount,
 } from "solid-js";
-import { useLocation } from "@solidjs/router";
-import { Calendar, House, List, Plus, User } from "lucide-solid";
+import { useLocation, useNavigate } from "@solidjs/router";
+import { ArrowLeft, Calendar, House, List, Plus, User } from "lucide-solid";
 import { NavButton } from "@/components/NavButton";
+
+/** Back target derived from the route — mirrors each detail page's header
+ *  backHref. Null on the top-level tabs, where no back affordance shows. */
+function backTarget(pathname: string): string | null {
+  if (pathname.startsWith("/lists/")) return "/lists";
+  if (pathname.startsWith("/item/")) return "/lists";
+  return null;
+}
 
 /**
  * Single floating nav, bottom-centered on every viewport. 5 items:
@@ -49,7 +57,20 @@ export function BottomNav(props: {
   addSheetOpen?: boolean;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const isActive = (href: string) => location.pathname === href;
+  const back = () => backTarget(location.pathname);
+
+  /** History-aware back: prefer the actual previous entry (so /lists/foo
+   *  back-from-/item lands on /lists/foo, not the generic fallback). Fall
+   *  back to backTarget's path on a direct-deep-link. Same logic as the
+   *  PageHeader's chevron, exposed as a nav affordance here. */
+  const goBack = () => {
+    const fallback = back();
+    if (!fallback) return;
+    if (window.history.length > 1) window.history.back();
+    else navigate(fallback);
+  };
 
   let pillEl: HTMLDivElement | undefined;
   const [bubble, setBubble] = createSignal<IndicatorBox | null>(null);
@@ -147,6 +168,46 @@ export function BottomNav(props: {
           }`,
         }}
       >
+        {/* Back-Satellite — sits LEFT of the pill, attaches to the pill's
+            relative origin via `absolute right-full`. Always in the DOM so
+            the opacity transition has a class to switch FROM; data-accent
+            is conditional, which is what the place()-effect targets to
+            flow the bubble out of the nav and into the back button when
+            entering a detail route. On exit (back to a tab), the bubble
+            flows back into the pill and the back button fades out at the
+            same time, so the accent reads as "drag the back button into /
+            out of existence". Vertical: top-1/2 -mt-6 centers the size-12
+            button against the pill's centerline. */}
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Zurück"
+          tabIndex={back() ? 0 : -1}
+          aria-hidden={!back()}
+          data-accent={back() ? "" : undefined}
+          class={`absolute right-full top-1/2 z-10 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full text-accent-on shadow-floating active:scale-95 ${
+            back() ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+          style={{
+            // Opacity is delayed 100 ms so the arrow only appears once the
+            // bubble has started settling on the new (back-button) target —
+            // otherwise the white-on-light arrow would briefly float over a
+            // backgroundless slot before the accent fills in. 100 ms matches
+            // SETTLE_MS so the fade-in starts exactly as Phase 2 (contract)
+            // kicks off; full opacity lands around t=300 ms, when the bubble
+            // is settled. Symmetric in close: the arrow fades together with
+            // the bubble leaving its slot.
+            //
+            // The transform timing is separate + immediate so the active:
+            // scale-95 click feedback feels snappy (not delayed by the
+            // 100 ms opacity offset).
+            transition:
+              "opacity 200ms var(--ease-quart) 100ms, transform 100ms var(--ease-quart)",
+          }}
+        >
+          <ArrowLeft class="size-5" strokeWidth={1.75} aria-hidden />
+        </button>
+
         {/* Sliding accent. Always rendered so the element persists across
             path changes (Solid would otherwise tear down + remount the
             <Show> child, killing the transition). Geometry is patched via
