@@ -265,7 +265,12 @@ export function listsQueryOptions(user: User) {
           .eq("user_id", user.id),
         supabase
           .from("list_items")
-          .select("list_id, item_id, items!inner(type)"),
+          .select("list_id, item_id, items!inner(type)")
+          // A7: explicit cap — without it PostgREST stops at 1000 rows. Sharing
+          // multiplies list_items across all members' shared lists, so the
+          // newCounts aggregation would silently under-count past 1000 (no
+          // error, just a missing badge). 5000 mirrors GAP_QUERY_LIMIT.
+          .limit(5000),
       ]);
 
       if (membershipRes.error) throw membershipRes.error;

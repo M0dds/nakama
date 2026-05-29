@@ -146,8 +146,8 @@ export default function Calendar() {
   const toggleMut = createMutation(() => ({
     mutationFn: (ev: CalendarEvent) =>
       toggleEpisode({
+        itemId: ev.itemId,
         episodeId: ev.episodeId,
-        userId: auth.user()!.id,
         watched: !ev.watched,
       }),
     onMutate: (ev: CalendarEvent) => {

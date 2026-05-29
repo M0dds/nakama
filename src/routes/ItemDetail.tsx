@@ -118,12 +118,11 @@ export default function ItemDetail() {
   // Single-tap toggle. Optimistic: flip the row, adjust the visible watched
   // counter; the head-count refetches via onSettled.
   const toggleMut = createMutation(() => ({
-    mutationFn: (ep: EpisodeRow) =>
-      toggleEpisode({
-        episodeId: ep.id,
-        userId: auth.user()!.id,
-        watched: !ep.watched,
-      }),
+    mutationFn: (ep: EpisodeRow) => {
+      const itemId = item.data?.id;
+      if (!itemId) return Promise.reject(new Error("Item not loaded"));
+      return toggleEpisode({ itemId, episodeId: ep.id, watched: !ep.watched });
+    },
     onMutate: (ep: EpisodeRow) => {
       const key = episodesQueryKey(params.type, params.slug);
       const prev = queryClient.getQueryData<EpisodePayload>(key);

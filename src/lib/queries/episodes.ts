@@ -449,48 +449,42 @@ export function episodesQueryOptions(
 // Mutations
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Single-tap toggle. Plain insert/delete on episode_watches — sync fan-out
- *  to other list members lands with Phase 7 via the toggle_episode_synced
- *  RPC. Idempotent in both directions (upsert on insert, eq-delete is a
- *  no-op when there's nothing to delete). */
+/** Single-tap toggle. Routes through the toggle_episode_synced RPC (auto-sync):
+ *  it always writes the caller's own row, then fans out — on tick AND un-tick —
+ *  to every member of every sync-ON list the caller is in that holds this item.
+ *  No list context needed in the call; sync is a property of the item's
+ *  membership, not the URL. Idempotent in both directions server-side. Solo
+ *  users (no sync-ON list) just get their own row written/removed.
+ *
+ *  Deliberately no `.select()`/row-count check (HEALTH B2): the RPC returns
+ *  void and the operation is idempotent, so 0 affected rows is ambiguous, not
+ *  an error — errors still throw. */
 export async function toggleEpisode(input: {
+  itemId: string;
   episodeId: string;
-  userId: string;
   watched: boolean;
 }): Promise<void> {
-  if (input.watched) {
-    const { error } = await supabase
-      .from("episode_watches")
-      .upsert(
-        { user_id: input.userId, episode_id: input.episodeId },
-        { onConflict: "user_id,episode_id" },
-      );
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from("episode_watches")
-      .delete()
-      .eq("user_id", input.userId)
-      .eq("episode_id", input.episodeId);
-    if (error) throw error;
-  }
+  const { error } = await supabase.rpc("toggle_episode_synced", {
+    _item_id: input.itemId,
+    _episode_id: input.episodeId,
+    _watched: input.watched,
+  });
+  if (error) throw error;
 }
 
-/** Long-press cascade. Goes through the mark_episodes_watched RPC, which
- *  resolves the "all episodes ≤ upToEpisodeId" set server-side in one
- *  statement (faster than a client-side fan-out + N inserts, and the only
- *  path allowed to write other users' rows when sharing lands).
- *
- *  Pass _list_item_id=null for Phase 4 — sync fan-out is gated on a
- *  sync-enabled list_item, which Phase 7 introduces. */
+/** Long-press cascade. Goes through the mark_episodes_watched_synced RPC, which
+ *  resolves the "all episodes ≤ upToEpisodeId" set server-side in one statement
+ *  AND fans out (auto-sync) to every member of every sync-ON list the caller is
+ *  in that holds this item — the cascade twin of toggle_episode_synced, so a
+ *  long-press behaves identically to a single tap regardless of entry point.
+ *  No list context needed; solo users just get their own rows. */
 export async function markEpisodesWatchedUpTo(input: {
   itemId: string;
   upToEpisodeId: string;
 }): Promise<void> {
-  const { error } = await supabase.rpc("mark_episodes_watched", {
+  const { error } = await supabase.rpc("mark_episodes_watched_synced", {
     _item_id: input.itemId,
     _up_to_episode_id: input.upToEpisodeId,
-    _list_item_id: null,
   });
   if (error) throw error;
 }
