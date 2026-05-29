@@ -1,6 +1,6 @@
 # Nakama — Handshake
 
-Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen (außer Status-Control für Movies/Games — wartet auf TMDB/IGDB-Sources). URL-Polish-Pass durch: `/lists/<short_code>` (adj-adj-noun) und `/item/<type>/<slug>` als natural-key Routes, plus NotFound-Surface (Items: „Eintrag nicht gefunden", Listen: „Liste nicht gefunden" ohne Privacy-Erklärung). Phase 5 (Home Dashboard) als Nächstes.
+Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen + Polish-Pass durch + zwei Feature-Ergänzungen. Natural-key URLs (`/lists/<short_code>`, `/item/<type>/<slug>`) sind live, NotFound-Surface ersetzt silent bounce, ListEntryActions (Reset/Move/Remove auf Hover) + MoveItemDialog (AddSheet-style Fade) sind in den Listen-Rows, und die BottomNav hat einen Back-Button-Satelliten mit Liquid-Indicator-Flow auf Detail-Routen. Status-Control für Movies/Games bleibt deprio'd (wartet auf TMDB/IGDB). **Phase 5 (Home Dashboard) ist der nächste große Schritt.**
 
 ---
 
@@ -110,7 +110,7 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 - `ColumnGuide` — vertikale Trennlinie bei 2/3-Position des Viewports, `position: fixed inset-y-0` (volle Höhe egal wie hoch der Content), nur ab md sichtbar
 - `ThemeSwitcher` — Modus-Toggle (oben) + Theme-Grid (unten); benutzt im Profil und im Styleguide
 - `AppShell` — Layout-Wrapper für authed Routes, mountet **einmal** als Parent-Route (siehe Routing). Hält den AddSheet-State als **Two-Signal Split**: `addMounted` (DOM-Lifetime) und `addVisible` (Animation-State). Beim Open: setAddMounted+rAF×2+setAddVisible. Beim Close: setAddVisible(false), setTimeout(setAddMounted(false), 500ms). Das doppelte rAF beim Open ist nötig damit Solid's Render-Loop den initial-state paintet bevor die Transition triggert — sonst „taucht das Sheet einfach auf"
-- `BottomNav` — Floating Pill mit 5 Tabs (Home / Listen / + / Kalender / Profil). `+` sitzt **CENTER** (das ist die Add-Affordance) und trägt `data-add-anchor` auf der inneren Pille — das ist der Morph-Origin für die AddSheet. Liquid Accent-Bubble via `data-accent`-Targeting + measure-and-stretch-then-contract Animation. **Animation läuft jetzt zuverlässig**, war durch den Routing-Refactor (Parent-Route AppLayout) gefixt
+- `BottomNav` — Floating Pill mit 5 Tabs (Home / Listen / + / Kalender / Profil). `+` sitzt **CENTER** (das ist die Add-Affordance) und trägt `data-add-anchor` auf der inneren Pille — das ist der Morph-Origin für die AddSheet. Liquid Accent-Bubble via `data-accent`-Targeting + measure-and-stretch-then-contract Animation. **Back-Button-Satellit** hängt auf Detail-Routen (`/lists/:shortCode`, `/item/:type/:slug`) links neben der Pill (absolute `right-full top-1/2 -mt-6 mr-3 size-12 rounded-full`). Trägt `data-accent` statt der NavButtons — die Bubble flowt aus dem Pill in den Satelliten und zurück, gleiche Liquid-Animation wie Tab-zu-Tab. Pfeil-Opacity ist um 100 ms (SETTLE_MS) versetzt, damit er erst auftaucht wenn die Bubble Phase 2 (Contract) auf seiner Position startet — sonst „Ghost-Pfeil" über leerem Slot. `active:scale-95` für tactile Click-Feedback. Click-Handler ist `history.back()` mit Fallback nach `backTarget(pathname)`
 - `NavButton` — Nav-Item im Pill, setzt `data-accent=""` wenn aktiv (Bubble-Target)
 - `AddSheet` — Search + Add-to-list, **liquid morph aus der BottomNav**. Zwei-Teile-Layout: Card oben (page-tier `bg`, hard corners, kicker + Listen-Selektor + Close-X + scrollable Results) + Search-Pill unten (nav-tier `bg-nav-bg`, capsule). Pill morpht aus dem `[data-add-anchor]`-Rect der NavBar heraus zur Target-Rect (full-width minus padding, mobile keyboard-aware via visualViewport). NavBar selbst fadet **sequential-handoff-style** weg/zurück, nicht crossfade (siehe Memory `sequential-handoff-animation` und Gotchas). 500ms ease-quart in beiden Richtungen, ohne scale/translate auf der Card (pure opacity-fade — die Pill trägt die räumliche Bewegung). Pre-selected Liste wenn aus `/lists/:id` geöffnet. Search-as-you-type mit 220ms debounce + AbortController. Tap auf Result-Row triggert `addItemToList` mit ✓-Markierung in der Session
 - `ProtectedRoute` — Route-Guard
@@ -122,6 +122,9 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 - `EpisodeList` (inline in `ItemDetail.tsx`) — read-only Rows + interaktive Buttons. Pointer-events (`onPointerDown/Up/Leave/Cancel`) für unified mouse+touch handling, 500 ms long-press timer für Cascade, `onContextMenu` für Desktop-Power-User-Right-Click. Press-Feedback via additive `classList={{ "bg-surface": pressing() }}` ON TOP of `hover:bg-surface` — additive statt ternary verhindert das Flicker beim Release (Lücke zwischen pressing=false und hover-Re-Apply)
 - `LoadMore` (inline in `ItemDetail.tsx`) — „Weitere laden"-Button am Listen-Ende. KEIN Button-Optik — nur centered Mono-CAPS-Caption + ChevronDown + hover:bg-surface bis Spaltenrand (via `<div class="-mx-5">` wrapper). Pattern für „kontinuierliche Affordance" innerhalb einer Liste
 - `ProgressBar` (inline in `ItemDetail.tsx`) — Hairline-Track + accent-Fill, Mono-CAPS-Caption mit `watched/total · pct %`. Bei `total=0` → em-dash statt 0, leerer Track
+- `NotFound` — geteilte „nicht gefunden"-Surface für `/lists/:shortCode` und `/item/:type/:slug` wenn die Query `null` zurückgibt (Row existiert nicht ODER RLS scopet weg). Ersetzt den früheren silent `navigate("/lists")`-Bounce. Items: faktischer Text „Eintrag nicht gefunden — Tippfehler / veralteter Link". Listen: kein Privacy-Hinweis (die Erklärung wäre selbst ein Leak), nur „Liste nicht gefunden — überprüf URL oder lass dir den Link vom Owner schicken"
+- `ListEntryActions` — Hover-revealed Icon-Trio rechts in jeder Item-Row auf `/lists/:shortCode`: `↻` Reset, `⇄` Move, `✕` Remove. Default opacity-0 + pointer-events-none, fadet auf group-hover/focus-within ein. Confirm-State (Reset oder Remove) pinnt die Gruppe sichtbar — gleicher Pattern wie DeleteListButton. Move emit'tet einen Callback nach oben, der das parent-managed `movingEntry`-Signal setzt; der MoveItemDialog rendert auf Route-Level, nicht in der Row (sonst nestet ein Modal in einer Anchor-Row). Row-Struktur dafür angepasst: `<A>` umschließt nur Cover + Title, nicht die ganze Row — Buttons-in-Anchor ist invalides HTML
+- `MoveItemDialog` — Modal-List-Picker für Move-to-other-list. Same Mount/Visible-Two-Signal-Pattern wie AddSheet: `mounted` gates DOM (mit 500 ms Tail nach Close), `visible` gates Classes (rAF×2 nach Mount). Backdrop fadet `bg-black/0 → bg-black/50` + `backdrop-blur-none → backdrop-blur-sm`, Card pure opacity-fade — selbe 500 ms ease-quart wie AddSheet, damit beide Dialoge als eine Bewegung lesen. **Lokaler `snap`-Signal hält den Item-Title für die Lebensdauer eines Open-Cycles** — sonst zerot der Parent's `setMovingEntry(null)` beim Close die Props sofort, der h2 collapsed, Card wirkt „flacher" während sie noch fadet. Body-scroll-lock gated auf `mounted()` (nicht props.open) damit kein Glitch durch die 500 ms Close-Animation
 
 ---
 
@@ -146,6 +149,12 @@ export async function createList(user, input)         // returns ListSummary mit
 export async function renameList({ listId, name })    // UUID-based UPDATE
 export async function deleteList(listId)              // UUID-based DELETE
 export async function setListTracking(user, { listId, enabled })  // UUID
+
+// Per-row mutations (ListEntryActions)
+export async function removeListItem(listItemId)      // delete list_items, item + history bleiben
+export async function moveListItem({ listItemId, targetListId })
+// UPDATE list_items SET list_id, sync_enabled=false. Sync wird zurückgesetzt
+// weil die neue Liste evtl. andere Member hat (Phase 7-relevant).
 ```
 
 `src/lib/queries/items.ts`:
@@ -290,13 +299,18 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ---
 
-## Offene Punkte (Stand: Phase 4 done + URL-Polish + NotFound durch)
+## Offene Punkte (Stand: Phase 4 done + URL-Polish + NotFound + Quick-Actions + Back-Button durch)
 
 ### Konkret offen für die nächste Session
 
-1. **Kleine Feature-Ergänzungen** (User-Wunsch, kommen vor Phase 5). Konkrete Liste folgt in der Session.
+1. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe Logbook-Vorlage):
+   - **„Was kommt"** — kommende Episodes aus `tracked_home` Listen, nach Air-Date sortiert. Filter: nur unticked + air_date in der Zukunft (oder in den letzten X Tagen).
+   - **„Fortsetzen"** — Items mit Progress > 0 und nicht 100 %. Logbook hat dafür die RPC `continue_watching` (ranked by last activity).
+   - **„Logbuch"** — zuletzt ge-tickte Episodes (alle Member der geteilten Liste, wenn Sharing aktiv).
 
-2. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe handshake): „Was kommt" (kommende Episodes aus tracked-home Listen, nach Air-Date sortiert), „Fortsetzen" (Items mit Progress > 0 und nicht 100%), „Logbuch" (zuletzt ge-tickte Episodes). Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. Continue-Watching RPC ist da (`continue_watching`), `item_progress` ebenfalls. Logbook hat alle drei Module — portierbar.
+   Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. RPCs (`continue_watching`, `item_progress`) sind schon da im Supabase-Projekt (geerbt aus Logbook). Layout: drei BentoModule-Sektionen, Logbook's `/` Page als Referenz.
+
+2. **(Optional, zwischen-drin)** Weitere kleine UX-Polish-Punkte falls der User welche hat. Letzte Session hat Quick-Actions + Back-Button-Satellit eingebracht — gleiche Klasse von Feature ist denkbar (z.B. Drag-Reorder von Items, Pin-to-Top, Bulk-Tick, …).
 
 ### Geplant, aber NICHT akut
 
@@ -349,6 +363,8 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 - **Doppel-rAF für CSS-Transitions in Solid.** Ein einzelnes `requestAnimationFrame` reicht oft nicht — Solid's Render-Loop kann Mount + State-Flip in derselben Paint-Frame zusammenfassen, der Browser sieht nie den Initial-State, und die Transition läuft nicht (Element „taucht einfach auf"). Pattern: `rAF(() => rAF(() => setVisible(true)))` — zweites rAF garantiert dass der Browser den initial-state mindestens einmal paintet bevor die Transition triggert.
 - **Two-Signal-Pattern für animierte Mount/Unmount.** Ein State (`addMounted`) für DOM-Lifetime, ein zweiter (`addVisible`) für die Animation. Visible flippt sofort beim User-Klick, mounted erst nach `ANIM_MS` (für Open: erst mount, dann visible mit rAF×2; für Close: erst visible=false, dann setTimeout für mount=false). Dadurch laufen Exit-Animationen parallel zu allen anderen Animationen ohne sequentielle Latenz.
 - **Sequential handoff statt crossfade.** Zwei gleichfarbige gestapelte Layer (z.B. NavBar-Pill + Search-Pill an gleicher Position) NIE per Crossfade swappen — combined alpha dipt mathematisch auf 0.75, was als Flicker sichtbar wird. Stattdessen: appearing layer rises ZUERST (während disappearing layer noch opacity-1 und occluding), dann disappearing layer fällt mit dem appearing schon dahinter. Konkret: 50ms windows mit non-overlapping delays. Siehe Memory `sequential-handoff-animation` für Details + Reference-Implementierung in AddSheet.
+- **Snap-Pattern für Dialog-Content der vom Parent kontrolliert wird.** Wenn ein Dialog Content-Props vom Parent kriegt (z.B. `itemTitle` aus `movingEntry()`), und der Parent diese Props beim Close zeroht (`setMovingEntry(null)`), dann verschwindet der Content INSTANT — die Card collapsed visuell während sie noch fadet. Lösung: lokaler `snap`-Signal im Dialog, setzt eine Kopie der Props beim Open, hält sie bis nach ANIM_MS, dann clear. JSX liest aus dem Snap, nicht aus den Props. Siehe `MoveItemDialog.tsx`.
+- **Bubble-zu-Element-Synchro: SETTLE_MS als Opacity-Delay.** Wenn ein Element (Back-Button-Pfeil) erst sichtbar werden soll wenn die Liquid-Bubble unter ihm angekommen ist, kann CSS das nicht direkt — aber die `SETTLE_MS`-Konstante aus der Bubble-Animation funktioniert als Sync-Offset: `transition: opacity 200ms var(--ease-quart) 100ms` matched Phase 2 (Contract)-Start. Pfeil fadet ab dem Moment in dem die Bubble auf seiner Position settelt, voll opak bei t≈300ms (Bubble-Final). Symmetrisch beim Close — Pfeil verlässt mit der Bubble zusammen.
 - **Liquid motion language.** Nakama's Animations-Charakter ist „liquid" — stretchy, organic, mercury-like. Default-Easing: `var(--ease-quart)` (`cubic-bezier(0.16, 1, 0.3, 1)`). Default-Duration für sichtbare Chrome-Bewegungen: 500ms (Search-Pill-Morph), 300ms für content-fades. Hard cuts/snaps sind OK für Content (Werte/Text), liquid bleibt für Interface-Chrome (Indicators, Sheets, Drags). Siehe Memory `motion-language-liquid`.
 - **Hard corners auch für Icon-Buttons.** `rounded-xs` ist der Default für icon-buttons (BackButton, X-Close, Add-Buttons). `rounded-full` nur für die BottomNav-Pille selbst (weil sie BUCHSTÄBLICH eine Capsule ist) und für den Akzent-Hanko-Dot. Siehe Memory `icon-buttons-hard-corners`.
 - **Tailwind v4 + ease-quart:** `--ease-quart` in `@theme inline` SOLLTE die Utility `ease-quart` generieren. In Praxis benutzen wir aktuell die arbitrary-syntax `[transition-timing-function:var(--ease-quart)]` — wirkt zuverlässiger.
