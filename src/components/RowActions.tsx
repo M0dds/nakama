@@ -64,9 +64,14 @@ export function RowActions(props: Props) {
     mutationFn: () => resetItemProgress(props.destructive!.itemId),
     onSuccess: () => {
       const d = props.destructive!;
+      // Reset flips the "Neue Folge" badge on every list this item is in
+      // (same item can live in multiple lists). Same fan-out as the
+      // toggle/cascade mutations on ItemDetail.
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(d.itemType, d.itemSlug),
       });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
       d.setConfirming(null);
     },
   }));
@@ -75,11 +80,12 @@ export function RowActions(props: Props) {
     mutationFn: () => removeListItem(props.destructive!.listItemId),
     onSuccess: () => {
       const d = props.destructive!;
-      void queryClient.invalidateQueries({
-        queryKey: listItemsQueryKey(d.listShortCode),
-      });
-      // Overview shows itemCount on the list card — refresh it too.
+      // Same fan-out reasoning as the AddSheet add path: the row vanishes
+      // (listItemsQueryKey) AND itemCount drops on every list-card on
+      // /lists (listsQueryKey) AND on the detail-page header (listQueryKey,
+      // covered by the ["list"] prefix).
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
       d.setConfirming(null);
     },
   }));

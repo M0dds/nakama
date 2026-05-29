@@ -5,6 +5,7 @@ import {
   episodesQueryKey,
   resetItemProgress,
 } from "@/lib/queries/episodes";
+import { listsQueryKey } from "@/lib/queries/lists";
 
 /**
  * Inline-confirm reset for an item's watch progress. Same shape as
@@ -31,9 +32,15 @@ export function ResetItemButton(props: {
   const mutation = createMutation(() => ({
     mutationFn: () => resetItemProgress(props.itemId),
     onSuccess: () => {
+      // Reset wipes every watch for this item, which flips the "Neue Folge"
+      // badge on every list this item is in (if any of its recent episodes
+      // becomes unwatched). Invalidate the lists caches alongside the item's
+      // own episodes query.
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(props.type, props.slug),
       });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
       setConfirming(false);
     },
   }));

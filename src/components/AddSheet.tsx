@@ -160,20 +160,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
         next.add(addedKey(targetListId(), source.sourceId));
         return next;
       });
-      // Counts on the overview + the items list on the detail page should
-      // reflect the new row immediately. listItemsQueryKey is keyed on
-      // shortCode now — look it up from the loaded lists data.
+      // Counts ripple across three places: the overview (listsQueryKey),
+      // the items list on the detail page (listItemsQueryKey), and the
+      // single-list detail header showing "Einträge: N" (listQueryKey).
+      // The ["list"] prefix catches both per-shortCode entries — same item
+      // can also live on another open list-detail tab.
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
-      const all = [
-        ...(listsQuery.data?.private ?? []),
-        ...(listsQuery.data?.shared ?? []),
-      ];
-      const target = all.find((l) => l.id === targetListId());
-      if (target) {
-        void queryClient.invalidateQueries({
-          queryKey: listItemsQueryKey(target.shortCode),
-        });
-      }
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
     },
     onSettled: () => setPending(null),
   }));
