@@ -68,16 +68,16 @@ export default function Lists() {
 
   // Pin toggle. Optimistic: flip pinned + bump sortOrder to MIN(target
   // section)-1 so the row jumps to the top of its new section instantly.
-  // The server write mirrors that math (caller passes the same sortOrder).
-  // On error: rollback to the snapshot. On success: invalidate so the
-  // canonical sort order from the server replaces the optimistic one.
+  // The server write goes through set_list_pin, which computes the canonical
+  // sort_order server-side (so input.sortOrder is optimistic-only). On error:
+  // rollback to the snapshot. On success: invalidate so the canonical sort
+  // order from the server replaces the optimistic one.
   const pinMut = createMutation(() => ({
     mutationFn: (input: { list: ListSummary; pinned: boolean; sortOrder: number }) =>
       setListPin({
         listId: input.list.id,
         userId: auth.user()!.id,
         pinned: input.pinned,
-        sortOrder: input.sortOrder,
       }),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: listsQueryKey });

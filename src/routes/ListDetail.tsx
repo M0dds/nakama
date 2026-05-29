@@ -79,7 +79,6 @@ export default function ListDetail() {
       setListItemPin({
         listItemId: input.entry.listItemId,
         pinned: input.pinned,
-        sortOrder: input.sortOrder,
       }),
     onMutate: async (input) => {
       const key = listItemsQueryKey(params.shortCode);

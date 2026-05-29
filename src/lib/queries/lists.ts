@@ -564,58 +564,44 @@ export async function setListTracking(
 }
 
 /**
- * Toggle the per-user list pin on `list_members`. Also assigns a fresh
- * sort_order so the pinned (or freshly-unpinned) list lands at the TOP of
- * its new section — `MIN(section.sort_order) - 1`. The caller computes
- * `sortOrder` from the current query cache so we don't need an extra
- * round-trip. Returns the post-write pinned state so the caller can
- * detect silent RLS blocks (0 rows → null).
+ * Toggle the per-user list pin via the `set_list_pin` RPC. The RPC assigns
+ * sort_order server-side (`MIN(target section) - 1`) in the SAME statement
+ * that flips pinned_at, so there's no client-read-then-write gap to race
+ * against a concurrent `reorder_list_members` (B1 — the pin used to send a
+ * sort_order computed from a possibly-stale cache). Throws on access-denied /
+ * RLS block, surfacing as a mutation error rather than a silent no-op.
+ *
+ * The caller still computes the target sort_order for its OPTIMISTIC cache
+ * patch (so the row jumps to the top instantly); the server value is
+ * authoritative and the onSettled invalidation reconciles the two.
  */
 export async function setListPin(input: {
   listId: string;
   userId: string;
   pinned: boolean;
-  sortOrder: number;
-}): Promise<{ pinned: boolean | null }> {
-  const { data, error } = await supabase
-    .from("list_members")
-    .update({
-      pinned_at: input.pinned ? new Date().toISOString() : null,
-      sort_order: input.sortOrder,
-    })
-    .eq("list_id", input.listId)
-    .eq("user_id", input.userId)
-    .select("pinned_at")
-    .maybeSingle();
+}): Promise<void> {
+  const { error } = await supabase.rpc("set_list_pin", {
+    _user_id: input.userId,
+    _list_id: input.listId,
+    _pinned: input.pinned,
+  });
   if (error) throw error;
-  return {
-    pinned: data ? (data as { pinned_at: string | null }).pinned_at !== null : null,
-  };
 }
 
 /**
- * Toggle the shared per-list pin on `list_items`. Same sortOrder-bump
- * pattern as setListPin so the pinned/unpinned item floats to the top of
- * its new section.
+ * Toggle the shared per-list item pin via the `set_list_item_pin` RPC. Same
+ * server-side sort_order assignment + single-statement atomicity rationale as
+ * setListPin (B1).
  */
 export async function setListItemPin(input: {
   listItemId: string;
   pinned: boolean;
-  sortOrder: number;
-}): Promise<{ pinned: boolean | null }> {
-  const { data, error } = await supabase
-    .from("list_items")
-    .update({
-      pinned_at: input.pinned ? new Date().toISOString() : null,
-      sort_order: input.sortOrder,
-    })
-    .eq("id", input.listItemId)
-    .select("pinned_at")
-    .maybeSingle();
+}): Promise<void> {
+  const { error } = await supabase.rpc("set_list_item_pin", {
+    _list_item_id: input.listItemId,
+    _pinned: input.pinned,
+  });
   if (error) throw error;
-  return {
-    pinned: data ? (data as { pinned_at: string | null }).pinned_at !== null : null,
-  };
 }
 
 /**
