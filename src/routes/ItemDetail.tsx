@@ -18,8 +18,13 @@ import {
   type EpisodePayload,
   type EpisodeRow,
 } from "@/lib/queries/episodes";
+import {
+  coWatchersOptions,
+  type CoWatcher,
+} from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { dateLabel, dayOffset, typeLabel } from "@/lib/format";
+import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -78,6 +83,13 @@ export default function ItemDetail() {
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
+  // Mitseher: who among the caller's co-members has watched each episode.
+  // Keyed by item id; empty for the solo case. Drives the per-row eye marker.
+  const coWatchers = createQuery(() => ({
+    ...coWatchersOptions(auth.user()!, item.data?.id ?? ""),
+    enabled: !!auth.user() && !!item.data?.id,
+  }));
+
   // Item resolved-but-null → render the NotFound surface inline (items are
   // public-ish — the message is just "Eintrag nicht gefunden", no privacy
   // qualifier needed). Replaces the previous silent navigate("/lists")
@@ -110,6 +122,8 @@ export default function ItemDetail() {
         episodesQueryKey(params.type, params.slug),
         listsQueryKey,
         ["list"],
+        // A co-member ticking this item updates the Mitseher overlay.
+        ["co-watchers"],
       ],
     },
   ]);
@@ -302,6 +316,7 @@ export default function ItemDetail() {
                       <EpisodeList
                         rows={episodes.data!.episodes}
                         itemType={params.type}
+                        coWatchers={coWatchers.data ?? {}}
                         onTap={onTap}
                         onCascade={onCascade}
                       />
@@ -484,6 +499,7 @@ function metaString(
 function EpisodeList(props: {
   rows: EpisodeRow[];
   itemType: string;
+  coWatchers: Record<string, CoWatcher[]>;
   onTap: (ep: EpisodeRow) => void;
   onCascade: (ep: EpisodeRow) => void;
 }) {
@@ -494,6 +510,7 @@ function EpisodeList(props: {
           <EpisodeListRow
             ep={ep}
             itemType={props.itemType}
+            watchers={props.coWatchers[ep.id] ?? []}
             onTap={() => props.onTap(ep)}
             onCascade={() => props.onCascade(ep)}
           />
@@ -508,6 +525,7 @@ const LONG_PRESS_MS = 500;
 function EpisodeListRow(props: {
   ep: EpisodeRow;
   itemType: string;
+  watchers: CoWatcher[];
   onTap: () => void;
   onCascade: () => void;
 }) {
@@ -648,12 +666,17 @@ function EpisodeListRow(props: {
               </Show>
             </span>
           </div>
-          <span
-            aria-hidden
-            class={`size-2 shrink-0 rounded-full transition-colors ${
-              props.ep.watched ? "bg-accent" : "bg-transparent ring-1 ring-border"
-            }`}
-          />
+          <div class="flex shrink-0 items-center gap-2">
+            <CoWatcherMark watchers={props.watchers} />
+            <span
+              aria-hidden
+              class={`size-2 shrink-0 rounded-full transition-colors ${
+                props.ep.watched
+                  ? "bg-accent"
+                  : "bg-transparent ring-1 ring-border"
+              }`}
+            />
+          </div>
         </div>
       </button>
     </li>

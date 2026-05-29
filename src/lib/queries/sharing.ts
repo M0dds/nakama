@@ -282,27 +282,53 @@ export function syncContextOptions(listItemId: string) {
   };
 }
 
+/** Everyone sharing a list with the caller, minus the caller. RLS scopes
+ *  list_members to the caller's own lists, so this is privacy-safe. */
+async function coMemberIdsOf(userId: string): Promise<string[]> {
+  const { data } = await supabase.from("list_members").select("user_id");
+  return unique(
+    (data ?? []).map((m) => m.user_id as string).filter((id) => id !== userId),
+  );
+}
+
+interface CoWatchRow {
+  episode_id: string;
+  user_id: string;
+  watched_at: string;
+}
+
+/** Resolve raw co-watch rows → an episode_id-keyed CoWatcher map, batching the
+ *  profile (handle + avatar) lookup. Shared by the per-item + calendar queries. */
+async function buildCoWatcherMap(
+  rows: CoWatchRow[],
+): Promise<Record<string, CoWatcher[]>> {
+  if (rows.length === 0) return {};
+  const profs = await profilesById(unique(rows.map((r) => r.user_id)));
+  const map: Record<string, CoWatcher[]> = {};
+  for (const r of rows) {
+    const p = profs.get(r.user_id);
+    (map[r.episode_id] ??= []).push({
+      userId: r.user_id,
+      name: p?.handle ?? "Jemand",
+      avatarUrl: p?.avatarUrl ?? null,
+      timeLabel: relTime(r.watched_at),
+    });
+  }
+  return map;
+}
+
 /**
- * Co-watchers per episode for one item: who, among the people the caller
+ * Co-watchers per episode for ONE item: who, among the people the caller
  * actually shares a list with, has watched each episode and when. Keyed by
- * episode id so the episode list / day-pane can look up a row's watchers.
- * Empty map for the solo case — short-circuits before touching watches.
+ * episode id so the item episode list can look up a row's watchers. Empty map
+ * for the solo case — short-circuits before touching watches.
  */
 export function coWatchersOptions(user: User, itemId: string) {
   return {
     queryKey: coWatchersKey(itemId),
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
-      // Everyone sharing a list with me (RLS scopes list_members to my lists),
-      // minus myself.
-      const { data: memberRows } = await supabase
-        .from("list_members")
-        .select("user_id");
-      const coMemberIds = unique(
-        (memberRows ?? [])
-          .map((m) => m.user_id as string)
-          .filter((id) => id !== user.id),
-      );
+      const coMemberIds = await coMemberIdsOf(user.id);
       if (coMemberIds.length === 0) return {};
 
       const { data, error } = await supabase
@@ -315,27 +341,54 @@ export function coWatchersOptions(user: User, itemId: string) {
         console.error("co-watchers lookup failed", error);
         return {};
       }
-      const rows =
-        (data as unknown as {
-          episode_id: string;
-          user_id: string;
-          watched_at: string;
-        }[]) ?? [];
-      if (rows.length === 0) return {};
+      return buildCoWatcherMap((data as unknown as CoWatchRow[]) ?? []);
+    },
+  };
+}
 
-      const profs = await profilesById(unique(rows.map((r) => r.user_id)));
+export const calendarCoWatchersKey = (userId: string) =>
+  ["calendar", "co-watchers", userId] as const;
 
-      const map: Record<string, CoWatcher[]> = {};
-      for (const r of rows) {
-        const p = profs.get(r.user_id);
-        (map[r.episode_id] ??= []).push({
-          userId: r.user_id,
-          name: p?.handle ?? "Jemand",
-          avatarUrl: p?.avatarUrl ?? null,
-          timeLabel: relTime(r.watched_at),
-        });
+/**
+ * Co-watchers across the calendar window, in one query (the day-pane shows many
+ * items, so a per-item fetch would be N round-trips). Filters on the embedded
+ * episodes.air_date over a window generous enough to cover the calendar's
+ * −2/+4-month view — avoids an enormous episode-id IN list. Keyed by episode id
+ * like the per-item variant.
+ */
+export function calendarCoWatchersOptions(user: User) {
+  return {
+    queryKey: calendarCoWatchersKey(user.id),
+    staleTime: 30_000,
+    queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
+      const coMemberIds = await coMemberIdsOf(user.id);
+      if (coMemberIds.length === 0) return {};
+
+      const now = new Date();
+      const from = new Date(
+        now.getFullYear(),
+        now.getMonth() - 2,
+        1,
+      ).toISOString();
+      const to = new Date(
+        now.getFullYear(),
+        now.getMonth() + 5,
+        0,
+      ).toISOString();
+
+      const { data, error } = await supabase
+        .from("episode_watches")
+        .select("episode_id, user_id, watched_at, episodes!inner(air_date)")
+        .in("user_id", coMemberIds)
+        .gte("episodes.air_date", from)
+        .lte("episodes.air_date", to)
+        .order("watched_at", { ascending: false })
+        .limit(5000);
+      if (error) {
+        console.error("calendar co-watchers lookup failed", error);
+        return {};
       }
-      return map;
+      return buildCoWatcherMap((data as unknown as CoWatchRow[]) ?? []);
     },
   };
 }

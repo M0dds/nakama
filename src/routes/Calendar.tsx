@@ -26,6 +26,10 @@ import {
   toggleEpisode,
 } from "@/lib/queries/episodes";
 import {
+  calendarCoWatchersOptions,
+  type CoWatcher,
+} from "@/lib/queries/sharing";
+import {
   addDays,
   addMonths,
   formatMonth,
@@ -44,6 +48,7 @@ import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
+import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { Segmented } from "@/components/Segmented";
 
 /**
@@ -73,10 +78,21 @@ export default function Calendar() {
     enabled: !!auth.user(),
   }));
 
+  // Mitseher across the calendar window — co-member watches keyed by episode.
+  // One window-scoped query feeds every day-pane row's eye marker.
+  const coWatchersQ = createQuery(() => ({
+    ...calendarCoWatchersOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+
   // Episode watches + new episode metadata are the only changes that move
   // the calendar; list membership changes are caught on the next stale read.
+  // A co-member's tick also moves the Mitseher overlay.
   useRealtimeInvalidation("calendar", [
-    { table: "episode_watches", invalidates: [calendarQueryKey] },
+    {
+      table: "episode_watches",
+      invalidates: [calendarQueryKey, ["calendar", "co-watchers"]],
+    },
     { table: "episodes", invalidates: [calendarQueryKey] },
   ]);
 
@@ -246,6 +262,7 @@ export default function Calendar() {
               iso={selectedIso()}
               events={dayEvents(selectedIso())}
               todayIso={todayIso}
+              coWatchers={coWatchersQ.data ?? {}}
               onTap={onTap}
               onCascade={onCascade}
             />
@@ -659,6 +676,7 @@ function DayPane(props: {
   iso: string;
   events: CalendarEvent[];
   todayIso: string;
+  coWatchers: Record<string, CoWatcher[]>;
   onTap: (ev: CalendarEvent) => void;
   onCascade: (ev: CalendarEvent) => void;
 }) {
@@ -702,6 +720,7 @@ function DayPane(props: {
             {(ev) => (
               <DayPaneRow
                 ev={ev()}
+                watchers={props.coWatchers[ev().episodeId] ?? []}
                 onTap={() => props.onTap(ev())}
                 onCascade={() => props.onCascade(ev())}
               />
@@ -727,6 +746,7 @@ function DayPane(props: {
  */
 function DayPaneRow(props: {
   ev: CalendarEvent;
+  watchers: CoWatcher[];
   onTap: () => void;
   onCascade: () => void;
 }) {
@@ -847,11 +867,11 @@ function DayPaneRow(props: {
               </p>
             </div>
 
-            {/* Right cluster. Phase 7 will slot the "who has watched" eye-icon
-                in HERE, to the LEFT of the dot. The watched dot mirrors the
-                item-detail episode list: filled accent = watched, hollow ring
-                = not yet. */}
+            {/* Right cluster — Mitseher eye (left) + the watched dot. The dot
+                mirrors the item-detail episode list: filled accent = watched,
+                hollow ring = not yet. */}
             <div class="flex shrink-0 items-center gap-2">
+              <CoWatcherMark watchers={props.watchers} />
               <span
                 aria-hidden
                 class={`size-2 shrink-0 rounded-full transition-colors ${
