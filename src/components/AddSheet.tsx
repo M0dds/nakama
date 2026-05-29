@@ -12,11 +12,7 @@ import { Check, Loader2, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { searchAniList, type AniListResult } from "@/lib/anilist";
 import { addItemToList } from "@/lib/queries/items";
-import {
-  listsQueryOptions,
-  listsQueryKey,
-  listItemsQueryKey,
-} from "@/lib/queries/lists";
+import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 
 /**
@@ -148,7 +144,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   // ticks belong to the old list and would be misleading on the new one.
   createEffect(() => {
     void targetListId();
-    setAdded(new Set());
+    setAdded(new Set<string>());
   });
 
   const addMutation = createMutation(() => ({

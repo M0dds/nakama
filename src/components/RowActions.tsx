@@ -7,11 +7,7 @@ import {
   episodesQueryKey,
   resetItemProgress,
 } from "@/lib/queries/episodes";
-import {
-  listItemsQueryKey,
-  listsQueryKey,
-  removeListItem,
-} from "@/lib/queries/lists";
+import { listsQueryKey, removeListItem } from "@/lib/queries/lists";
 
 /**
  * Unified row-edge action cluster. Pin lives in the SAME flex group as

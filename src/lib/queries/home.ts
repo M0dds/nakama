@@ -240,9 +240,12 @@ async function newEpisodeSinceLastWatch(
   if (episodesRes.error) console.error("episodes lookup failed", episodesRes.error);
 
   // First entry per item wins because we sorted desc — that's the max.
+  // PostgREST infers !inner embeds as arrays, but for N:1 relationships
+  // (watch → episode) the runtime shape is a single object — cast through
+  // unknown to suppress the false-positive type error.
   const lastWatchByItem = new Map<string, string>();
   for (const w of watchesRes.data ?? []) {
-    const ep = w.episodes as { item_id: string } | null;
+    const ep = w.episodes as unknown as { item_id: string } | null;
     if (!ep) continue;
     if (!lastWatchByItem.has(ep.item_id)) {
       lastWatchByItem.set(ep.item_id, w.watched_at as string);
