@@ -347,7 +347,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           interpolate from their fallback zeros. */}
       <Show when={origin()}>
         <div
-          class={`fixed z-50 flex flex-col overflow-hidden bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] md:rounded-md ${
+          class={`fixed z-50 flex flex-col overflow-hidden rounded-sm bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
             props.visible ? "opacity-100" : "opacity-0"
           }`}
           style={cardStyle()}

@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,7 @@ import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
 import { ListEntryActions } from "@/components/ListEntryActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
+import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 
 /**
@@ -75,6 +76,11 @@ export default function ListDetail() {
   // previous silent navigate("/lists") that hid the failure.
   const notFound = () => !list.isLoading && list.data === null;
 
+  // Move-Dialog state — owning it at the route level (not in each row's
+  // ListEntryActions) lets the modal portal cleanly to the page and reuse
+  // a single instance for whichever row is being moved.
+  const [movingEntry, setMovingEntry] = createSignal<ListEntry | null>(null);
+
   const createdLabel = (iso: string) =>
     new Date(iso).toLocaleDateString("de-DE", {
       day: "2-digit",
@@ -87,6 +93,7 @@ export default function ListDetail() {
 
   return (
     <Show when={!notFound()} fallback={<NotFound kind="list" />}>
+    <>
     <main class="w-full">
       <PageHeader
         kicker="LISTEN"
@@ -140,6 +147,7 @@ export default function ListDetail() {
                 <ListEntries
                   items={items.data!}
                   listShortCode={params.shortCode}
+                  onRequestMove={(entry) => setMovingEntry(entry)}
                 />
               </Show>
             </Show>
@@ -188,6 +196,14 @@ export default function ListDetail() {
         </div>
       </div>
     </main>
+    <MoveItemDialog
+      open={!!movingEntry()}
+      onClose={() => setMovingEntry(null)}
+      listItemId={movingEntry()?.listItemId ?? ""}
+      itemTitle={movingEntry()?.title ?? ""}
+      currentListShortCode={params.shortCode}
+    />
+    </>
     </Show>
   );
 }
@@ -229,7 +245,11 @@ function typeLabel(type: string): string {
  *  (NICHT im <a> verschachtelt — Buttons in einem Anchor sind ungültiges
  *  HTML + verhalten sich unzuverlässig beim Klick). Default ohne Chevron;
  *  die ge-faded-in Action-Icons sind die hover-affordance. */
-function ListEntries(props: { items: ListEntry[]; listShortCode: string }) {
+function ListEntries(props: {
+  items: ListEntry[];
+  listShortCode: string;
+  onRequestMove: (entry: ListEntry) => void;
+}) {
   return (
     <ul class="-mx-5">
       <For each={props.items}>
@@ -273,9 +293,7 @@ function ListEntries(props: { items: ListEntry[]; listShortCode: string }) {
                 itemType={entry.type}
                 itemSlug={entry.slug}
                 listShortCode={props.listShortCode}
-                onRequestMove={() => {
-                  /* TODO Commit B: open MoveItemDialog */
-                }}
+                onRequestMove={() => props.onRequestMove(entry)}
               />
             </div>
           </li>
