@@ -370,12 +370,12 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
 
   return (
     <>
-      <ul class="-mx-5 divide-y divide-border border-y border-border">
+      <ul class="-mx-5">
         <For each={visible()}>
           {(item) => {
             const active = () => item.itemId === activeId();
             return (
-              <li>
+              <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                 <A
                   href={`/item/${item.type}/${item.slug}`}
                   aria-expanded={active()}
@@ -527,10 +527,10 @@ function Logbuch(props: { events: LogbookEvent[] }) {
 
   return (
     <div>
-      <ul class="-mx-5 divide-y divide-border border-y border-border">
+      <ul class="-mx-5">
         <For each={shown()}>
           {(ev) => (
-            <li>
+            <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
               <div class="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface">
                 <EventIcon ev={ev} />
                 <div class="min-w-0 flex-1">
