@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import { Check, Eye, EyeOff, ListPlus } from "lucide-solid";
@@ -503,11 +503,12 @@ const LOGBUCH_SELF_KEY = "nakama:logbuch-self";
 
 function Logbuch(props: { events: LogbookEvent[] }) {
   const [expanded, setExpanded] = createSignal(false);
-  const [showSelf, setShowSelf] = createSignal(true);
-
-  onMount(() => {
-    if (localStorage.getItem(LOGBUCH_SELF_KEY) === "0") setShowSelf(false);
-  });
+  // Read the persisted preference synchronously at setup, not in onMount —
+  // an onMount read lands AFTER the first paint, so the feed would flash the
+  // default (self-events visible) for a frame before hiding them (B6).
+  const [showSelf, setShowSelf] = createSignal(
+    localStorage.getItem(LOGBUCH_SELF_KEY) !== "0",
+  );
 
   const toggleSelf = () => {
     setShowSelf((prev) => {
