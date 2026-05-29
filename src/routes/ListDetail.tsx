@@ -1,5 +1,6 @@
-import { Show } from "solid-js";
-import { useParams, useNavigate } from "@solidjs/router";
+import { For, Show } from "solid-js";
+import { A, useParams, useNavigate } from "@solidjs/router";
+import { ChevronRight } from "lucide-solid";
 import { createQuery } from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
 import {
@@ -8,6 +9,7 @@ import {
   listQueryKey,
   listItemsQueryKey,
   listsQueryKey,
+  type ListEntry,
 } from "@/lib/queries/lists";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
@@ -130,9 +132,7 @@ export default function ListDetail() {
                 when={items.data && items.data.length > 0}
                 fallback={<EntriesEmpty />}
               >
-                <p class="px-4 py-8 text-body text-text-muted">
-                  Einträge folgen in Phase 4 — Item-Suche + AddSheet.
-                </p>
+                <ListEntries items={items.data!} />
               </Show>
             </Show>
           </BentoModule>
@@ -188,8 +188,81 @@ function EntriesEmpty() {
       <p class="text-body-lg text-text">Noch keine Einträge.</p>
       <p class="mt-1.5 max-w-md text-body text-text-muted">
         Über das <span class="font-mono">+</span> in der Navigation suchst du
-        Anime &amp; Manga und legst sie hier ab. (Kommt in Phase 4.)
+        Anime &amp; Manga und legst sie hier ab.
       </p>
     </div>
+  );
+}
+
+/** Type-Label fürs Meta-Line. Bewusst hardgecodet — die zukünftigen Werte
+ *  (`series`, `movie`, `game`) bekommen ihre eigenen Labels wenn sie landen. */
+function typeLabel(type: string): string {
+  switch (type) {
+    case "manga":
+      return "Manga";
+    case "anime":
+      return "Anime";
+    case "series":
+      return "Serie";
+    case "movie":
+      return "Film";
+    case "game":
+      return "Spiel";
+    default:
+      return type;
+  }
+}
+
+/** Items als Rows im selben Pattern wie ListRows auf /lists: -mx-5 ul,
+ *  hover-bg blutet zu den Spaltenrändern, ::after-Hairline pro li (last:hidden).
+ *  Cover-Thumb links (size-12 rounded-xs), Titel + Type-Label drunter,
+ *  Chevron-Right rechts mit micro-translate beim Hover. Klick → /item/:id
+ *  (Route landet im nächsten Schritt; bis dahin trifft der Klick NotFound). */
+function ListEntries(props: { items: ListEntry[] }) {
+  return (
+    <ul class="-mx-5">
+      <For each={props.items}>
+        {(entry) => (
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <A
+              href={`/item/${entry.itemId}`}
+              class="group block transition-colors hover:bg-surface"
+            >
+              <div class="flex items-center gap-3 px-5 py-3">
+                <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
+                  <Show
+                    when={entry.coverUrl}
+                    fallback={
+                      <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+                        {entry.type === "manga" ? "M" : "A"}
+                      </div>
+                    }
+                  >
+                    <img
+                      src={entry.coverUrl!}
+                      alt=""
+                      class="size-full object-cover"
+                      loading="lazy"
+                    />
+                  </Show>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+                    {entry.title}
+                  </h3>
+                  <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                    {typeLabel(entry.type)}
+                  </p>
+                </div>
+                <ChevronRight
+                  class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
+                  strokeWidth={1.75}
+                />
+              </div>
+            </A>
+          </li>
+        )}
+      </For>
+    </ul>
   );
 }
