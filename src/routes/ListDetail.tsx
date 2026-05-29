@@ -440,10 +440,6 @@ function SortableEntryRow(props: {
       }}
     >
       <div class="group flex items-center gap-2 px-5 py-3 transition-colors hover:bg-surface">
-        <DragHandle
-          activators={sortable.dragActivators}
-          noun={props.entry.title}
-        />
         <A
           href={`/item/${props.entry.type}/${props.entry.slug}`}
           class="flex min-w-0 flex-1 items-center gap-3"
@@ -487,6 +483,11 @@ function SortableEntryRow(props: {
           itemSlug={props.entry.slug}
           listShortCode={props.listShortCode}
           onRequestMove={() => props.onRequestMove(props.entry)}
+        />
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.entry.title}
+          class="ml-2"
         />
       </div>
     </li>

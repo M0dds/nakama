@@ -1,6 +1,5 @@
 import { For, Show } from "solid-js";
 import { A } from "@solidjs/router";
-import { ChevronRight } from "lucide-solid";
 import {
   createMutation,
   createQuery,
@@ -302,11 +301,15 @@ function metaLine(list: ListSummary): string {
  * row's bg fill, and hidden on the last row. Apply this same shape any
  * time a list lives inside a BentoModule.
  *
- * <A> wraps the name block only — PinButton sits as a sibling (handshake
- * gotcha: buttons-inside-anchors is invalid HTML + flaky in click
- * handling). Chevron is a passive decoration outside the <A>; the row
- * still feels clickable everywhere because the <A> flex-1's the available
- * width.
+ * Right-edge cluster: PinButton + DragHandle, both hover-revealed. The
+ * handle has an extra `ml-2` so it reads as a separate slot from the pin
+ * (matches the visual rhythm on /lists/:shortCode rows, where the same
+ * gap separates the actions cluster from the handle). No chevron — the
+ * affordances on the right are now the row's "I lead somewhere" hint.
+ *
+ * <A> wraps the name block only — PinButton + DragHandle sit as siblings
+ * (handshake gotcha: buttons-inside-anchors is invalid HTML + flaky in
+ * click handling).
  */
 function ListRows(props: {
   lists: ListSummary[];
@@ -367,10 +370,6 @@ function SortableListRow(props: {
       }}
     >
       <div class="group flex items-center gap-2 px-5 py-3.5 transition-colors hover:bg-surface">
-        <DragHandle
-          activators={sortable.dragActivators}
-          noun={props.list.name}
-        />
         <A
           href={`/lists/${props.list.shortCode}`}
           class="block min-w-0 flex-1"
@@ -387,9 +386,10 @@ function SortableListRow(props: {
           noun="Liste"
           onToggle={() => props.onTogglePin(props.list)}
         />
-        <ChevronRight
-          class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
-          strokeWidth={1.75}
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.list.name}
+          class="ml-2"
         />
       </div>
     </li>
