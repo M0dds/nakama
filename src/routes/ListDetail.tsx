@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -11,8 +11,6 @@ import {
   DragDropProvider,
   DragDropSensors,
   SortableProvider,
-  transformStyle,
-  type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
 import {
@@ -25,6 +23,12 @@ import {
   setListItemPin,
   type ListEntry,
 } from "@/lib/queries/lists";
+import {
+  reorderSection,
+  sortableRowStyle,
+  topOfSection,
+  useDragSettling,
+} from "@/lib/sortable";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -112,11 +116,11 @@ export default function ListDetail() {
     const targetSection = all.filter(
       (e) => e.pinned === targetPinned && e.listItemId !== entry.listItemId,
     );
-    const minSort =
-      targetSection.length > 0
-        ? Math.min(...targetSection.map((e) => e.sortOrder))
-        : 1;
-    pinMut.mutate({ entry, pinned: targetPinned, sortOrder: minSort - 1 });
+    pinMut.mutate({
+      entry,
+      pinned: targetPinned,
+      sortOrder: topOfSection(targetSection),
+    });
   };
 
   // Drag-reorder within pinned OR unpinned section. Cross-section drops
@@ -140,71 +144,52 @@ export default function ListDetail() {
     },
   }));
 
-  // Hover-bg suppression during drag + settle. `active.draggable` flips to
-  // null the instant the pointer is released — but the 220ms transform
-  // settle has only just begun, and any row sliding under the cursor in
-  // that window picks up :hover for a frame. Reads as rapid bg flicker.
-  // We hold suppression true from dragStart through the full settle.
-  // SETTLE_MS matches the transform transition duration on the <li>.
-  const SETTLE_MS = 220;
-  const [dragSettling, setDragSettling] = createSignal(false);
-  let settleTimer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => {
-    if (settleTimer) clearTimeout(settleTimer);
-  });
+  // Drag-reorder + hover-bg suppression. The hook owns the settle window;
+  // we provide only the reorder logic. Refuse cross-section drops — pin-
+  // state changes go through the pin click, not the drag.
+  const { dragSettling, onDragStart, onDragEnd } = useDragSettling(
+    ({ draggable, droppable }) => {
+      if (!droppable || draggable.id === droppable.id) return;
+      const fromPinned = (draggable.data as { pinned: boolean }).pinned;
+      const toPinned = (droppable.data as { pinned: boolean }).pinned;
+      if (fromPinned !== toPinned) return;
 
-  const onDragStart = () => {
-    if (settleTimer) clearTimeout(settleTimer);
-    setDragSettling(true);
-  };
+      const listId = list.data?.id;
+      if (!listId) return;
 
-  const onDragEnd = ({ draggable, droppable }: DragEvent) => {
-    // Schedule settle unconditionally — even early-returns still produce a
-    // visual settle (the dragged row animating back to its origin).
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => setDragSettling(false), SETTLE_MS);
+      const all = queryClient.getQueryData<ListEntry[]>(
+        listItemsQueryKey(params.shortCode),
+      );
+      if (!all) return;
 
-    if (!droppable || draggable.id === droppable.id) return;
-    const fromPinned = (draggable.data as { pinned: boolean }).pinned;
-    const toPinned = (droppable.data as { pinned: boolean }).pinned;
-    if (fromPinned !== toPinned) return;
+      const section = all.filter((e) => e.pinned === fromPinned);
+      const reordered = reorderSection(
+        section,
+        draggable.id as string,
+        droppable.id as string,
+        (e) => e.listItemId,
+      );
+      if (!reordered) return;
+      const { nextSection, sortMap } = reordered;
 
-    const listId = list.data?.id;
-    if (!listId) return;
+      const next = [...all]
+        .map((e) =>
+          sortMap.has(e.listItemId)
+            ? { ...e, sortOrder: sortMap.get(e.listItemId)! }
+            : e,
+        )
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return a.sortOrder - b.sortOrder;
+        });
+      queryClient.setQueryData(listItemsQueryKey(params.shortCode), next);
 
-    const all = queryClient.getQueryData<ListEntry[]>(
-      listItemsQueryKey(params.shortCode),
-    );
-    if (!all) return;
-
-    const section = all.filter((e) => e.pinned === fromPinned);
-    const fromIndex = section.findIndex((e) => e.listItemId === draggable.id);
-    const toIndex = section.findIndex((e) => e.listItemId === droppable.id);
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-
-    const nextSection = [...section];
-    const [moved] = nextSection.splice(fromIndex, 1);
-    nextSection.splice(toIndex, 0, moved);
-
-    const sortMap = new Map<string, number>(
-      nextSection.map((e, i) => [e.listItemId, i + 1]),
-    );
-    const orderedListItemIds = nextSection.map((e) => e.listItemId);
-
-    const next = [...all]
-      .map((e) =>
-        sortMap.has(e.listItemId)
-          ? { ...e, sortOrder: sortMap.get(e.listItemId)! }
-          : e,
-      )
-      .sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        return a.sortOrder - b.sortOrder;
+      reorderMut.mutate({
+        listId,
+        orderedListItemIds: nextSection.map((e) => e.listItemId),
       });
-    queryClient.setQueryData(listItemsQueryKey(params.shortCode), next);
-
-    reorderMut.mutate({ listId, orderedListItemIds });
-  };
+    },
+  );
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
   // overview cache (so /lists sees the new name) and this detail cache.
@@ -494,15 +479,7 @@ function SortableEntryRow(props: {
   return (
     <li
       ref={sortable}
-      // Inline transition because the timing is conditional: 0s when
-      // active (cursor follow must be 1:1), ease-quart otherwise (smooth
-      // displacement during drag + smooth settle after).
-      style={{
-        ...transformStyle(sortable.transform),
-        transition: sortable.isActiveDraggable
-          ? "transform 0s"
-          : "transform 220ms cubic-bezier(0.16, 1, 0.3, 1)",
-      }}
+      style={sortableRowStyle(sortable)}
       class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border"
       classList={{
         "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,

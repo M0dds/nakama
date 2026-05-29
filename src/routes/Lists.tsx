@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import {
   createMutation,
@@ -11,8 +11,6 @@ import {
   DragDropProvider,
   DragDropSensors,
   SortableProvider,
-  transformStyle,
-  type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
 import {
@@ -22,6 +20,12 @@ import {
   setListPin,
   type ListSummary,
 } from "@/lib/queries/lists";
+import {
+  reorderSection,
+  sortableRowStyle,
+  topOfSection,
+  useDragSettling,
+} from "@/lib/sortable";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -107,23 +111,20 @@ export default function Lists() {
     },
   }));
 
-  // Compute the new sortOrder for a pin toggle: MIN(target section) - 1,
-  // so the just-pinned (or freshly-unpinned) row floats to the top of its
-  // new section. Sections aren't crossed by drag-reorder either — this
-  // keeps both flows consistent.
+  // Pin toggle: float the freshly-(un)pinned row to the top of its new
+  // section. sortOrder math is shared with /lists/:short — see topOfSection.
   const handleTogglePin = (list: ListSummary) => {
     const data = lists.data;
     if (!data) return;
-    const all = [...data.private, ...data.shared];
     const targetPinned = !list.pinned;
-    const targetSection = all.filter(
+    const targetSection = [...data.private, ...data.shared].filter(
       (l) => l.pinned === targetPinned && l.id !== list.id,
     );
-    const minSort =
-      targetSection.length > 0
-        ? Math.min(...targetSection.map((l) => l.sortOrder))
-        : 1;
-    pinMut.mutate({ list, pinned: targetPinned, sortOrder: minSort - 1 });
+    pinMut.mutate({
+      list,
+      pinned: targetPinned,
+      sortOrder: topOfSection(targetSection),
+    });
   };
 
   // Drag-reorder. Source of truth = the cached lists array; we slice it
@@ -147,76 +148,54 @@ export default function Lists() {
     },
   }));
 
-  // Hover-bg suppression during drag + settle. `active.draggable` flips to
-  // null the instant the pointer is released — but the 220ms transform
-  // settle has only just begun, and any row sliding under the cursor in
-  // that window picks up :hover for a frame. Reads as rapid bg flicker.
-  // We hold suppression true from dragStart through the full settle.
-  // SETTLE_MS matches the transform transition duration on the <li>.
-  const SETTLE_MS = 220;
-  const [dragSettling, setDragSettling] = createSignal(false);
-  let settleTimer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => {
-    if (settleTimer) clearTimeout(settleTimer);
-  });
+  // Drag-reorder + hover-bg suppression. The hook owns dragSettling + the
+  // unconditional settle scheduling; we provide only the actual reorder
+  // logic. Refuse cross-section drops (pinned/unpinned stay separate;
+  // pin-state changes go through the pin click, not the drag).
+  const { dragSettling, onDragStart, onDragEnd } = useDragSettling(
+    ({ draggable, droppable }) => {
+      if (!droppable || draggable.id === droppable.id) return;
+      const fromSection = (draggable.data as { section: SectionKey }).section;
+      const toSection = (droppable.data as { section: SectionKey }).section;
+      if (fromSection !== toSection) return;
 
-  const onDragStart = () => {
-    if (settleTimer) clearTimeout(settleTimer);
-    setDragSettling(true);
-  };
+      const data = queryClient.getQueryData<{
+        private: ListSummary[];
+        shared: ListSummary[];
+      }>(listsQueryKey);
+      if (!data) return;
 
-  const onDragEnd = ({ draggable, droppable }: DragEvent) => {
-    // Schedule settle unconditionally — even early-returns still produce a
-    // visual settle (the dragged row animating back to its origin).
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => setDragSettling(false), SETTLE_MS);
+      const { visibility, pinned } = sectionParts(fromSection);
+      const arr = visibility === "private" ? data.private : data.shared;
+      const sectionRows = arr.filter((l) => l.pinned === pinned);
 
-    if (!droppable || draggable.id === droppable.id) return;
-    // Refuse cross-section drops (handshake decision: pinned/unpinned stay
-    // separate; pin-state changes go through the pin click, not the drag).
-    const fromSection = (draggable.data as { section: SectionKey }).section;
-    const toSection = (droppable.data as { section: SectionKey }).section;
-    if (fromSection !== toSection) return;
+      const reordered = reorderSection(
+        sectionRows,
+        draggable.id as string,
+        droppable.id as string,
+        (l) => l.id,
+      );
+      if (!reordered) return;
+      const { nextSection, sortMap } = reordered;
 
-    const data = queryClient.getQueryData<{
-      private: ListSummary[];
-      shared: ListSummary[];
-    }>(listsQueryKey);
-    if (!data) return;
+      const patch = (rows: ListSummary[]) =>
+        [...rows]
+          .map((l) =>
+            sortMap.has(l.id) ? { ...l, sortOrder: sortMap.get(l.id)! } : l,
+          )
+          .sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            return a.sortOrder - b.sortOrder;
+          });
 
-    const { visibility, pinned } = sectionParts(fromSection);
-    const arr = visibility === "private" ? data.private : data.shared;
-    const sectionRows = arr.filter((l) => l.pinned === pinned);
-    const fromIndex = sectionRows.findIndex((l) => l.id === draggable.id);
-    const toIndex = sectionRows.findIndex((l) => l.id === droppable.id);
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+      queryClient.setQueryData(listsQueryKey, {
+        private: visibility === "private" ? patch(data.private) : data.private,
+        shared: visibility === "shared" ? patch(data.shared) : data.shared,
+      });
 
-    const nextSection = [...sectionRows];
-    const [moved] = nextSection.splice(fromIndex, 1);
-    nextSection.splice(toIndex, 0, moved);
-
-    const sortMap = new Map<string, number>(
-      nextSection.map((l, i) => [l.id, i + 1]),
-    );
-    const orderedListIds = nextSection.map((l) => l.id);
-
-    const patch = (rows: ListSummary[]) =>
-      [...rows]
-        .map((l) =>
-          sortMap.has(l.id) ? { ...l, sortOrder: sortMap.get(l.id)! } : l,
-        )
-        .sort((a, b) => {
-          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-          return a.sortOrder - b.sortOrder;
-        });
-
-    queryClient.setQueryData(listsQueryKey, {
-      private: visibility === "private" ? patch(data.private) : data.private,
-      shared: visibility === "shared" ? patch(data.shared) : data.shared,
-    });
-
-    reorderMut.mutate({ orderedListIds });
-  };
+      reorderMut.mutate({ orderedListIds: nextSection.map((l) => l.id) });
+    },
+  );
 
   return (
     <main class="w-full">
@@ -414,16 +393,7 @@ function SortableListRow(props: {
   return (
     <li
       ref={sortable}
-      // transition is set inline because the timing depends on whether
-      // this sortable is currently being dragged: 0s when active (cursor
-      // follow has to be 1:1 with the pointer), ease-quart for the rest
-      // (smooth slide as siblings are displaced + reordered).
-      style={{
-        ...transformStyle(sortable.transform),
-        transition: sortable.isActiveDraggable
-          ? "transform 0s"
-          : "transform 220ms cubic-bezier(0.16, 1, 0.3, 1)",
-      }}
+      style={sortableRowStyle(sortable)}
       class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
       classList={{
         "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
