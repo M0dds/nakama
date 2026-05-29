@@ -1,6 +1,6 @@
 # Nakama — Handshake
 
-Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen + Polish-Pass durch + zwei Feature-Ergänzungen. Natural-key URLs (`/lists/<short_code>`, `/item/<type>/<slug>`) sind live, NotFound-Surface ersetzt silent bounce, ListEntryActions (Reset/Move/Remove auf Hover) + MoveItemDialog (AddSheet-style Fade) sind in den Listen-Rows, und die BottomNav hat einen Back-Button-Satelliten mit Liquid-Indicator-Flow auf Detail-Routen. Status-Control für Movies/Games bleibt deprio'd (wartet auf TMDB/IGDB). **Phase 5 (Home Dashboard) ist der nächste große Schritt.**
+Master-Kontext. Lies das zuerst. **Stand:** Phasen 1-5 abgeschlossen. Phase 5 Home Dashboard ist gelandet (Was kommt accordion + Fortsetzen accordion + Logbuch mit bundled watch/list_add events). „Neue Folge"-Badge läuft auf `/lists` + `/lists/:shortCode` + Fortsetzen-Rows mit dem 14-Tage-Window-Algorithmus aus Logbook. Jikan + MangaDex als Title-Fallback-Quellen für Episoden / Kapitel, versioned-backfill für existierende DB-Einträge. RowActions-Cluster (Reset/Move/Remove + Pin merged) sitzt auf jeder Item-Row in `/lists/:shortCode`. Cache-Pattern für Cross-Cutting-Writes ist jetzt `listsQueryKey` + `["list"]`-Prefix. Cover-Auflösung upgegradet auf `/cover/large/` via `highResCover()`-Helper. Status-Control für Movies/Games bleibt deprio'd (wartet auf TMDB/IGDB). **Phase 6 (Kalender) ist der nächste große Schritt — oder optional Phase 8 (Polish-Pass) für Skeletons + Route-Transitions zwischendurch.**
 
 ---
 
@@ -70,8 +70,8 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 |---|---|---|
 | `/login` | public | done |
 | `/auth/callback` | public | done |
-| `/styleguide` | public | done (14 Sektionen) |
-| `/` | protected (AppLayout) | Stub (Phase 5 Pending) |
+| `/styleguide` | public | done (18 Sektionen — Segmented + RowActions + back-button satellite + Anti-Patterns dazu) |
+| `/` | protected (AppLayout) | done — Was kommt (accordion timeline) / Fortsetzen (accordion rows) / Logbuch (bundled feed) |
 | `/lists` | protected (AppLayout) | done |
 | `/lists/:shortCode` | protected (AppLayout) | done (DB-generated `adj-adj-noun`, z.B. `/lists/mystic-coral-voyager`) |
 | `/item/:type/:slug` | protected (AppLayout) | done (DB-generated slug aus title, mit `-<source_id>` Suffix nur bei Kollision) |
@@ -117,14 +117,18 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 - `CreateListForm` — TanStack-Mutation, Optimistic via `setQueryData`
 - `DeleteListButton` — Inline-Confirm „Wirklich löschen? · ✓ / ✗" im Aside-Slot. Beide States rendern direkt im h-6-Slot des PageHeaders, items-center, damit der Text in beiden Zuständen auf derselben Höhe sitzt
 - `EditableListName` — Inline-Rename im Heading, hover lifts Pencil + accent text. Edit-State benutzt `ring-1 ring-accent` (box-shadow, kein layout-impact)
-- `ListTrackingToggle` — per-User Tracken/Archiv-Segment
-- `ResetItemButton` — inline-confirm „Zurücksetzen ✓ / ✗" im Item-Detail-Aside. Calls `reset_item_progress` RPC, invalidiert `episodesQueryKey`. Sichtbar nur wenn `watched > 0`
+- `ListTrackingToggle` — per-User Tracken/Archiv-Segment, baut auf `Segmented` auf
+- `Segmented` — liquid 2/3-Wege-Switch mit Stretch-and-Contract-Bubble (gleiche Sprache wie BottomNav-Indicator). Aktive Option trägt `data-active="true"`, ein absolut positionierter `span` misst Position und morpht in 2 Phasen (Kapsel über OLD+NEW, dann Contract zum Ziel nach 100ms). Eingesetzt von ListTrackingToggle, ThemeSwitcher, Styleguide. Bei 3-Wege-Skips spannt die Kapsel über alle Slots → flowt durch statt zu springen
+- `PinButton` — Hover-revealed Pin-Toggle auf Listen-Rows. Standalone (separate Komponente), aber konsumiert via `RowActions`. Hat `hidden`-Prop: wenn true, conditional-no-transition + opacity-0 (damit der Hide während Confirm-Phase mit den anderen Icons hart cuttet statt 200ms zu fladen)
+- `DragHandle` — Hover-revealed Grip-Handle rechts auf Listen-Rows. Standalone, konsumiert via `RowActions` UND direkt in Lists.tsx + ListDetail.tsx als Sibling. Gleicher `hidden`-Prop wie PinButton
+- `ResetItemButton` — inline-confirm „Zurücksetzen ✓ / ✗" im Item-Detail-Aside. Calls `reset_item_progress` RPC, invalidiert `episodesQueryKey` + `listsQueryKey` + `["list"]`-Prefix (Cross-Cutting für Badge). Sichtbar nur wenn `watched > 0`
 - `EpisodeList` (inline in `ItemDetail.tsx`) — read-only Rows + interaktive Buttons. Pointer-events (`onPointerDown/Up/Leave/Cancel`) für unified mouse+touch handling, 500 ms long-press timer für Cascade, `onContextMenu` für Desktop-Power-User-Right-Click. Press-Feedback via additive `classList={{ "bg-surface": pressing() }}` ON TOP of `hover:bg-surface` — additive statt ternary verhindert das Flicker beim Release (Lücke zwischen pressing=false und hover-Re-Apply)
 - `LoadMore` (inline in `ItemDetail.tsx`) — „Weitere laden"-Button am Listen-Ende. KEIN Button-Optik — nur centered Mono-CAPS-Caption + ChevronDown + hover:bg-surface bis Spaltenrand (via `<div class="-mx-5">` wrapper). Pattern für „kontinuierliche Affordance" innerhalb einer Liste
 - `ProgressBar` (inline in `ItemDetail.tsx`) — Hairline-Track + accent-Fill, Mono-CAPS-Caption mit `watched/total · pct %`. Bei `total=0` → em-dash statt 0, leerer Track
 - `NotFound` — geteilte „nicht gefunden"-Surface für `/lists/:shortCode` und `/item/:type/:slug` wenn die Query `null` zurückgibt (Row existiert nicht ODER RLS scopet weg). Ersetzt den früheren silent `navigate("/lists")`-Bounce. Items: faktischer Text „Eintrag nicht gefunden — Tippfehler / veralteter Link". Listen: kein Privacy-Hinweis (die Erklärung wäre selbst ein Leak), nur „Liste nicht gefunden — überprüf URL oder lass dir den Link vom Owner schicken"
-- `ListEntryActions` — Hover-revealed Icon-Trio rechts in jeder Item-Row auf `/lists/:shortCode`: `↻` Reset, `⇄` Move, `✕` Remove. Default opacity-0 + pointer-events-none, fadet auf group-hover/focus-within ein. Confirm-State (Reset oder Remove) pinnt die Gruppe sichtbar — gleicher Pattern wie DeleteListButton. Move emit'tet einen Callback nach oben, der das parent-managed `movingEntry`-Signal setzt; der MoveItemDialog rendert auf Route-Level, nicht in der Row (sonst nestet ein Modal in einer Anchor-Row). Row-Struktur dafür angepasst: `<A>` umschließt nur Cover + Title, nicht die ganze Row — Buttons-in-Anchor ist invalides HTML
+- `RowActions` — unified Hover-revealed Action-Cluster rechts in Listen-Rows. **Pin sitzt LINKS im Cluster**, dann Reset / Move / Remove. Default opacity-0 + pointer-events-none, fadet auf group-hover/focus-within ein. `destructive`-Bundle ist OPT-IN: auf `/lists`-Rows weggelassen (nur Pin), auf `/lists/:shortCode`-Rows komplett. Confirm-State (Reset oder Remove) pinnt die destructive-Gruppe sichtbar und blendet Pin + DragHandle via `hidden`-Prop hart raus (sodass der Pin zeitgleich mit dem Icon→ConfirmStrip-Show-Swap verschwindet, kein 200ms-Flash). **Confirm-State lebt im Parent (der Row)** als `Confirming`-Signal, das via `props.confirming/setConfirming` reingereicht wird — single source of truth, single sync flush; vorher gab's einen Callback-Roundtrip der nicht zuverlässig in einer Frame committet hat. Reset-Mut + Remove-Mut invalidieren beide `listsQueryKey` + `["list"]`-Prefix (Cross-Cutting Cache-Fan-out).
 - `MoveItemDialog` — Modal-List-Picker für Move-to-other-list. Same Mount/Visible-Two-Signal-Pattern wie AddSheet: `mounted` gates DOM (mit 500 ms Tail nach Close), `visible` gates Classes (rAF×2 nach Mount). Backdrop fadet `bg-black/0 → bg-black/50` + `backdrop-blur-none → backdrop-blur-sm`, Card pure opacity-fade — selbe 500 ms ease-quart wie AddSheet, damit beide Dialoge als eine Bewegung lesen. **Lokaler `snap`-Signal hält den Item-Title für die Lebensdauer eines Open-Cycles** — sonst zerot der Parent's `setMovingEntry(null)` beim Close die Props sofort, der h2 collapsed, Card wirkt „flacher" während sie noch fadet. Body-scroll-lock gated auf `mounted()` (nicht props.open) damit kein Glitch durch die 500 ms Close-Animation
+- **Home-Dashboard-Sub-Components** (alle inline in `Home.tsx`): `WasKommt` (4-col Accordion-Grid mit hero=2fr-1fr-1fr-1fr und animated grid-template-columns; first-click activate, second-click navigate), `Fortsetzen` (Accordion-Rows mit wachsendem Cover 2.25rem→4rem, initial 4 Items + `ShowMoreToggle`), `Logbuch` (Watch-Bundles + list_add Events, initial 8 Events + „+ Alle Ereignisse" + „Eigene ausblenden" toggle mit localStorage-Persistierung `nakama:logbuch-self`), `DayTag` (Heute/Auch heute/Morgen + datum), `EventIcon` + `WatchSentence` + `ListAddSentence` (Logbuch-Sentence-Templates mit korrekter „Du hast" / „@user hat"-Konjugation), `Cover` + `TodayLabel` (PageHeader-Aside) + `ShowMoreToggle`
 
 ---
 
@@ -135,22 +139,30 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 ```typescript
 // Query keys — per-list keys indexed by short_code (URL-stable), not UUID.
 // Mutations still operate on UUIDs (UPDATE/DELETE filter on lists.id).
+// Cross-cutting writes invalidate the ["list"] prefix to cover both
+// listQueryKey + listItemsQueryKey for every open shortCode in cache.
 export const listsQueryKey = ["lists"] as const;
 export const listQueryKey = (shortCode) => ["list", shortCode] as const;
 export const listItemsQueryKey = (shortCode) => ["list", shortCode, "items"] as const;
 
 // Query options — Komponenten benutzen via createQuery
-export function listsQueryOptions(user)               // SELECT incl. short_code
+export function listsQueryOptions(user)               // SELECT incl. newCounts aggregation
 export function listQueryOptions(user, shortCode)     // .eq("short_code", ...)
-export function listItemsQueryOptions(shortCode)      // via lists!inner(short_code) join
+export function listItemsQueryOptions(user, shortCode) // hasNewEpisode per entry; takes user
+
+// "Neue Folge"-Badge engine. Identical to Logbook's getItemsWithNewEpisodes:
+// 14-Tage-Fenster, anime/series → folgen, manga → kapitel.
+// async function getItemsWithNewEpisodes(userId): Promise<Map<itemId, type>>
+// ListSummary.newCounts = { folgen, kapitel } pro Liste (aggregiert).
+// ListEntry.hasNewEpisode = boolean pro Item (per-User vs eigene watches).
 
 // Mutations — Komponenten benutzen via createMutation
-export async function createList(user, input)         // returns ListSummary mit shortCode
+export async function createList(user, input)         // returns ListSummary mit shortCode + empty newCounts
 export async function renameList({ listId, name })    // UUID-based UPDATE
 export async function deleteList(listId)              // UUID-based DELETE
 export async function setListTracking(user, { listId, enabled })  // UUID
 
-// Per-row mutations (ListEntryActions)
+// Per-row mutations (RowActions)
 export async function removeListItem(listItemId)      // delete list_items, item + history bleiben
 export async function moveListItem({ listItemId, targetListId })
 // UPDATE list_items SET list_id, sync_enabled=false. Sync wird zurückgesetzt
@@ -195,6 +207,46 @@ export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
 export async function resetItemProgress(itemId)
 // Reset-Item-Aside: reset_item_progress RPC. Set-based delete server-
 // side. Takes items.id UUID.
+
+// Title-Enrichment — see jikan.ts + mangadex.ts. Item.metadata trägt
+// `titleEnrichmentVersion: number` als Gate für one-time-backfill bei
+// existierenden Items (independent vom 12h-stale-gate). Bumpen erzwingt
+// re-run für alle Items. Current: 3.
+// const TITLE_ENRICHMENT_VERSION = 3
+// const GAP_QUERY_LIMIT = 5000 // bypass PostgREST 1000-row default cap
+
+// async function enrichJikanTitles(item)    — anime backfill
+// async function enrichMangaDexTitles(item) — manga backfill
+// Both bulk-upsert (single round-trip, NICHT per-row UPDATE-Loop — der
+// hat bei One Piece 1100+ Folgen 110s gebraucht und kein Update committed).
+```
+
+`src/lib/queries/home.ts` (Phase 5):
+
+```typescript
+// Three query keys, alle Sub-Keys vom ["home"]-Prefix — Realtime
+// invalidiert den Prefix und alle drei Module refetchen.
+export const homeQueryKey = ["home"] as const;
+export const continueWatchingKey = (userId) => ["home", "continue", userId] as const;
+export const upcomingEpisodesKey = (userId) => ["home", "upcoming", userId] as const;
+export const recentlyTickedKey = (userId) => ["home", "logbook", userId] as const;
+
+export function continueWatchingOptions(user)  // continue_watching RPC + Jikan-since-last-watch flag
+export function upcomingEpisodesOptions(user)  // 14-Tage-Fenster aus tracked_home Listen
+export function recentlyTickedOptions(user)    // Bundled watches + list_add events
+
+// LogbookEvent ist eine DISCRIMINATED UNION:
+// - kind: "watch"     → minEpisode, maxEpisode, episodeCount (SESSION_GAP_MS = 6h bundling)
+// - kind: "list_add"  → listId, listShortCode, listName
+// Beide haben: eventId, ts (renamed von bundleId/watchedAt für generische
+// Verwendung), itemId, title, type, slug, coverUrl, actorUserId, actorName, isSelf.
+// actorName: "@username" preferred, dann display_name, dann null → UI fällt
+// auf "Jemand" zurück. Self-events: actorName always null, UI rendert "Du".
+
+// ContinueItem.hasNewEpisode: per-Item flag, true wenn LETZTES released
+// air_date > user's letztester watched_at auf diesem Item. UNTERSCHEIDET
+// sich vom List-Row-Badge (14-Tage-Fenster): "while you were away" vs
+// "still has unwatched recent". Chronischer Backlog deliberately silent.
 ```
 
 `src/lib/anilist.ts`:
@@ -204,21 +256,52 @@ export async function resetItemProgress(itemId)
 export interface AniListResult { sourceId; type; title; year; coverUrl; format }
 export async function searchAniList(q, signal?): Promise<AniListResult[]>
 
+// Cover-URL-Naming-Falle: AniList's API-Feld-Namen sind off-by-one
+// gegenüber URL-Pfaden.
+//   API `medium`     → URL /cover/small/    (~50 px)
+//   API `large`      → URL /cover/medium/   (~230 px)  ← was wir vorher gespeichert haben
+//   API `extraLarge` → URL /cover/large/    (~430 px)  ← was wir jetzt wollen
+// Search query holt extraLarge zuerst; legacy DB-URLs werden render-time
+// umgeschwenkt via highResCover().
+export function highResCover(url): string | null
+// Replaces /cover/(small|medium)/ → /cover/large/ in AniList-URLs.
+// No-op für Non-AniList-URLs oder bereits-large.
+
 export interface AniListEpisode { seasonNumber; episodeNumber; title; airDate }
-export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisode[]>
-// Paginates airingSchedule for dates, reads streamingEpisodes for titles
-// (Logbook deliberately skipped titles; we pull them because the value is
-// real and the falls-back-to-em-dash UX is honest). Manga: chapter count
-// from AniList; for ongoing titles MangaDex fallback via fetchMangaDexChapterCount.
+export interface AniListEpisodesResult { episodes: AniListEpisode[]; malId: number | null }
+export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisodesResult>
+// Paginates airingSchedule for dates, reads streamingEpisodes for titles.
+// idMal returned für Jikan-Lookup. Manga branch ruft auch
+// fetchMangaDexChapterTitles für Kapitel-Titel.
+// Stricter Parser: kein index+1-Fallback mehr (hatte bei One Piece
+// frühe Folge-Titel überschrieben).
+```
+
+`src/lib/jikan.ts` (Phase-4-Welle-2 Episode-Title-Fallback):
+
+```typescript
+// MyAnimeList episode titles via Jikan (jikan.moe). Paginated 100/page,
+// 400ms-throttle für ~3 req/sec rate limit. Returns Map<episodeNumber, title>.
+// Für long-running anime wie One Piece (1100+ Folgen) füllt es die ~95%
+// der Episoden, die AniList's streamingEpisodes nicht abdeckt.
+export async function fetchJikanEpisodeTitles(malId): Promise<Map<number, string>>
+// MAX_PAGES = 20 (= 2000 Folgen cap, matched anilist.ts MAX_EPISODES).
 ```
 
 `src/lib/mangadex.ts`:
 
 ```typescript
-// Browser-side chapter count for ongoing manga via AniList-id match on
-// MangaDex's manga.attributes.links.al. Reads max chapter number from
-// the all-language aggregate. Returns null on no match / no data.
+// Geteilte ID-Auflösung über MangaDex's manga.attributes.links.al.
+// async function findMangaDexId(aniListId, title)
+
+// Chapter-count fallback für ongoing manga (AniList kennt nur abgeschlossene).
 export async function fetchMangaDexChapterCount(aniListId, title): Promise<number | null>
+
+// Per-Chapter English Titel — coverage VARIABEL: offiziell-lizenzierte
+// Serien (One Piece) haben die meisten Uploads removed → nur Handvoll
+// Titel. Weeklys (Chainsaw Man) haben Chapter-Einträge aber oft ohne
+// Titel weil Verlage keine vergeben. Best-effort.
+export async function fetchMangaDexChapterTitles(aniListId, title): Promise<Map<number, string>>
 ```
 
 **Pattern für jede neue Feature-Area:**
@@ -235,9 +318,12 @@ export async function fetchMangaDexChapterCount(aniListId, title): Promise<numbe
 `src/lib/realtime.ts` exportiert `useRealtimeInvalidation(channelKey, [{table, invalidates}])`. Im Component-Mount wird ein Supabase-Channel aufgemacht, jeder postgres_changes-Event invalidiert die deklarierten Query-Keys. RLS scoped Events server-side, kein Client-Filter nötig.
 
 **Verwendet in:**
-- `/lists` overview → channel `lists-overview`, listens to lists/list_members/list_items, invalidates `listsQueryKey`
-- `/lists/:id` detail → channel `list-{id}`, listens to lists/list_members/list_items, invalidates `listQueryKey(id) + listsQueryKey + listItemsQueryKey(id)`
-- `/item/:id` detail → channel `item-{id}`, listens to episodes/episode_watches, invalidates `episodesQueryKey(id)` (covers all paginations via prefix-match)
+- `/` home → channel `home`, listens to `episode_watches/episodes/list_items/list_members`, invalidates `homeQueryKey` Prefix (alle drei Module refetchen)
+- `/lists` overview → channel `lists-overview`, listens to `lists/list_members/list_items/episodes/episode_watches`, invalidates `listsQueryKey` (Badge-Counts inkludiert)
+- `/lists/:shortCode` detail → channel `list-{shortCode}`, listens to alles + `episodes/episode_watches`, invalidates `listQueryKey(shortCode) + listsQueryKey + listItemsQueryKey(shortCode)`
+- `/item/:type/:slug` detail → channel `item-{type}-{slug}`, listens to `episodes/episode_watches`, invalidates `episodesQueryKey(type, slug) + listsQueryKey + ["list"]`-Prefix (Cross-Cutting damit Partner-Ticks die Listen-Badges live updaten)
+
+**Cache-Fan-out für Mutations:** Jede Write die Item-Status, Episode-Watches oder List-Membership betrifft, invalidiert konsequent `listsQueryKey` + `["list"]`-Prefix. Pattern in: AddSheet (Add), RowActions (Reset + Remove), ResetItemButton, ItemDetail toggleMut + cascadeMut. Vorher invalidierten einzelne Mutations nur ihre lokalen Keys → Listen-Badges (Neue Folge + itemCount) blieben stale bis 5min staleTime ablief.
 
 **Anti-Pattern aus Logbook das wir hier NICHT machen:** Auf SUBSCRIBED ein Refresh feuern. In Logbook (Next 16) führte das zu einem Re-Render pro Page-Mount und hat den Router-Cache zerschossen. In Nakama brauchen wir das nicht weil TanStack Query staleTime handhabt + Mutations + Postgres-Events alle Wege abdecken.
 
@@ -272,8 +358,8 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **1 · Foundation + Styleguide** | ✓ done — Primitives, Auth-Context, 14-Sektionen-Styleguide |
 | **2 · Auth & Shell** | ✓ done — Login (Discord OAuth + Magic-Link), AuthCallback, AppShell, BottomNav, Profile |
 | **3 · Listen** | ✓ done — `/lists` overview, `/lists/:id` detail, Create, Rename, Delete, ListTrackingToggle, Realtime, Optimistic Updates |
-| **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe unten) |
-| **5 · Home Dashboard** | offen — Was kommt, Fortsetzen, Logbuch (jetzt mit punktuellen Updates, kein Polling-Fallback) |
+| **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe unten). Plus Welle-2: Jikan + MangaDex Title-Fallback für AniList-Lücken, Heute/Morgen/Demnächst-Tags, Fixed-Width Date-Column, MONTH_ABBR_3, „Name der Folge ist noch nicht bekannt"-Fallback für unreleased |
+| **5 · Home Dashboard** | ✓ done — Was kommt (4-col Accordion-Grid mit hero-2fr-1fr-1fr-1fr animated grid-template-columns), Fortsetzen (Accordion-Rows mit wachsendem Cover, ShowMore-Toggle, „Neue Folge"-Badge per-Item since-last-watch), Logbuch (bundled watch events SESSION_GAP_MS=6h + list_add events, „+ Alle Ereignisse" + „Eigene ausblenden"-Toggles). Plus „Neue Folge"-Badge auf `/lists` + `/lists/:shortCode` mit 14-Tage-Fenster |
 | **6 · Kalender** | offen — Wochen-/Monatsansicht, Tag-Pane, Quick-Tick |
 | **7 · Sharing** | offen — Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator, Ownership-Transfer |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Animations-Pass |
@@ -299,18 +385,15 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ---
 
-## Offene Punkte (Stand: Phase 4 done + URL-Polish + NotFound + Quick-Actions + Back-Button durch)
+## Offene Punkte (Stand: Phase 5 done + Title-Fallback durch + Cache-Fan-out + High-Res Covers)
 
 ### Konkret offen für die nächste Session
 
-1. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe Logbook-Vorlage):
-   - **„Was kommt"** — kommende Episodes aus `tracked_home` Listen, nach Air-Date sortiert. Filter: nur unticked + air_date in der Zukunft (oder in den letzten X Tagen).
-   - **„Fortsetzen"** — Items mit Progress > 0 und nicht 100 %. Logbook hat dafür die RPC `continue_watching` (ranked by last activity).
-   - **„Logbuch"** — zuletzt ge-tickte Episodes (alle Member der geteilten Liste, wenn Sharing aktiv).
+1. **Phase 6 — Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Daten kommen aus den selben Episodes-Tabellen die Phase 4+5 bereits speisen, kein neuer Data-Layer nötig (vielleicht ein dedizierter `calendarQueryOptions` für effizientere Range-Reads). RPC `item_progress` aus Logbook ist verfügbar wenn wir per-Item Progress-Bars in der Tag-Pane brauchen.
 
-   Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. RPCs (`continue_watching`, `item_progress`) sind schon da im Supabase-Projekt (geerbt aus Logbook). Layout: drei BentoModule-Sektionen, Logbook's `/` Page als Referenz.
+2. **(Optional) Phase 8 — Polish-Pass zwischendurch.** Vor Phase 6 könnten wir eine motion-choreography-Welle einlegen: Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text-Fallbacks, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen aktuell instant). Survey + Plan steht im Memory von Session-mit-Phase-5 — wir hatten den Plan schon, dann auf Phase 5 verschoben.
 
-2. **(Optional, zwischen-drin)** Weitere kleine UX-Polish-Punkte falls der User welche hat. Letzte Session hat Quick-Actions + Back-Button-Satellit eingebracht — gleiche Klasse von Feature ist denkbar (z.B. Drag-Reorder von Items, Pin-to-Top, Bulk-Tick, …).
+3. **(Optional, zwischen-drin)** Weitere kleine UX-Polish-Punkte falls der User welche hat. Letzte Sessions haben Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge eingebracht — gleiche Klasse von Feature ist denkbar.
 
 ### Geplant, aber NICHT akut
 
@@ -320,9 +403,13 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 - **Sync-Fan-out für Cascade & Single-Toggle.** Aktuell rufe `mark_episodes_watched` mit `_list_item_id=null` → keine Mit-Member-Updates. Wenn Phase 7 das Invite-Modell baut, muss die UI die richtige `list_item.id` ermitteln (über die Listen-Route die der User durchgegangen ist, oder über einen item-pro-list-Resolver) und in beide Tick-Mutations als Parameter durchreichen. Toggle ebenfalls auf RPC `toggle_episode_synced` umstellen (Logbook-Pattern).
 
-- **AddSheet + BottomNav im Styleguide.** Beide sind Production-Komponenten ohne Styleguide-Eintrag. handshake-Regel „erst Styleguide, dann Feature" wurde bei diesen zwei aus Phase 2/4 nicht eingehalten — bei nächster Polish-Welle nachholen.
+- **Logbuch-Welle-2:** Aktuell zeigt Logbuch nur `watch` + `list_add` events. Logbook hat zusätzlich `missed` (released-but-unticked als CTA mit Quick-Tick-Button), `ownership_transfer`. Brauchen wir wenn Sharing live ist. Logik existiert in `src/lib/logbook.ts` im Logbook-Repo zum portieren.
 
-- **One Piece / langlaufende Anime: Folge-Titel-Lücken.** AniList's `streamingEpisodes` deckt typischerweise nur die letzten ~100-150 Folgen ab (was Streaming-Dienste aktuell führen). Ältere Folgen kriegen `null` Titel → em-dash. Ehrliches MVP-Verhalten. Mögliche Ergänzung später: Jikan / MyAnimeList als zweite Quelle (90 %+ Coverage für ältere Shows).
+- **Newest-Episode-Title-Lag.** Jikan/MAL und AniList streamingEpisodes hinken typisch 1-3 Wochen hinter dem Air-Date für neueste Folgen (Streaming-Dienste haben sie nicht direkt). User sieht für die brand-aktuellsten Folgen den „Name der Folge ist noch nicht bekannt"-Fallback. Quellen-Issue, kein Code-Fix. Beim nächsten 12h-Stale-Gate-Refresh kommt's automatisch nach.
+
+- **Manga-Kapitel-Titel:** MangaDex-Coverage ist patchy für offiziell-lizenzierte Serien (One Piece hat ~6 Kapitel-Titel in EN aggregate, der Rest leer). Best-effort akzeptiert.
+
+- **Long-anime PostgREST-Cap.** GAP_QUERY_LIMIT ist auf 5000 gesetzt. Für Anime mit 5000+ Folgen (extrem selten) würden wir das letzte Drittel verpassen. Nicht akut.
 
 ### Bekannte tech-debt
 
@@ -372,9 +459,20 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Daten / RLS
 
-- **PostgREST 1000-Row-Cap** (aus Logbook geerbt): bei langlaufenden Shows (One Piece) oder Massen-Episoden-Reads Window mit Range + RPC für aggregierte Counts.
+- **PostgREST 1000-Row-Cap** auf SELECT ohne explizites `.limit()` — bei langlaufenden Shows (One Piece) oder Massen-Episoden-Reads explizit `.limit(5000)` setzen (siehe GAP_QUERY_LIMIT in episodes.ts). Wir hatten einmal silent-truncate auf den NEUESTEN ~100 Folgen weil das Bulk-Upsert deren Titel gar nicht erst in der Gap-Liste hatte.
+- **Bulk Upsert ist immer schneller als per-row UPDATE-Loop.** Für 1100+ Rows ist ~5s vs ~110s. Per-row → tab tot, kein Update committed. Pattern in `storeEpisodes` + `enrichJikanTitles` + `enrichMangaDexTitles`.
+- **Cross-Cutting Cache-Fan-out:** jede Mutation die einen `itemCount` oder eine Title/Watch-Beziehung ändert, muss `listsQueryKey` + `["list"]`-Prefix invalidieren. Episode-Mutations zusätzlich `episodesQueryKey`. Episode-Realtime in `/item` invalidiert auch die List-Keys, weil sonst Partner-Ticks die Badges auf nicht-gemounteten /lists-Seiten nicht updaten.
+- **TITLE_ENRICHMENT_VERSION Pattern für one-time backfill.** Items.metadata trägt eine Version-Zahl; bei Logic-Change bumpen → alle existierenden Items kriegen einmaligen Retry beim nächsten Visit, unabhängig vom 12h-Stale-Gate. Beispiel: v2 hatte einen per-row-UPDATE-Loop der für lange Anime crashte, v3 bumpt + bulk-upsert.
+- **AniList Cover-URL-Naming-Falle:** `coverImage.large` liefert eine `/cover/medium/` URL (~230px), nicht `/cover/large/` (~430px). Letzteres steckt im API-Feld `extraLarge`. Search-Query holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time auf den Pfad-Segment um.
+- **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript brennen kann.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
 - **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern.
+
+### Animation-Patterns (Welle 2)
+
+- **Conditional Transition bei hidden-Toggle.** PinButton/DragHandle haben `hidden`-Prop: wenn true, KEIN `transition-opacity` in der Class → opacity-0 wird INSTANT (matched die hard-cut Show-Swap der parallel laufenden destructive icons). Wenn false: transition-opacity aktiv → hover-reveal smooth. Browser checked transition-property AT NEW STATE, nicht alte → wenn neue Class keine Transition für Property hat, wird's instant.
+- **Drag-Settle suppresses hover-bg.** Lists.tsx + ListDetail.tsx setzen `dragSettling`-Signal von dragStart bis SETTLE_MS=220ms nach dragEnd. Während dieser Zeit ist `hover:bg-surface` auf Rows ausgeschaltet — sonst flicker'd hover-bg während Items unter dem Cursor durchgleiten.
+- **Segmented Liquid-Bubble.** Stretch-and-Contract genau wie BottomNav: data-active misst position, span morpht in 2 Phasen (Kapsel über OLD+NEW → Contract zum Ziel nach SETTLE_MS=100ms). Bei 3-Wege-Skip spannt Kapsel über alle drei Slots → flow statt jump.
 
 ---
 

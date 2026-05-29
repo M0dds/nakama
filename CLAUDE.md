@@ -1,6 +1,6 @@
 # Nakama
 
-**Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user. **Stand:** Phase 4 done + Polish-Pass + zwei Feature-Ergänzungen durch. Natural-key Routes (`/lists/<short_code>`, `/item/<type>/<slug>`) sind live, NotFound-Surface ersetzt silent bounce, ListEntryActions (Reset/Move/Remove auf Hover) + MoveItemDialog (AddSheet-style Animation) sitzen in Item-Rows, BottomNav hat einen Back-Button-Satelliten mit Liquid-Indicator-Flow. **Phase 5 (Home Dashboard) ist der nächste große Schritt.**
+**Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user. **Stand:** Phase 1-5 done. Phase 5 Home Dashboard gelandet (Was kommt accordion + Fortsetzen accordion + Logbuch mit bundled watch/list_add events). „Neue Folge"-Badges auf `/lists` + `/lists/:shortCode` + Fortsetzen-Rows. Jikan + MangaDex als Title-Fallback für AniList-Lücken (One Piece & Co), versioned-backfill für DB-Bestand. RowActions-Cluster (Pin + Reset/Move/Remove merged) auf Item-Rows. Cross-Cutting Cache-Pattern via `listsQueryKey` + `["list"]`-Prefix. Cover-Auflösung upgegradet via `highResCover()`. **Phase 6 (Kalender) ist der nächste große Schritt — optional Phase 8 Polish-Pass dazwischen.**
 
 **Design tokens** live in `src/index.css` (CSS vars + Tailwind v4 `@theme inline`). Names mirror the handshake (`--bg`, `--accent`, `--text-mini`, etc.). Storage keys are prefixed `nakama:*` (NOT `logbook:*`).
 
@@ -13,8 +13,9 @@
 - Dev: `npm run dev` on port 5173 (kann auf 5174 ausweichen wenn 5173 belegt).
 
 **Next concrete steps** (see handshake §Offene Punkte for full detail):
-1. **Phase 5: Home Dashboard.** `/` ist Stub. Drei Module: „Was kommt" (kommende Episoden), „Fortsetzen" (Items mit Progress > 0), „Logbuch" (zuletzt ge-tickte). Logbook hat alles als Vorlage (Page `/`, RPCs `continue_watching` + `item_progress`).
-2. Bei kleinen User-Wünschen vor Phase 5: gleich abarbeiten (siehe letzte Session — Quick-Actions + Back-Button-Satellit). Atomar committen.
+1. **Phase 6: Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Datenquellen sind die existierenden `episodes`-Tabellen + RPC `item_progress`.
+2. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text-Fallbacks, Cover-Fade-in beim onload, Theme-Switch-Transition. Plan wurde in letzter Session aufgesetzt und auf Phase 5 verschoben.
+3. Bei kleinen User-Wünschen vor Phase 6: gleich abarbeiten. Atomar committen.
 
 @AGENTS.md
 @handshake.md
