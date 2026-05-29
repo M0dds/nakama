@@ -22,9 +22,9 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Correctness / robustness
 
 - **B1** — `setListPin`/`setListItemPin` nicht atomar vs `reorder*` RPCs (race auf sort_order)
-- **B2** — `.select()` silent-RLS-check inkonsistent: fehlt in `removeListItem`, `deleteList`, `moveListItem`, `toggleEpisode` → **teilweise gefixt 68d631b** (Bundle 1): `removeListItem` + `moveListItem` jetzt mit `.select() + null-check`. `deleteList` (owner-gated) + `toggleEpisode` (idempotent) bewusst gelassen — landet in Bundle 6 falls überhaupt
+- ~~**B2**~~ — `.select()` silent-RLS-check inkonsistent → **gefixt 68d631b + d0cf97e**: `removeListItem` + `moveListItem` (Bundle 1), `deleteList` (Bundle 6, defends Phase-7-Ownership-Race). `toggleEpisode` bewusst gelassen — Idempotenz heißt 0-rows ist mehrdeutig, .select() würde false positives erzeugen
 - **B3** — Stamp-on-Failure in `enrichJikanTitles`/`enrichMangaDexTitles` silenced transiente API-Fehler permanent (episodes.ts:232, :299)
-- **B4** — `cascadeMut` optimistic-count nur korrekt für visible window (ItemDetail.tsx:170-189); off-window cascade flasht falschen `watched` bis onSettled
+- ~~**B4**~~ — `cascadeMut` off-window flash → **dokumentiert d0cf97e** (Bundle 6): explicit Comment im Code; onSettled-Refetch korrigiert, bessere Schätzung wäre nicht möglich (Cache hat keine off-window Watch-States)
 - **B5** — AddSheet `origin()` einmal beim Mount gemessen — Resize während offen → falscher Close-Morph
 - **B6** — Logbuch self-toggle Frame-Flicker beim Mount; localStorage-Read nach erstem Paint (Home.tsx:498)
 
@@ -36,7 +36,7 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 - **C4** — Inline-Jikan in `storeEpisodes` überlappt mit `enrichJikanTitles` backfill
 - ~~**C5**~~ — `dayOffset`/`formatDate`/`typeLabel`/`typeInitial` parallel → **gefixt d70169d** (Bundle 4): canonical in `src/lib/format.ts`
 - ~~**C6**~~ — PostgREST embed-unwrap + `[...new Set(...)]` repeated → **gefixt d70169d** (Bundle 4): `embedCount()` + `unique()` helpers
-- **C7** — `toggleMut` delta-Arithmetik unnötig kompliziert (ItemDetail.tsx:127-128) — reduzierbar auf `ep.watched ? -1 : 1`
+- ~~**C7**~~ — `toggleMut` delta-Arithmetik kompliziert → **gefixt d0cf97e** (Bundle 6): ternary-on-ternary kollabiert auf `ep.watched ? -1 : 1`, gleicher output
 - **C8** — `console.error` an 12+ Stellen ohne Telemetry → defer bis Phase 7 + Hosting steht
 
 ### Defensive (keine Action geplant)
@@ -130,15 +130,14 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 6 — Optimistic + Mutation Correctness
 
 **Adressiert:** B2 (rest), B4, C7
-**Status:** TODO
-**Why now:** kleiner Cleanup, kann jede Session landen.
+**Status:** ✅ **DONE** — branch `bundle/6-mutation-correctness`
+  - d0cf97e — fix: mutation correctness — toggle delta, cascade comment, deleteList .select()
 
-**Scope:**
-- `toggleMut` delta-Arithmetik simplifizieren (`ep.watched ? -1 : 1`)
-- Off-window cascade: server-side count-fetch on settle (oder explicit comment im Code)
-- `.select()`-Konsistenz: durchziehen wo noch nicht (`removeListItem`, `deleteList`, `moveListItem`, `toggleEpisode`)
-
-**Estimated:** ~40 Zeilen.
+**Outcome:**
+- `toggleMut` delta auf `ep.watched ? -1 : 1` reduziert
+- `cascadeMut` Off-window flash via explicit Comment dokumentiert (onSettled handlet's; bessere Schätzung wäre nicht möglich)
+- `deleteList` mit `.select()` für Phase-7 Race-Defense
+- `toggleEpisode` bewusst ohne `.select()` gelassen — Idempotenz macht 0-rows mehrdeutig
 
 ---
 
@@ -172,7 +171,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 1. ~~**Bundle 1**~~ — done
 2. ~~**Bundle 2**~~ — done
 3. ~~**Bundle 4**~~ — done
-4. **Bundle 6** — low-risk Cleanup, kann zwischendurch
+4. ~~**Bundle 6**~~ — done
 5. **Bundle 3** — vor Phase 7
 6. **Bundle 5** — vor Phase 7, DB-Migration
 7. **Bundle 7** — Phase 8 oder bei Bug-Hit früher
