@@ -27,7 +27,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
-import { PinButton } from "@/components/PinButton";
+import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 
 /**
@@ -426,10 +426,10 @@ function SortableListRow(props: {
             {metaLine(props.list)}
           </p>
         </A>
-        <PinButton
+        <RowActions
           pinned={props.list.pinned}
           noun="Liste"
-          onToggle={() => props.onTogglePin(props.list)}
+          onTogglePin={() => props.onTogglePin(props.list)}
         />
         <DragHandle
           activators={sortable.dragActivators}

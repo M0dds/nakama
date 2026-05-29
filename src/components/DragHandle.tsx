@@ -13,6 +13,9 @@ import type { JSX } from "solid-js";
 interface Props {
   activators: JSX.HTMLAttributes<HTMLButtonElement>;
   noun?: string;
+  /** Force-hide override. Mirrors PinButton's `hidden` — used by the row
+   *  to mute side-buttons while RowActions are in a two-step confirm. */
+  hidden?: boolean;
   /** Extra utility classes, appended after the defaults. Used to bump the
    *  left margin so the handle sits a little apart from the other icon-
    *  buttons in the same row cluster. */
@@ -24,7 +27,13 @@ export function DragHandle(props: Props) {
     <button
       type="button"
       aria-label={props.noun ? `${props.noun} verschieben` : "Verschieben"}
-      class={`inline-flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-xs text-text-muted opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] hover:bg-bg hover:text-text active:cursor-grabbing group-hover:opacity-100 focus-within:opacity-100 ${props.class ?? ""}`}
+      aria-hidden={props.hidden || undefined}
+      tabIndex={props.hidden ? -1 : 0}
+      class={`inline-flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-xs text-text-muted transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] hover:bg-bg hover:text-text active:cursor-grabbing ${
+        props.hidden
+          ? "pointer-events-none opacity-0"
+          : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+      } ${props.class ?? ""}`}
       {...props.activators}
     >
       <GripVertical class="size-4" strokeWidth={1.75} aria-hidden />

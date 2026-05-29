@@ -31,11 +31,10 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
-import { ListEntryActions } from "@/components/ListEntryActions";
+import { RowActions, type Confirming } from "@/components/RowActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
-import { PinButton } from "@/components/PinButton";
 import { DragHandle } from "@/components/DragHandle";
 
 /**
@@ -234,7 +233,7 @@ export default function ListDetail() {
   const notFound = () => !list.isLoading && list.data === null;
 
   // Move-Dialog state — owning it at the route level (not in each row's
-  // ListEntryActions) lets the modal portal cleanly to the page and reuse
+  // RowActions) lets the modal portal cleanly to the page and reuse
   // a single instance for whichever row is being moved.
   const [movingEntry, setMovingEntry] = createSignal<ListEntry | null>(null);
 
@@ -407,7 +406,7 @@ function typeLabel(type: string): string {
 
 /** Items als Rows in einer Liste. Pattern: -mx-5 ul, hover-bg blutet zu den
  *  Spaltenrändern, ::after-Hairline pro li (inkl. last). Cover + Titel sind
- *  in einem <A>-Link; rechts daneben sitzt ListEntryActions als Sibling
+ *  in einem <A>-Link; rechts daneben sitzt RowActions als Sibling
  *  (NICHT im <a> verschachtelt — Buttons in einem Anchor sind ungültiges
  *  HTML + verhalten sich unzuverlässig beim Klick). Default ohne Chevron;
  *  die ge-faded-in Action-Icons sind die hover-affordance. */
@@ -465,6 +464,11 @@ function SortableEntryRow(props: {
   const sortable = createSortable(props.entry.listItemId, {
     pinned: props.entry.pinned,
   });
+  // The row OWNS the confirm-state signal so PinButton + DragHandle can
+  // read the same source as RowActions' Show — single sync flush,
+  // no callback roundtrip. When non-null, pin + drag-handle fade out (same
+  // 200ms ease-quart) so the destructive prompt owns the row's attention.
+  const [confirming, setConfirming] = createSignal<Confirming>(null);
 
   return (
     <li
@@ -519,23 +523,26 @@ function SortableEntryRow(props: {
             </p>
           </div>
         </A>
-        <PinButton
+        <RowActions
           pinned={props.entry.pinned}
           noun="Eintrag"
-          onToggle={() => props.onTogglePin(props.entry)}
-        />
-        <ListEntryActions
-          itemId={props.entry.itemId}
-          listItemId={props.entry.listItemId}
-          itemTitle={props.entry.title}
-          itemType={props.entry.type}
-          itemSlug={props.entry.slug}
-          listShortCode={props.listShortCode}
-          onRequestMove={() => props.onRequestMove(props.entry)}
+          onTogglePin={() => props.onTogglePin(props.entry)}
+          destructive={{
+            itemId: props.entry.itemId,
+            listItemId: props.entry.listItemId,
+            itemTitle: props.entry.title,
+            itemType: props.entry.type,
+            itemSlug: props.entry.slug,
+            listShortCode: props.listShortCode,
+            onRequestMove: () => props.onRequestMove(props.entry),
+            confirming,
+            setConfirming,
+          }}
         />
         <DragHandle
           activators={sortable.dragActivators}
           noun={props.entry.title}
+          hidden={confirming() !== null}
           class="ml-2"
         />
       </div>
