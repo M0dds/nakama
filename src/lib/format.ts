@@ -138,6 +138,73 @@ export function relTime(iso: string): string {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Calendar grid math
+// ──────────────────────────────────────────────────────────────────────
+//
+// Week starts Monday (de-DE convention). All math runs on LOCAL date parts
+// so an episode that aired at 08:00 stays on its calendar day regardless of
+// the viewer's timezone — same principle as dayOffset() above.
+
+/** Monday-first weekday abbreviations, fixed two-letter. */
+export const WEEKDAYS_MON = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
+
+/** `Date` → "YYYY-MM-DD" from local parts (no UTC shift). The grid-bucket key. */
+export function isoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** "YYYY-MM-DD" → local-midnight `Date`. Avoids `new Date(iso)`'s UTC parse,
+ *  which would shift the day backwards in negative-offset zones. */
+export function fromIsoDay(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** A new `Date` n days from d (n may be negative). */
+export function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+/** A new `Date` n months from d (n may be negative). */
+export function addMonths(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setMonth(r.getMonth() + n);
+  return r;
+}
+
+/** First day of d's month, at local midnight. */
+export function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+/** The Monday of the week containing d. Sunday (getDay 0) folds back six days. */
+export function mondayOf(d: Date): Date {
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = r.getDay(); // 0 = Sun … 6 = Sat
+  r.setDate(r.getDate() + (dow === 0 ? -6 : 1 - dow));
+  return r;
+}
+
+/** "Mai 2026" — long month + year, de-DE. */
+export function formatMonth(d: Date): string {
+  return d.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+}
+
+/** "26.05. – 01.06." — Monday→Sunday of d's week, compact. */
+export function formatWeekRange(d: Date): string {
+  const mon = mondayOf(d);
+  const sun = addDays(mon, 6);
+  const fmt = (x: Date) =>
+    x.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  return `${fmt(mon)} – ${fmt(sun)}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // PostgREST shape helpers
 // ──────────────────────────────────────────────────────────────────────
 
