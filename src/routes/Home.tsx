@@ -449,8 +449,14 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                         </span>
                       </Show>
                     </div>
-                    <p class="font-mono text-mini text-text-muted">
-                      {nextLabel(item.type, item.nextEpisode)}
+                    <p class="truncate font-mono text-mini text-text-muted">
+                      <Show
+                        when={item.nextEpisodeTitle}
+                        fallback={nextLabel(item.type, item.nextEpisode)}
+                      >
+                        {nextLabel(item.type, item.nextEpisode)} ·{" "}
+                        {item.nextEpisodeTitle}
+                      </Show>
                     </p>
                   </div>
 

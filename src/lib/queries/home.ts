@@ -43,6 +43,10 @@ export interface ContinueItem {
   total: number;
   watched: number;
   nextEpisode: number;
+  /** Title of the next (current) episode, when the data source has it —
+   *  surfaced in the Fortsetzen row so "E07" reads as "E07 · <title>".
+   *  Null for data gaps (old anime, patchy manga chapters). */
+  nextEpisodeTitle: string | null;
   /** True when an episode aired AFTER the user's most recent watch on this
    *  item — i.e. "while you were away, a new one dropped". Distinct from
    *  the list-row badge: items the user is chronically behind on (latest
@@ -173,9 +177,12 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
   if (rows.length === 0) return [];
 
   const itemIds = rows.map((r) => r.item_id);
-  const [slugs, newSince] = await Promise.all([
+  const [slugs, newSince, nextTitles] = await Promise.all([
     slugMap(itemIds),
     newEpisodeSinceLastWatch(itemIds),
+    nextEpisodeTitles(
+      rows.map((r) => ({ itemId: r.item_id, episodeNumber: r.next_episode })),
+    ),
   ]);
 
   return rows.flatMap((r) => {
@@ -191,6 +198,7 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
         total: r.total_episodes,
         watched: r.watched_episodes,
         nextEpisode: r.next_episode,
+        nextEpisodeTitle: nextTitles.get(`${r.item_id}:${r.next_episode}`) ?? null,
         hasNewEpisode: newSince.has(r.item_id),
       },
     ];
@@ -498,6 +506,36 @@ async function profileNames(ids: string[]): Promise<Map<string, string>> {
     const displayName = p.display_name as string | null;
     const name = username ? `@${username}` : displayName ?? null;
     if (name) map.set(p.user_id as string, name);
+  }
+  return map;
+}
+
+/** Titles for specific (item, episode_number) pairs — the "current" episode
+ *  per Fortsetzen row. PostgREST can't express a compound-key IN, so we
+ *  over-fetch on the cross product of item_ids × episode_numbers and pick the
+ *  exact matches by composite key. The candidate set is small (the continue
+ *  list is capped at CONTINUE_LIMIT), but the explicit .limit() guards against
+ *  the 1000-row cap regardless. Keyed `${itemId}:${episodeNumber}`. */
+async function nextEpisodeTitles(
+  pairs: { itemId: string; episodeNumber: number }[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (pairs.length === 0) return map;
+  const itemIds = unique(pairs.map((p) => p.itemId));
+  const numbers = unique(pairs.map((p) => p.episodeNumber));
+  const { data, error } = await supabase
+    .from("episodes")
+    .select("item_id, episode_number, title")
+    .in("item_id", itemIds)
+    .in("episode_number", numbers)
+    .limit(5000);
+  if (error) {
+    console.error("next-episode titles lookup failed", error);
+    return map;
+  }
+  for (const r of data ?? []) {
+    const title = r.title as string | null;
+    if (title) map.set(`${r.item_id}:${r.episode_number}`, title);
   }
   return map;
 }
