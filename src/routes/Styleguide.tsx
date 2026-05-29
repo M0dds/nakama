@@ -1,6 +1,8 @@
 import { createSignal, onMount, For } from "solid-js";
 import { A } from "@solidjs/router";
 import {
+  ArrowLeft,
+  ArrowRightLeft,
   Calendar,
   Check,
   CircleCheck,
@@ -9,6 +11,7 @@ import {
   Info,
   List,
   Plus,
+  RotateCcw,
   Search,
   User,
   X,
@@ -29,6 +32,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tooltip } from "@/components/Tooltip";
 import { SelectMenu } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
+import { PinButton } from "@/components/PinButton";
+import { DragHandle } from "@/components/DragHandle";
 
 /**
  * Styleguide — the source of truth for every visual decision. New primitives
@@ -40,6 +45,7 @@ export default function Styleguide() {
   const [mode, setMode] = createSignal<ThemeModePref>("system");
   const [demoOption, setDemoOption] = createSignal("anime");
   const [segDemo, setSegDemo] = createSignal<"track" | "archive">("track");
+  const [pinDemo, setPinDemo] = createSignal(false);
   const auth = useAuth();
 
   onMount(() => {
@@ -442,6 +448,18 @@ export default function Styleguide() {
             sequential-handoff weg (kein Crossfade — würde flackern, siehe
             Memory).
           </p>
+          <BottomNavBackMock />
+          <p class="text-body text-text-muted">
+            Auf Detail-Routen (<code class="font-mono text-mini">/lists/:shortCode</code>,{" "}
+            <code class="font-mono text-mini">/item/:type/:slug</code>) hängt
+            links ein Back-Button-Satellit an der Pill. Er trägt
+            {" "}<code class="font-mono text-mini">data-accent</code> statt eines
+            der NavButtons — die Liquid-Bubble flowt aus dem alten aktiven Tab
+            in den Satelliten und zurück (gleiche Stretch-and-Contract-Phasen).
+            Der Pfeil fadet 100 ms versetzt rein, damit er erst auftaucht wenn
+            die Bubble seinen Slot erreicht — sonst Ghost-Pfeil über leerem
+            Hintergrund.
+          </p>
         </div>
       </Section>
 
@@ -529,8 +547,61 @@ export default function Styleguide() {
         </div>
       </Section>
 
-      {/* ── 17 · Anti-Patterns ───────────────────────────────────── */}
-      <Section number="17" label="Anti-Patterns · Verbote">
+      {/* ── 17 · Row Actions ─────────────────────────────────────── */}
+      <Section number="17" label="Row Actions">
+        <p class="mb-4 text-body text-text-muted">
+          Hover-revealed Cluster am rechten Rand jeder Listen-Row. Default
+          {" "}<code class="font-mono text-mini">opacity-0 pointer-events-none</code>;
+          fadet via <code class="font-mono text-mini">group-hover</code> /
+          {" "}<code class="font-mono text-mini">focus-within</code> der
+          Parent-Row in 200 ms ease-quart auf. Confirm-States + aktive Pins
+          bleiben sichtbar — sie kommunizieren State, nicht nur Aktion.
+        </p>
+        <RowActionsMock pinned={pinDemo()} onTogglePin={() => setPinDemo((p) => !p)} />
+        <p class="mt-4 text-body text-text-muted">
+          <code class="font-mono text-mini">RowActions</code> ist ein
+          einheitliches Primitive — der Pin sitzt im selben Flex-Cluster
+          wie Reset / Verschieben / Entfernen, sodass alles als eine
+          visuelle Einheit auf-/abfadet. Der „destructive bundle" (Reset,
+          Move, Remove) ist opt-in:
+        </p>
+        <ul class="mt-2 ml-5 list-disc space-y-1 text-body text-text-muted">
+          <li>
+            <code class="font-mono text-mini">/lists/:shortCode</code>-Rows
+            → bundle gesetzt, voller Cluster. Reset + Entfernen kennen
+            inline-Confirm (zweistufig, gleiche Sprache wie DeleteListButton).
+          </li>
+          <li>
+            <code class="font-mono text-mini">/lists</code>-Rows → bundle
+            weggelassen, nur der Pin rendert.
+          </li>
+        </ul>
+        <p class="mt-3 text-body text-text-muted">
+          Pin-Verhalten im Cluster:
+        </p>
+        <ul class="mt-2 ml-5 list-disc space-y-1 text-body text-text-muted">
+          <li>
+            Ist die Row gepinnt (State), bleibt der Pin permanent sichtbar
+            — der Rest des Clusters bleibt hover-revealed.
+          </li>
+          <li>
+            Während ein destructive Confirm läuft, fadet der Pin parallel
+            mit dem Icon→ConfirmStrip-Swap raus — der Prompt besitzt die
+            Aufmerksamkeit der Row.
+          </li>
+        </ul>
+        <p class="mt-3 text-mini text-text-muted">
+          HTML-Gotcha: RowActions + DragHandle sitzen als Siblings NEBEN dem
+          <code class="font-mono text-mini">&lt;A&gt;</code>-Link, nicht
+          darin — Buttons in Anchors sind invalides Markup + verhalten sich
+          unzuverlässig beim Click-Handling. Confirm-State lebt im Parent
+          (der Row), nicht im Cluster — sodass PinButton + DragHandle aus
+          derselben Quelle lesen und im selben Sync-Flush updaten.
+        </p>
+      </Section>
+
+      {/* ── 18 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="18" label="Anti-Patterns · Verbote">
         <p class="mb-6 text-body text-text-muted">
           Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
           hier kurz nachschauen.
@@ -721,6 +792,87 @@ function NavMockButton(props: {
 }
 
 /**
+ * BottomNav variant: pill + back-satellite on the left. Same static
+ * presentation as BottomNavMock, but with the back-button hanging off
+ * left-edge and the accent bubble parked on it (mirrors what's rendered
+ * on /lists/:shortCode + /item/:type/:slug detail routes).
+ */
+function BottomNavBackMock() {
+  return (
+    <div class="flex justify-center rounded-sm border border-border bg-bg p-6">
+      <div class="relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating">
+        {/* Satellite — outside the pill, attached via absolute right-full. */}
+        <span
+          aria-hidden
+          class="pointer-events-none absolute right-full top-1/2 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full bg-accent text-accent-on shadow-floating"
+        >
+          <ArrowLeft class="size-5" strokeWidth={1.75} />
+        </span>
+        <NavMockButton icon={House} />
+        <NavMockButton icon={List} />
+        <button
+          type="button"
+          aria-label="Hinzufügen"
+          class="relative z-10 inline-flex size-11 items-center justify-center rounded-full text-nav-fg/70"
+        >
+          <Plus class="size-5" strokeWidth={1.75} />
+        </button>
+        <NavMockButton icon={Calendar} />
+        <NavMockButton icon={User} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Row Actions mock. The destructive icons are a static stand-in (real
+ * RowActions needs mutation context + valid item IDs); PinButton is
+ * mounted live so the hover-reveal + sticky-when-pinned behaviour is
+ * demonstrable. Both sit in the SAME flex cluster (gap-1) to match the
+ * live RowActions layout — destructive icons + pin read as one group.
+ * `group` on the outer row drives the opacity transitions inside.
+ */
+function RowActionsMock(props: {
+  pinned: boolean;
+  onTogglePin: () => void;
+}) {
+  return (
+    <div class="-mx-5 border-y border-rule">
+      <div class="group flex items-center gap-2 px-5 py-3 transition-colors hover:bg-surface">
+        <div class="min-w-0 flex-1">
+          <h4 class="truncate text-body-lg font-medium text-text">
+            Beispiel-Eintrag
+          </h4>
+          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+            Anime
+          </p>
+        </div>
+        {/* RowActions stand-in — destructive icons static, pin live. */}
+        <div class="flex shrink-0 items-center gap-1">
+          <PinButton
+            pinned={props.pinned}
+            noun="Eintrag"
+            onToggle={props.onTogglePin}
+          />
+          <div class="pointer-events-none flex items-center gap-1 opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover:opacity-100 focus-within:opacity-100">
+            <span class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted">
+              <RotateCcw class="size-4" strokeWidth={1.75} aria-hidden />
+            </span>
+            <span class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted">
+              <ArrowRightLeft class="size-4" strokeWidth={1.75} aria-hidden />
+            </span>
+            <span class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted">
+              <X class="size-4" strokeWidth={1.75} aria-hidden />
+            </span>
+          </div>
+        </div>
+        <DragHandle activators={{}} noun="Beispiel-Eintrag" class="ml-2" />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Static mockup of the AddSheet. Shows the Card on top, Search-Pill below;
  * skipped the morph-from-origin animation (would need real BottomNav
  * coordinates and a full DOM overlay). Result-rows are dummy entries.
@@ -729,7 +881,7 @@ function AddSheetMock() {
   return (
     <div class="rounded-sm border border-border bg-bg p-5">
       {/* Card */}
-      <div class="border border-rule bg-bg">
+      <div class="overflow-hidden rounded-sm border border-rule bg-bg">
         <header class="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
           <div class="flex items-center gap-3">
             <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
