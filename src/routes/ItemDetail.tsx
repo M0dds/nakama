@@ -1,24 +1,38 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
-import { createQuery } from "@tanstack/solid-query";
+import {
+  createMutation,
+  createQuery,
+  useQueryClient,
+} from "@tanstack/solid-query";
+import { ChevronDown, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { itemQueryOptions } from "@/lib/queries/items";
 import {
+  episodesQueryKey,
   episodesQueryOptions,
+  markEpisodesWatchedUpTo,
+  toggleEpisode,
+  type EpisodePayload,
   type EpisodeRow,
 } from "@/lib/queries/episodes";
+import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
+import { ResetItemButton } from "@/components/ResetItemButton";
+
+const PAGE_SIZE = 26;
 
 /**
  * /item/:id — Item-Detail. Layout:
  *
  *   Section 01 (left 2/3, "Episoden"):
- *     Fortschritt 0 / —              (progress bar)
+ *     Fortschritt 12 / 184           (progress bar)
  *     ──────────────────────────
- *     [latest 12 episodes — title + meta per row]
- *     (placeholder until episode-layer lands)
+ *     [latest PAGE_SIZE (26) episodes — newest on top, ticked dot right]
+ *     ──────────────────────────
+ *     ↓  Weitere laden               (when total > loaded)
  *
  *   Section 02 (right 1/3, "Details"):
  *     ┌────────┐
@@ -27,28 +41,134 @@ import { ColumnGuide } from "@/components/ColumnGuide";
  *     ──────────────
  *     Typ / Format / Quelle
  *
- * Progress + episode-list are placeholders pending the Episode-Layer commit.
- * The cover, type/source meta, page chrome are real and live now.
+ * PageHeader aside carries the inline-confirm "Zurücksetzen" button when
+ * the caller has at least one watched episode. Single-tap toggles an
+ * episode, long-press / right-click cascades up to it; both go through
+ * optimistic updates and invalidate on settle to reconcile the true
+ * watched count from the server.
  */
 export default function ItemDetail() {
   const params = useParams<{ id: string }>();
   const auth = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const item = createQuery(() => ({
     ...itemQueryOptions(params.id),
     enabled: !!auth.user() && !!params.id,
   }));
 
+  // Pagination — limit grows by PAGE_SIZE on each "Weitere laden". Each step
+  // is its own cache entry (queryKey ends in the limit), so flipping the
+  // limit doesn't re-fetch from zero — TanStack keeps the previous payload
+  // visible via placeholderData while the next chunk arrives.
+  const [limit, setLimit] = createSignal(PAGE_SIZE);
+
   const episodes = createQuery(() => ({
-    ...episodesQueryOptions(auth.user()!, params.id),
+    ...episodesQueryOptions(auth.user()!, params.id, limit()),
     enabled: !!auth.user() && !!params.id,
+    placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
   // Item resolved-but-null → not visible / not found / bad uuid. Bounce.
   if (!item.isLoading && item.data === null) {
     navigate("/lists", { replace: true });
   }
+
+  // Live updates: a partner ticking an episode (same item, shared list once
+  // Phase 7 lands) or a backfill on this item refreshes the local cache.
+  useRealtimeInvalidation(`item-${params.id}`, [
+    {
+      table: "episodes",
+      invalidates: [episodesQueryKey(params.id)],
+    },
+    {
+      table: "episode_watches",
+      invalidates: [episodesQueryKey(params.id)],
+    },
+  ]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────
+  // Single-tap toggle. Optimistic: flip the row, adjust the visible watched
+  // counter; the head-count refetches via onSettled.
+  const toggleMut = createMutation(() => ({
+    mutationFn: (ep: EpisodeRow) =>
+      toggleEpisode({
+        episodeId: ep.id,
+        userId: auth.user()!.id,
+        watched: !ep.watched,
+      }),
+    onMutate: (ep: EpisodeRow) => {
+      const key = episodesQueryKey(params.id);
+      const prev = queryClient.getQueryData<EpisodePayload>(key);
+      queryClient.setQueryData<EpisodePayload>(key, (old) => {
+        if (!old) return old;
+        const target = !ep.watched;
+        const delta =
+          target && !ep.watched ? 1 : !target && ep.watched ? -1 : 0;
+        return {
+          ...old,
+          episodes: old.episodes.map((e) =>
+            e.id === ep.id ? { ...e, watched: target } : e,
+          ),
+          watched: Math.max(0, old.watched + delta),
+        };
+      });
+      return { prev };
+    },
+    onError: (_e, _ep, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(episodesQueryKey(params.id), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: episodesQueryKey(params.id),
+      });
+    },
+  }));
+
+  // Long-press cascade. Optimistic: tick all visible rows ≤ ep.episodeNumber;
+  // the true watched count refreshes via invalidate on settled.
+  const cascadeMut = createMutation(() => ({
+    mutationFn: (ep: EpisodeRow) =>
+      markEpisodesWatchedUpTo({
+        itemId: params.id,
+        upToEpisodeId: ep.id,
+      }),
+    onMutate: (ep: EpisodeRow) => {
+      const key = episodesQueryKey(params.id);
+      const prev = queryClient.getQueryData<EpisodePayload>(key);
+      queryClient.setQueryData<EpisodePayload>(key, (old) => {
+        if (!old) return old;
+        let delta = 0;
+        const nextEpisodes = old.episodes.map((e) => {
+          if (e.episodeNumber <= ep.episodeNumber && !e.watched) {
+            delta += 1;
+            return { ...e, watched: true };
+          }
+          return e;
+        });
+        return {
+          ...old,
+          episodes: nextEpisodes,
+          watched: old.watched + delta,
+        };
+      });
+      return { prev };
+    },
+    onError: (_e, _ep, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(episodesQueryKey(params.id), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: episodesQueryKey(params.id),
+      });
+    },
+  }));
+
+  const onTap = (ep: EpisodeRow) => toggleMut.mutate(ep);
+  const onCascade = (ep: EpisodeRow) => cascadeMut.mutate(ep);
 
   const dtClass =
     "font-mono text-mini uppercase tracking-wider text-text-muted";
@@ -78,6 +198,11 @@ export default function ItemDetail() {
           </Show>
         }
         backHref="/lists"
+        aside={
+          <Show when={(episodes.data?.watched ?? 0) > 0}>
+            <ResetItemButton itemId={params.id} />
+          </Show>
+        }
       />
 
       <ColumnGuide />
@@ -117,7 +242,22 @@ export default function ItemDetail() {
                         />
                       }
                     >
-                      <EpisodeList rows={episodes.data!.episodes} />
+                      <EpisodeList
+                        rows={episodes.data!.episodes}
+                        onTap={onTap}
+                        onCascade={onCascade}
+                      />
+                      <Show
+                        when={
+                          episodes.data!.total >
+                          episodes.data!.episodes.length
+                        }
+                      >
+                        <LoadMore
+                          loading={episodes.isFetching}
+                          onLoad={() => setLimit((l) => l + PAGE_SIZE)}
+                        />
+                      </Show>
                     </Show>
                   </Show>
                 </>
@@ -279,66 +419,194 @@ function metaString(
 // ──────────────────────────────────────────────────────────────────────
 
 /**
- * Latest 12 episodes/chapters, newest on top. Same row pattern the rest of
- * the app uses inside a BentoModule: -mx-5 ul, hover bg bleeds to the
- * column edge, ::after hairlines between rows. Tick-action is deferred to
- * the next commit — for now the row is read-only and just shows the
- * watched/unwatched / released/unreleased state visually.
+ * Latest 12 episodes/chapters, newest on top. Each row is a button:
+ *   - Tap (or click) → toggle just this episode
+ *   - Long-press 500 ms (or right-click on desktop) → cascade-mark all
+ *     episodes ≤ this one as watched (the "bis hier alles" gesture)
+ *
+ * Hover bg bleeds to the column edge (-mx-5 ul), hairlines between rows,
+ * accent dot right-aligned for watched state.
  */
-function EpisodeList(props: { rows: EpisodeRow[] }) {
+function EpisodeList(props: {
+  rows: EpisodeRow[];
+  onTap: (ep: EpisodeRow) => void;
+  onCascade: (ep: EpisodeRow) => void;
+}) {
   return (
     <ul class="-mx-5">
       <For each={props.rows}>
-        {(ep) => <EpisodeListRow ep={ep} />}
+        {(ep) => (
+          <EpisodeListRow
+            ep={ep}
+            onTap={() => props.onTap(ep)}
+            onCascade={() => props.onCascade(ep)}
+          />
+        )}
       </For>
     </ul>
   );
 }
 
-function EpisodeListRow(props: { ep: EpisodeRow }) {
+const LONG_PRESS_MS = 500;
+
+function EpisodeListRow(props: {
+  ep: EpisodeRow;
+  onTap: () => void;
+  onCascade: () => void;
+}) {
   const released = () =>
     !props.ep.airDate || new Date(props.ep.airDate) <= new Date();
+
+  // Long-press machinery — pointer events so touch + mouse + stylus share
+  // one event stream (no duplicate-fire from iOS's synthetic click after
+  // touchend). `fired` lets the subsequent click event know that the
+  // long-press already handled the press and the click should no-op.
+  let timer: number | null = null;
+  let fired = false;
+  const [pressing, setPressing] = createSignal(false);
+
+  const cancelTimer = () => {
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    // Ignore right-button mouse downs — they go through onContextMenu
+    // instead, which fires the cascade directly without the 500 ms wait.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    fired = false;
+    setPressing(true);
+    cancelTimer();
+    timer = window.setTimeout(() => {
+      fired = true;
+      timer = null;
+      setPressing(false);
+      props.onCascade();
+    }, LONG_PRESS_MS);
+  };
+
+  const stopPress = () => {
+    cancelTimer();
+    setPressing(false);
+  };
+
+  const onClick = (e: MouseEvent) => {
+    // If the long-press already fired, swallow the trailing click so we
+    // don't also tap the row.
+    if (fired) {
+      e.preventDefault();
+      fired = false;
+      return;
+    }
+    props.onTap();
+  };
+
+  const onContextMenu = (e: MouseEvent) => {
+    // Power-user shortcut on desktop: right-click cascades immediately.
+    e.preventDefault();
+    cancelTimer();
+    setPressing(false);
+    fired = true; // suppress the click that may follow
+    props.onCascade();
+  };
+
+  onCleanup(cancelTimer);
+
   return (
-    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-      <div class="flex items-center gap-3 px-5 py-3">
-        {/* Episode-number — mono, tabular for column alignment */}
-        <span
-          class={`w-8 shrink-0 font-mono text-mini font-medium tabular-nums tracking-wider ${
-            released() ? "text-text" : "text-text-muted"
-          }`}
-        >
-          {String(props.ep.episodeNumber).padStart(2, "0")}
-        </span>
-        {/* Title — falls back to a mono "—" when AniList has no title */}
-        <span
-          class={`min-w-0 flex-1 truncate text-body ${
-            released() ? "text-text" : "text-text-muted"
-          }`}
-        >
+    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border">
+      <button
+        type="button"
+        onPointerDown={onPointerDown}
+        onPointerUp={stopPress}
+        onPointerLeave={stopPress}
+        onPointerCancel={stopPress}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        aria-label={
+          props.ep.watched
+            ? `Episode ${props.ep.episodeNumber}, gesehen. Tippen zum Entfernen, lang halten für „bis hier alles"`
+            : `Episode ${props.ep.episodeNumber}. Tippen zum Markieren, lang halten für „bis hier alles"`
+        }
+        class="group block w-full text-left transition-colors hover:bg-surface"
+        classList={{ "bg-surface": pressing() }}
+      >
+        <div class="flex items-center gap-3 px-5 py-3">
+          <span
+            class={`w-8 shrink-0 font-mono text-mini font-medium tabular-nums tracking-wider ${
+              released() ? "text-text" : "text-text-muted"
+            }`}
+          >
+            {String(props.ep.episodeNumber).padStart(2, "0")}
+          </span>
+          <span
+            class={`min-w-0 flex-1 truncate text-body ${
+              released() ? "text-text" : "text-text-muted"
+            }`}
+          >
+            <Show
+              when={props.ep.title}
+              fallback={
+                <span class="font-mono text-mini text-text-muted">—</span>
+              }
+            >
+              {props.ep.title}
+            </Show>
+          </span>
+          <div class="flex shrink-0 items-baseline gap-3 font-mono text-mini uppercase tracking-wider tabular-nums">
+            <Show when={props.ep.airDate && !released()}>
+              <span class="text-accent">Demnächst</span>
+            </Show>
+            <Show
+              when={props.ep.airDate}
+              fallback={<span class="text-text-muted">—</span>}
+            >
+              <span class="text-text-muted">
+                {dateLabel(props.ep.airDate!)}
+              </span>
+            </Show>
+          </div>
+          <span
+            aria-hidden
+            class={`size-2 shrink-0 rounded-full transition-colors ${
+              props.ep.watched ? "bg-accent" : "bg-transparent ring-1 ring-border"
+            }`}
+          />
+        </div>
+      </button>
+    </li>
+  );
+}
+
+/** "Weitere laden" — sits BELOW the EpisodeList. The wrapping div bleeds
+ *  to the column edges (-mx-5) so the inner button's hover bg fills the
+ *  full row width, matching the list-row hover bleed. The button itself
+ *  is intentionally NOT shaped like a Button primitive: just centered mono
+ *  caption + chevron, with bg-surface on hover — visually a continuation
+ *  of the list, not a CTA. */
+function LoadMore(props: { loading: boolean; onLoad: () => void }) {
+  return (
+    <div class="-mx-5">
+      <button
+        type="button"
+        onClick={props.onLoad}
+        disabled={props.loading}
+        class="block w-full px-5 py-3.5 transition-colors hover:bg-surface disabled:cursor-default disabled:opacity-60"
+      >
+        <div class="flex items-center justify-center gap-2 font-mono text-mini uppercase tracking-wider text-text-muted">
           <Show
-            when={props.ep.title}
+            when={props.loading}
             fallback={
-              <span class="font-mono text-mini text-text-muted">—</span>
+              <ChevronDown class="size-3.5" strokeWidth={1.75} />
             }
           >
-            {props.ep.title}
+            <Loader2 class="size-3.5 animate-spin" strokeWidth={1.75} />
           </Show>
-        </span>
-        {/* Air-date — short de label; "folgt" suffix for unreleased */}
-        <span class="shrink-0 font-mono text-mini uppercase tracking-wider tabular-nums text-text-muted">
-          <Show when={props.ep.airDate} fallback="—">
-            {airLabel(props.ep.airDate!, released())}
-          </Show>
-        </span>
-        {/* Watched marker — small accent dot for ticked episodes */}
-        <span
-          aria-label={props.ep.watched ? "Gesehen" : undefined}
-          class={`size-1.5 shrink-0 rounded-full ${
-            props.ep.watched ? "bg-accent" : "bg-transparent"
-          }`}
-        />
-      </div>
-    </li>
+          <span>{props.loading ? "Lädt …" : "Weitere laden"}</span>
+        </div>
+      </button>
+    </div>
   );
 }
 
@@ -372,12 +640,12 @@ function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
   );
 }
 
-/** "14. Sep" for released, "14. Sep · folgt" for future — short de-DE month. */
-function airLabel(iso: string, released: boolean): string {
-  const d = new Date(iso);
-  const label = d.toLocaleDateString("de-DE", {
+/** "14. Sep" — short de-DE month. Released/unreleased distinction is handled
+ *  visually in the row via a "Demnächst" accent prefix, so the date itself
+ *  always renders the same shape regardless of timing. */
+function dateLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("de-DE", {
     day: "2-digit",
     month: "short",
   });
-  return released ? label : `${label} · folgt`;
 }

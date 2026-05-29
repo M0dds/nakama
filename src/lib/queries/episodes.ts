@@ -116,10 +116,20 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
 // ──────────────────────────────────────────────────────────────────────────
 
 /** Episode payload for /item/:id. Triggers a lazy AniList fetch the first
- *  time + after 12 h. Empty + fetchable:false for non-episodic items. */
-export function episodesQueryOptions(user: User, itemId: string) {
+ *  time + after 12 h. Empty + fetchable:false for non-episodic items.
+ *
+ *  `limit` controls how many of the latest episodes are returned (default
+ *  26 — roughly one cour, fits most ongoing anime without needing to load
+ *  more). "Weitere laden" in the UI bumps the limit by another 26. The
+ *  queryKey is `[...episodesQueryKey(itemId), limit]` so each step is a
+ *  cache entry; invalidations target the prefix and clear all of them. */
+export function episodesQueryOptions(
+  user: User,
+  itemId: string,
+  limit: number = 26,
+) {
   return {
-    queryKey: episodesQueryKey(itemId),
+    queryKey: [...episodesQueryKey(itemId), limit] as const,
     queryFn: async (): Promise<EpisodePayload> => {
       // Read the item first — we need source/sourceId/metadata for the
       // lazy fetch decision. Single roundtrip, RLS scoped.
@@ -169,7 +179,7 @@ export function episodesQueryOptions(user: User, itemId: string) {
           .eq("item_id", itemId)
           .order("season_number", { ascending: false })
           .order("episode_number", { ascending: false })
-          .limit(12),
+          .limit(limit),
       ]);
 
       const total = totalRes.count ?? 0;
@@ -213,4 +223,64 @@ export function episodesQueryOptions(user: User, itemId: string) {
       };
     },
   };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Mutations
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Single-tap toggle. Plain insert/delete on episode_watches — sync fan-out
+ *  to other list members lands with Phase 7 via the toggle_episode_synced
+ *  RPC. Idempotent in both directions (upsert on insert, eq-delete is a
+ *  no-op when there's nothing to delete). */
+export async function toggleEpisode(input: {
+  episodeId: string;
+  userId: string;
+  watched: boolean;
+}): Promise<void> {
+  if (input.watched) {
+    const { error } = await supabase
+      .from("episode_watches")
+      .upsert(
+        { user_id: input.userId, episode_id: input.episodeId },
+        { onConflict: "user_id,episode_id" },
+      );
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("episode_watches")
+      .delete()
+      .eq("user_id", input.userId)
+      .eq("episode_id", input.episodeId);
+    if (error) throw error;
+  }
+}
+
+/** Long-press cascade. Goes through the mark_episodes_watched RPC, which
+ *  resolves the "all episodes ≤ upToEpisodeId" set server-side in one
+ *  statement (faster than a client-side fan-out + N inserts, and the only
+ *  path allowed to write other users' rows when sharing lands).
+ *
+ *  Pass _list_item_id=null for Phase 4 — sync fan-out is gated on a
+ *  sync-enabled list_item, which Phase 7 introduces. */
+export async function markEpisodesWatchedUpTo(input: {
+  itemId: string;
+  upToEpisodeId: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc("mark_episodes_watched", {
+    _item_id: input.itemId,
+    _up_to_episode_id: input.upToEpisodeId,
+    _list_item_id: null,
+  });
+  if (error) throw error;
+}
+
+/** Reset all of the caller's watch progress for one item via the
+ *  reset_item_progress RPC — a set-based delete server-side, so it doesn't
+ *  pull every episode id to the client first. */
+export async function resetItemProgress(itemId: string): Promise<void> {
+  const { error } = await supabase.rpc("reset_item_progress", {
+    _item_id: itemId,
+  });
+  if (error) throw error;
 }

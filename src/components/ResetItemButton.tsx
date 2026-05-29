@@ -1,0 +1,73 @@
+import { createSignal, Show } from "solid-js";
+import { createMutation, useQueryClient } from "@tanstack/solid-query";
+import { Check, X } from "lucide-solid";
+import {
+  episodesQueryKey,
+  resetItemProgress,
+} from "@/lib/queries/episodes";
+
+/**
+ * Inline-confirm reset for an item's watch progress. Same shape as
+ * DeleteListButton: trigger → "Wirklich zurücksetzen? · ✓ / ✗" in place.
+ * Reset clears every episode_watch the caller has for this item (server-
+ * side via reset_item_progress); doesn't touch other members' progress.
+ *
+ * Sits in the PageHeader aside slot (h-6 items-center), so both states
+ * share the same 24 px band — no baseline shift between trigger and
+ * confirm.
+ */
+export function ResetItemButton(props: { itemId: string }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = createSignal(false);
+
+  const mutation = createMutation(() => ({
+    mutationFn: () => resetItemProgress(props.itemId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: episodesQueryKey(props.itemId),
+      });
+      setConfirming(false);
+    },
+  }));
+
+  return (
+    <Show
+      when={confirming()}
+      fallback={
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+        >
+          Zurücksetzen
+        </button>
+      }
+    >
+      <span class="inline-flex items-center gap-2">
+        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+          Wirklich zurücksetzen?
+        </span>
+        <button
+          type="button"
+          aria-label="Ja, zurücksetzen"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+          class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          <Check class="size-3.5" strokeWidth={2.5} />
+        </button>
+        <button
+          type="button"
+          aria-label="Abbrechen"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            setConfirming(false);
+          }}
+          class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
+        >
+          <X class="size-3.5" strokeWidth={2} />
+        </button>
+      </span>
+    </Show>
+  );
+}
