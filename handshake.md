@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-5 abgeschlossen. Home Dashboard mit drei Modulen (Was kommt / Fortsetzen / Logbuch) live, „Neue Folge"-Badges auf allen Listen-Surfaces. Drag-Reorder + Pin-to-Top auf `/lists` und `/lists/:shortCode`. RowActions-Cluster (Pin · Reset · Move · Remove) als unified Hover-Affordance. Title-Enrichment via Jikan + MangaDex als Fallback für AniList-Lücken, versioned-backfill. **Phase 6 (Kalender) ist der nächste große Schritt — optional Phase 8 (Polish-Pass) zwischendurch.**
+**Stand:** Phasen 1-6 abgeschlossen. Kalender (`/calendar`) live: Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Jump-to-Date-Picker, Primary-Dot-Sprache (gefüllt = gesehen, hohl-accent = offen, hohl-grau = kommt noch). Home Dashboard mit drei Modulen (Was kommt / Fortsetzen / Logbuch) live, „Neue Folge"-Badges auf allen Listen-Surfaces; Fortsetzen-Rows zeigen den Folgentitel. Drag-Reorder + Pin-to-Top auf `/lists` und `/lists/:shortCode`. RowActions-Cluster (Pin · Reset · Move · Remove) als unified Hover-Affordance. Title-Enrichment via Jikan + MangaDex als Fallback für AniList-Lücken, versioned-backfill. **Phase 7 (Sharing) ist der nächste große Schritt — optional Phase 8 (Polish-Pass) zwischendurch.**
 
 ---
 
@@ -76,7 +76,7 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 | `/lists/:shortCode` | protected (AppLayout) | done — DB-generated `adj-adj-noun` (`/lists/mystic-coral-voyager`) |
 | `/item/:type/:slug` | protected (AppLayout) | done — DB-generated slug mit `-<source_id>` Suffix bei Kollision |
 | `/profile` | protected (AppLayout) | done |
-| `/calendar` | — | NICHT existiert, Phase 6 |
+| `/calendar` | protected (AppLayout) | done — Wochen-/Monats-Grid + Tag-Pane Quick-Tick + Date-Picker |
 | `*` | public | NotFound |
 
 ---
@@ -344,7 +344,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **3 · Listen** | ✓ done — Overview, Detail, Create/Rename/Delete, Tracking-Toggle, Realtime, Optimistic |
 | **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe Offene Punkte). Inkl. Jikan + MangaDex Title-Fallback, Heute/Morgen/Demnächst-Tags |
 | **5 · Home Dashboard** | ✓ done — Was kommt / Fortsetzen / Logbuch. „Neue Folge"-Badges auf allen List-Surfaces |
-| **6 · Kalender** | offen — Wochen-/Monatsansicht, Tag-Pane, Quick-Tick |
+| **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker. Offen: Mitseher (Phase 7), dynamisches Range-Read |
 | **7 · Sharing** | offen — Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator, Ownership-Transfer |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Skeleton-States, Route-Transitions |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
@@ -355,7 +355,9 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Konkret offen für die nächste Session
 
-1. **Phase 6 — Kalender.** `/calendar` Route existiert noch nicht. Logbook hat Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Daten aus den existierenden `episodes`-Tabellen + `item_progress` RPC. Vielleicht dedizierter `calendarQueryOptions` für effizientere Range-Reads.
+1. **Phase 7 — Sharing.** Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator (Auge-Icon — im Kalender bereits ein Slot links vom Watched-Punkt in der Tag-Pane vorgesehen; auch Logbuch-Welle-2), Ownership-Transfer. Backend-RPCs liegen großteils schon (`invite_to_list`, `get_my_invitations`, `accept_list_invitation`, `transfer_list_ownership`, `backfill_sync_for_list_item`). Sync-Fan-out: `mark_episodes_watched` + Toggle auf `toggle_episode_synced` mit echter `list_item.id` statt `null` umstellen (Calendar `cascadeMut`/`toggleMut` + ItemDetail).
+
+   **Kalender (Phase 6) ist gelandet** — `src/routes/Calendar.tsx` + `src/lib/queries/calendar.ts`. Bewusst offen: Mitseher-Indikator (Phase 7), dynamisches Range-Read statt fix-breitem Fenster (`calendar.ts` WINDOW_BACK/AHEAD = −2/+4 Monate, keyed nur by userId — weit-raus-Navigation zeigt leere Tage bis zum nächsten Stale-Refresh).
 
 2. **(Optional) Phase 8 — Polish-Pass zwischendurch.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
 
@@ -409,6 +411,7 @@ Vollständig in `CLAUDE.md`. Quick reference:
 - **Layout-Persistenz braucht Parent-Routes.** Wenn ein Layout-Wrapper über Routenwechsel mounted bleiben soll, MUSS er als Parent-Route mit Pages als `children`-Array deklariert sein. Per-Page-Import des Wrappers → Re-Mount pro Navigation.
 - **`on()` vs plain `createEffect`:** `on(deps, fn)` DEFERRED den ersten Run per default. Plain `createEffect` fires on initial setup AND on dep changes.
 - **Show-Wrapper + Transitions:** Wenn `<Show>` ein animiertes Element umhüllt, kann beim Wechsel von falsy → truthy → falsy das Element unmount → remount, was Transitions zerschießt. Lösung: Always-render mit opacity gating. Ausnahme: wenn das Element von einem gemessenen Wert abhängt (z.B. AddSheet `origin()`), `<Show when={origin()}>` damit das erste Render schon korrekte Werte hat.
+- **`<For>` remountet bei Objekt-Identitätswechsel — Hover-/CSS-State-Flicker.** `<For>` keyt nach Objekt-Referenz. Optimistic-Updates (`setQueryData(key, old => old.map(e => match ? {...e, x} : e))`) erzeugen für den getroffenen Eintrag eine NEUE Referenz → `<For>` disposed die alte Row und mountet eine frische. Die frisch eingefügte DOM-Row verliert für einen Frame ihren `:hover`-Zustand → sichtbares Flackern. Bei einem optimistic-patch + settle-refetch passiert das ZWEIMAL (zwei neue Arrays). Lösung für Listen deren Items sich in-place ändern (statt umsortiert/added/removed werden): `<Index each={...}>{(ev) => <Row ev={ev()} .../>}</Index>` — Index keyt nach Position, die Row bleibt gemountet, nur `props.ev` (als reaktiver Getter) aktualisiert sich. Referenz: Calendar Tag-Pane `DayPaneRow`. Achtung: Index NUR wenn die Listenlänge/-reihenfolge stabil ist; für Drag-Reorder etc. bleibt `<For>` korrekt.
 
 ### Animation-Patterns
 

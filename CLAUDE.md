@@ -1,6 +1,6 @@
 # Nakama
 
-**Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user. **Stand:** Phase 1-5 done. Phase 5 Home Dashboard gelandet (Was kommt accordion + Fortsetzen accordion + Logbuch mit bundled watch/list_add events). „Neue Folge"-Badges auf `/lists` + `/lists/:shortCode` + Fortsetzen-Rows. Jikan + MangaDex als Title-Fallback für AniList-Lücken (One Piece & Co), versioned-backfill für DB-Bestand. RowActions-Cluster (Pin + Reset/Move/Remove merged) auf Item-Rows. Cross-Cutting Cache-Pattern via `listsQueryKey` + `["list"]`-Prefix. Cover-Auflösung upgegradet via `highResCover()`. **Phase 6 (Kalender) ist der nächste große Schritt — optional Phase 8 Polish-Pass dazwischen.**
+**Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user. **Stand:** Phase 1-6 done. Phase 6 Kalender gelandet (`/calendar`: Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Date-Picker, Primary-Dot-Sprache gefüllt/hohl, Fortsetzen-Anatomie in den Tag-Pane-Rows). Phase 5 Home Dashboard (Was kommt + Fortsetzen + Logbuch mit bundled watch/list_add events); Fortsetzen-Rows zeigen jetzt den Folgentitel. „Neue Folge"-Badges auf `/lists` + `/lists/:shortCode` + Fortsetzen-Rows. Jikan + MangaDex als Title-Fallback für AniList-Lücken (One Piece & Co), versioned-backfill für DB-Bestand. RowActions-Cluster (Pin + Reset/Move/Remove merged) auf Item-Rows. Cross-Cutting Cache-Pattern via `listsQueryKey` + `["list"]`-Prefix. Cover-Auflösung upgegradet via `highResCover()`. **Phase 7 (Sharing) ist der nächste große Schritt — optional Phase 8 Polish-Pass dazwischen.**
 
 **Design tokens** live in `src/index.css` (CSS vars + Tailwind v4 `@theme inline`). Names mirror the handshake (`--bg`, `--accent`, `--text-mini`, etc.). Storage keys are prefixed `nakama:*` (NOT `logbook:*`).
 
@@ -14,9 +14,10 @@
 
 **Next concrete steps** (see handshake §Offene Punkte for full detail):
 1. **Health-Refactoring-Backlog ABGESCHLOSSEN.** Alle 7 Bundles erledigt (siehe `HEALTH.md` mit Commit-SHAs). Es bleiben nur die bewusst deferred Findings (A5 Item-Page-Round-Trips, C8 Telemetry, D1-D3 defensiv). Nakama hat jetzt einen eigenen `supabase/migrations/`-Ordner — drei Files (Phase-3-5-Catch-up + Bundle-5-Home-RPCs + Bundle-7-Pin-RPCs); alle im Supabase-Projekt angewendet. Migrationen weiterhin manuell im SQL-Editor fahren. Offene UX-Kleinigkeit: Dashboard-Row-Padding (Memory `home-dashboard-row-padding`).
-2. **Phase 6: Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Datenquellen sind die existierenden `episodes`-Tabellen + RPC `item_progress`.
-3. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.
-4. Bei kleinen User-Wünschen vor Phase 6: gleich abarbeiten. Atomar committen.
+2. **Phase 6 Kalender ABGESCHLOSSEN (erster Wurf).** `/calendar` lebt (`src/routes/Calendar.tsx` + `src/lib/queries/calendar.ts`). Bewusst offen: Mitseher-Indikator (kommt mit Phase 7 Sharing), dynamisches Range-Read statt fix-breitem Fenster (−2/+4 Monate).
+3. **Phase 7: Sharing.** Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator (auch im Kalender + Logbuch), Ownership-Transfer. RPCs liegen großteils schon im Backend (`invite_to_list`, `accept_list_invitation`, `transfer_list_ownership`, `backfill_sync_for_list_item` etc.). Sync-Fan-out: `mark_episodes_watched`/`toggle_episode_synced` mit echter `list_item.id` statt `null`.
+4. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.
+5. Bei kleinen User-Wünschen vor Phase 7: gleich abarbeiten. Atomar committen.
 
 @AGENTS.md
 @handshake.md
