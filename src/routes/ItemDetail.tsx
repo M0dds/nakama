@@ -7,7 +7,9 @@ import {
 } from "@tanstack/solid-query";
 import { ChevronDown, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { highResCover } from "@/lib/anilist";
 import { itemQueryOptions } from "@/lib/queries/items";
+import { listsQueryKey } from "@/lib/queries/lists";
 import {
   episodesQueryKey,
   episodesQueryOptions,
@@ -80,14 +82,29 @@ export default function ItemDetail() {
   // Phase 7 lands) or a backfill on this item refreshes the local cache.
   // Channel + invalidation key both keyed on (type, slug) — static from
   // params, so safe to register onMount even before item.data lands.
+  //
+  // Why the lists keys are also invalidated here: the "Neue Folge" badge
+  // on /lists rows and /lists/:shortCode item rows is derived from this
+  // item's air dates × the caller's watches. Ticking an episode here
+  // changes both surfaces' badges; without an invalidation those caches
+  // stay stale up to query-client.ts's 5-min staleTime. Prefix ["list"]
+  // also catches the single listQueryKey — minor extra refetch, accepted.
   useRealtimeInvalidation(`item-${params.type}-${params.slug}`, [
     {
       table: "episodes",
-      invalidates: [episodesQueryKey(params.type, params.slug)],
+      invalidates: [
+        episodesQueryKey(params.type, params.slug),
+        listsQueryKey,
+        ["list"],
+      ],
     },
     {
       table: "episode_watches",
-      invalidates: [episodesQueryKey(params.type, params.slug)],
+      invalidates: [
+        episodesQueryKey(params.type, params.slug),
+        listsQueryKey,
+        ["list"],
+      ],
     },
   ]);
 
@@ -124,9 +141,15 @@ export default function ItemDetail() {
         queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
     },
     onSettled: () => {
+      // Episode tick + cascade both ripple to: this item's episodes query,
+      // the lists overview (newCounts), and every list-detail items query
+      // (per-row hasNewEpisode). Prefix ["list"] covers all listItemsQueryKey
+      // shortCodes — same item can live in multiple lists.
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(params.type, params.slug),
       });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
     },
   }));
 
@@ -170,9 +193,15 @@ export default function ItemDetail() {
         queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
     },
     onSettled: () => {
+      // Episode tick + cascade both ripple to: this item's episodes query,
+      // the lists overview (newCounts), and every list-detail items query
+      // (per-row hasNewEpisode). Prefix ["list"] covers all listItemsQueryKey
+      // shortCodes — same item can live in multiple lists.
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(params.type, params.slug),
       });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
     },
   }));
 
@@ -258,6 +287,7 @@ export default function ItemDetail() {
                     >
                       <EpisodeList
                         rows={episodes.data!.episodes}
+                        itemType={params.type}
                         onTap={onTap}
                         onCascade={onCascade}
                       />
@@ -348,8 +378,11 @@ function Cover(props: { coverUrl: string | null; fallbackLetter: string }) {
           </div>
         }
       >
+        {/* Up to 220 px wide, so the stored `/cover/medium/` URL (~230 px
+            native) tips into pixelated territory on retina. highResCover
+            swaps in `/cover/large/` (~430 px) — same host. */}
         <img
-          src={props.coverUrl!}
+          src={highResCover(props.coverUrl)!}
           alt=""
           class="size-full object-cover"
           loading="lazy"
@@ -444,6 +477,7 @@ function metaString(
  */
 function EpisodeList(props: {
   rows: EpisodeRow[];
+  itemType: string;
   onTap: (ep: EpisodeRow) => void;
   onCascade: (ep: EpisodeRow) => void;
 }) {
@@ -453,6 +487,7 @@ function EpisodeList(props: {
         {(ep) => (
           <EpisodeListRow
             ep={ep}
+            itemType={props.itemType}
             onTap={() => props.onTap(ep)}
             onCascade={() => props.onCascade(ep)}
           />
@@ -466,11 +501,25 @@ const LONG_PRESS_MS = 500;
 
 function EpisodeListRow(props: {
   ep: EpisodeRow;
+  itemType: string;
   onTap: () => void;
   onCascade: () => void;
 }) {
   const released = () =>
     !props.ep.airDate || new Date(props.ep.airDate) <= new Date();
+
+  // Day-bucket tag, based on calendar-day offset (NOT clock time): airDate
+  // today = "Heute" even if it already aired this morning; tomorrow = "Morgen";
+  // further out = "Demnächst". Past dates get no tag. Independent of the
+  // released() check above which still drives the text-muted dimming.
+  const tagLabel = () => {
+    if (!props.ep.airDate) return null;
+    const offset = dayOffset(props.ep.airDate);
+    if (offset === 0) return "Heute";
+    if (offset === 1) return "Morgen";
+    if (offset > 1) return "Demnächst";
+    return null;
+  };
 
   // Long-press machinery — pointer events so touch + mouse + stylus share
   // one event stream (no duplicate-fire from iOS's synthetic click after
@@ -560,27 +609,38 @@ function EpisodeListRow(props: {
               released() ? "text-text" : "text-text-muted"
             }`}
           >
+            {/* Title fallback splits by release status: released-without-title
+                stays a placeholder em-dash (old anime where the data source
+                just doesn't have it), unreleased gets a sentence so the user
+                knows it's a "will be revealed" gap, not a data hole. */}
             <Show
               when={props.ep.title}
               fallback={
-                <span class="font-mono text-mini text-text-muted">—</span>
+                released() ? (
+                  <span class="font-mono text-mini text-text-muted">—</span>
+                ) : (
+                  <span class="text-text-muted">
+                    {unknownTitleLabel(props.itemType)}
+                  </span>
+                )
               }
             >
               {props.ep.title}
             </Show>
           </span>
+          {/* Right cluster — tag (variable, possibly absent) + a FIXED-WIDTH
+              date column so the tag's right edge sits at the same x across
+              every row. Without the fixed date width the tag floated left/right
+              depending on the date's character count. */}
           <div class="flex shrink-0 items-baseline gap-3 font-mono text-mini uppercase tracking-wider tabular-nums">
-            <Show when={props.ep.airDate && !released()}>
-              <span class="text-accent">Demnächst</span>
+            <Show when={tagLabel()}>
+              <span class="text-accent">{tagLabel()}</span>
             </Show>
-            <Show
-              when={props.ep.airDate}
-              fallback={<span class="text-text-muted">—</span>}
-            >
-              <span class="text-text-muted">
+            <span class="w-20 shrink-0 text-right text-text-muted">
+              <Show when={props.ep.airDate} fallback={<>—</>}>
                 {dateLabel(props.ep.airDate!)}
-              </span>
-            </Show>
+              </Show>
+            </span>
           </div>
           <span
             aria-hidden
@@ -655,12 +715,41 @@ function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
   );
 }
 
-/** "14. Sep" — short de-DE month. Released/unreleased distinction is handled
- *  visually in the row via a "Demnächst" accent prefix, so the date itself
- *  always renders the same shape regardless of timing. */
+/** Compact 3-letter month abbreviations for the episode-list date column.
+ *  de-DE's built-in `month: "short"` returns mixed-length names — "Sept.",
+ *  "März", "Juni", "Juli" all break the 3-letter rhythm — so we ship our
+ *  own table to guarantee every label is the same width.
+ *  Released/unreleased distinction is handled visually via the
+ *  Heute/Morgen/Demnächst accent tag; the date itself always renders the
+ *  same shape regardless of timing. */
+const MONTH_ABBR_3 = [
+  "Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
+  "Jul", "Aug", "Sep", "Okt", "Nov", "Dez",
+] as const;
+
 function dateLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "short",
-  });
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
+}
+
+/** Fallback for unreleased episodes with no title yet — AniList only fills
+ *  streamingEpisodes.title once the episode actually airs, so future rows
+ *  almost always have title=null. The em-dash placeholder was honest but
+ *  cold; this reads as "title will follow" instead of "data hole". Manga
+ *  uses des-Kapitels grammar, otherwise der-Folge. */
+function unknownTitleLabel(type: string): string {
+  return type === "manga"
+    ? "Name des Kapitels ist noch nicht bekannt"
+    : "Name der Folge ist noch nicht bekannt";
+}
+
+/** Calendar-day offset of `iso` from today (0 = today, 1 = tomorrow, etc).
+ *  Uses local midnight on both ends, so an episode airing today at 8am stays
+ *  "today" regardless of the current clock time. */
+function dayOffset(iso: string): number {
+  const d = new Date(iso);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((dDay.getTime() - startToday.getTime()) / 86_400_000);
 }
