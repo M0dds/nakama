@@ -153,32 +153,22 @@ function bySectionThenSort(a: ListSummary, b: ListSummary): number {
 const NEW_WINDOW_DAYS = 14;
 
 /**
- * Per-user map of itemId → type for items that have at least one
- * released-but-unwatched episode within the new-window. Powers the
- * "Neue Folge" / "Neues Kapitel" badges on /lists rows + /lists/:shortCode
- * item rows.
+ * Filters `itemIds` down to the subset that have at least one released-
+ * but-unwatched episode inside the new-window. Two round-trips: episodes
+ * in window, then the caller's watches over them.
  *
- * Four round-trips (items in user's lists → recent episodes for them →
- * the user's watches over those → item types). No RPC: volumes are tiny
- * and the JS join is cheap. Direct port of Logbook's getItemsWithNewEpisodes.
+ * The candidate item set is passed in so the caller can scope it — e.g.
+ * `listItemsQueryOptions` only cares about items in ONE list and no longer
+ * needs to scan the user's full catalogue. Item-type resolution lives
+ * with the caller (who already has it from their main fetch), saving the
+ * previous fourth round-trip to `items`.
  */
-async function getItemsWithNewEpisodes(
+async function findItemsWithNewEpisodes(
   userId: string,
-): Promise<Map<string, string>> {
-  // 1. All items the user can see in any list they're a member of.
-  const { data: liRows, error: liErr } = await supabase
-    .from("list_items")
-    .select("item_id");
-  if (liErr) {
-    console.error("list_items query failed", liErr);
-    return new Map();
-  }
-  const itemIds = [
-    ...new Set((liRows ?? []).map((r) => r.item_id as string)),
-  ];
-  if (itemIds.length === 0) return new Map();
+  itemIds: string[],
+): Promise<Set<string>> {
+  if (itemIds.length === 0) return new Set();
 
-  // 2. Episodes that aired in the new-window for those items.
   const sinceIso = new Date(
     Date.now() - NEW_WINDOW_DAYS * 86_400_000,
   ).toISOString();
@@ -191,12 +181,11 @@ async function getItemsWithNewEpisodes(
     .lte("air_date", nowIso);
   if (epErr) {
     console.error("episodes window query failed", epErr);
-    return new Map();
+    return new Set();
   }
   const eps = (epRows ?? []) as { id: string; item_id: string }[];
-  if (eps.length === 0) return new Map();
+  if (eps.length === 0) return new Set();
 
-  // 3. The caller's watches over those episodes — what's been ticked.
   const { data: wRows, error: wErr } = await supabase
     .from("episode_watches")
     .select("episode_id")
@@ -207,43 +196,29 @@ async function getItemsWithNewEpisodes(
     .eq("user_id", userId);
   if (wErr) {
     console.error("episode_watches join failed", wErr);
-    return new Map();
+    return new Set();
   }
   const watched = new Set((wRows ?? []).map((w) => w.episode_id as string));
 
-  const withNewIds = new Set<string>();
-  for (const e of eps) if (!watched.has(e.id)) withNewIds.add(e.item_id);
-  if (withNewIds.size === 0) return new Map();
-
-  // 4. Resolve types so the consumer can pick "Folge" vs "Kapitel" wording.
-  const { data: items, error: iErr } = await supabase
-    .from("items")
-    .select("id, type")
-    .in("id", [...withNewIds]);
-  if (iErr) {
-    console.error("items type lookup failed", iErr);
-    return new Map();
-  }
-  const result = new Map<string, string>();
-  for (const it of items ?? [])
-    result.set(it.id as string, it.type as string);
+  const result = new Set<string>();
+  for (const e of eps) if (!watched.has(e.id)) result.add(e.item_id);
   return result;
 }
 
-/** Aggregate (list_id, item_id) pairs into per-list (folgen, kapitel)
- *  counts, driven by the global new-items map. anime/series count as
- *  Folgen, manga as Kapitel; movies/games are ignored (no episode model). */
+/** Aggregate (list_id, item_id, type) pairs into per-list (folgen, kapitel)
+ *  counts, filtered to the items that qualified as new. anime/series count
+ *  as Folgen, manga as Kapitel; movies/games are ignored (no episode model).
+ *  Type travels alongside the pair so we don't need a separate items lookup. */
 function aggregateNewCounts(
-  pairs: { list_id: string; item_id: string }[],
-  newItemsMap: Map<string, string>,
+  pairs: { list_id: string; item_id: string; type: string }[],
+  newItemsSet: Set<string>,
 ): Map<string, { folgen: number; kapitel: number }> {
   const counts = new Map<string, { folgen: number; kapitel: number }>();
   for (const p of pairs) {
-    const t = newItemsMap.get(p.item_id);
-    if (!t) continue;
+    if (!newItemsSet.has(p.item_id)) continue;
     const c = counts.get(p.list_id) ?? { folgen: 0, kapitel: 0 };
-    if (t === "manga") c.kapitel++;
-    else if (t === "anime" || t === "series") c.folgen++;
+    if (p.type === "manga") c.kapitel++;
+    else if (p.type === "anime" || p.type === "series") c.folgen++;
     counts.set(p.list_id, c);
   }
   return counts;
@@ -274,40 +249,50 @@ export function listsQueryOptions(user: User) {
       private: ListSummary[];
       shared: ListSummary[];
     }> => {
-      // Three parallel queries: the lists+memberships join, the global
-      // new-items map, and (only if there are new items) the (list_id,
-      // item_id) pairs we need to aggregate counts per list.
-      const [{ data, error }, newItemsMap] = await Promise.all([
+      // Two parallel queries: the lists+memberships join, and the items-
+      // on-visible-lists pairs (with type for the folgen/kapitel split).
+      // The pairs query subsumes both the "what items can the user see"
+      // and the "what type is each" lookups that the previous helper did
+      // in separate round-trips. RLS scopes the pairs to lists the user
+      // is a member of.
+      const [membershipRes, pairsRes] = await Promise.all([
         supabase
           .from("list_members")
           .select(
             `pinned_at, sort_order, tracks_home, lists!inner(${LIST_SELECT})`,
           )
           .eq("user_id", user.id),
-        getItemsWithNewEpisodes(user.id),
+        supabase
+          .from("list_items")
+          .select("list_id, item_id, items!inner(type)"),
       ]);
 
-      if (error) throw error;
+      if (membershipRes.error) throw membershipRes.error;
+      if (pairsRes.error)
+        console.error("list_items pair lookup failed", pairsRes.error);
 
-      let newCountsByList = new Map<
-        string,
-        { folgen: number; kapitel: number }
-      >();
-      if (newItemsMap.size > 0) {
-        const { data: pairs, error: pairsErr } = await supabase
-          .from("list_items")
-          .select("list_id, item_id");
-        if (pairsErr) {
-          console.error("list_items pair lookup failed", pairsErr);
-        } else {
-          newCountsByList = aggregateNewCounts(
-            (pairs ?? []) as { list_id: string; item_id: string }[],
-            newItemsMap,
-          );
-        }
-      }
+      // Flatten PostgREST's embedded { items: { type } } shape. Skip rows
+      // where the items embed came back null (RLS edge-case — shouldn't
+      // happen since lists+items share caller-visible scope, but defensive).
+      const rawPairs = (pairsRes.data ?? []) as unknown as Array<{
+        list_id: string;
+        item_id: string;
+        items: { type: string } | null;
+      }>;
+      const flatPairs = rawPairs.flatMap((r) => {
+        const type = r.items?.type;
+        if (!type) return [];
+        return [{ list_id: r.list_id, item_id: r.item_id, type }];
+      });
+      const itemIds = [...new Set(flatPairs.map((p) => p.item_id))];
 
-      const rows = (data ?? []) as unknown as RawMembershipJoinRow[];
+      // Episode-window check runs serial-after the pairs because it needs
+      // the candidate item set. Two more round-trips inside; see
+      // findItemsWithNewEpisodes.
+      const newItemsSet = await findItemsWithNewEpisodes(user.id, itemIds);
+      const newCountsByList = aggregateNewCounts(flatPairs, newItemsSet);
+
+      const rows = (membershipRes.data ?? []) as unknown as RawMembershipJoinRow[];
       const summaries: ListSummary[] = rows
         .map((r) => ({
           ...toSummary(r.lists, user, {
@@ -395,17 +380,23 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
   return {
     queryKey: listItemsQueryKey(shortCode),
     queryFn: async (): Promise<ListEntry[]> => {
-      const [{ data, error }, newItemsMap] = await Promise.all([
-        supabase
-          .from("list_items")
-          .select(
-            "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
-          )
-          .eq("lists.short_code", shortCode),
-        getItemsWithNewEpisodes(user.id),
-      ]);
+      // Scoped fetch: this list's list_items + the embedded items meta
+      // (title/type/slug/cover_url). The itemIds extracted from the
+      // response bound the new-episode check below — no need to scan the
+      // user's entire catalogue the way the previous global helper did.
+      const { data, error } = await supabase
+        .from("list_items")
+        .select(
+          "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
+        )
+        .eq("lists.short_code", shortCode);
       if (error) throw error;
-      const rows = ((data as unknown as RawListItemRow[]) ?? []).map((r) => ({
+
+      const rawRows = (data as unknown as RawListItemRow[]) ?? [];
+      const itemIds = [...new Set(rawRows.map((r) => r.item_id))];
+      const newItemsSet = await findItemsWithNewEpisodes(user.id, itemIds);
+
+      const rows = rawRows.map((r) => ({
         listItemId: r.id,
         itemId: r.item_id,
         type: r.items?.type ?? "anime",
@@ -415,7 +406,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
         syncEnabled: r.sync_enabled,
         pinned: r.pinned_at !== null,
         sortOrder: r.sort_order,
-        hasNewEpisode: newItemsMap.has(r.item_id),
+        hasNewEpisode: newItemsSet.has(r.item_id),
       }));
       return rows.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
