@@ -287,6 +287,32 @@ export async function deleteList(listId: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Remove an item from a list (delete the list_items row). The item itself
+ *  stays in `items` — it's still in the catalogue, just no longer on this
+ *  list. Watch progress is keyed on items.id, so it's preserved even if the
+ *  same item gets re-added later. */
+export async function removeListItem(listItemId: string): Promise<void> {
+  const { error } = await supabase
+    .from("list_items")
+    .delete()
+    .eq("id", listItemId);
+  if (error) throw error;
+}
+
+/** Move a list_items row to a different list. Sync is reset to false because
+ *  the new list may have different members — if the caller wants sync in the
+ *  new list, they re-enable it there (handshake §Phase 7). */
+export async function moveListItem(input: {
+  listItemId: string;
+  targetListId: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from("list_items")
+    .update({ list_id: input.targetListId, sync_enabled: false })
+    .eq("id", input.listItemId);
+  if (error) throw error;
+}
+
 /**
  * Toggle the per-user tracks_home flag. Off = archive mode for the caller
  * only — items in this list drop off Home / Calendar / Logbook for them.

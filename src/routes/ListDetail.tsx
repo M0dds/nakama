@@ -1,6 +1,5 @@
 import { For, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
-import { ChevronRight } from "lucide-solid";
 import { createQuery } from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
 import {
@@ -17,6 +16,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
+import { ListEntryActions } from "@/components/ListEntryActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { NotFound } from "@/components/NotFound";
 
@@ -137,7 +137,10 @@ export default function ListDetail() {
                 when={items.data && items.data.length > 0}
                 fallback={<EntriesEmpty />}
               >
-                <ListEntries items={items.data!} />
+                <ListEntries
+                  items={items.data!}
+                  listShortCode={params.shortCode}
+                />
               </Show>
             </Show>
           </BentoModule>
@@ -220,22 +223,23 @@ function typeLabel(type: string): string {
   }
 }
 
-/** Items als Rows im selben Pattern wie ListRows auf /lists: -mx-5 ul,
- *  hover-bg blutet zu den Spaltenrändern, ::after-Hairline pro li (last:hidden).
- *  Cover-Thumb links (size-12 rounded-xs), Titel + Type-Label drunter,
- *  Chevron-Right rechts mit micro-translate beim Hover. Klick → /item/:id
- *  (Route landet im nächsten Schritt; bis dahin trifft der Klick NotFound). */
-function ListEntries(props: { items: ListEntry[] }) {
+/** Items als Rows in einer Liste. Pattern: -mx-5 ul, hover-bg blutet zu den
+ *  Spaltenrändern, ::after-Hairline pro li (inkl. last). Cover + Titel sind
+ *  in einem <A>-Link; rechts daneben sitzt ListEntryActions als Sibling
+ *  (NICHT im <a> verschachtelt — Buttons in einem Anchor sind ungültiges
+ *  HTML + verhalten sich unzuverlässig beim Klick). Default ohne Chevron;
+ *  die ge-faded-in Action-Icons sind die hover-affordance. */
+function ListEntries(props: { items: ListEntry[]; listShortCode: string }) {
   return (
     <ul class="-mx-5">
       <For each={props.items}>
         {(entry) => (
-          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-            <A
-              href={`/item/${entry.type}/${entry.slug}`}
-              class="group block transition-colors hover:bg-surface"
-            >
-              <div class="flex items-center gap-3 px-5 py-3">
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border">
+            <div class="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface">
+              <A
+                href={`/item/${entry.type}/${entry.slug}`}
+                class="flex min-w-0 flex-1 items-center gap-3"
+              >
                 <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
                   <Show
                     when={entry.coverUrl}
@@ -261,12 +265,19 @@ function ListEntries(props: { items: ListEntry[] }) {
                     {typeLabel(entry.type)}
                   </p>
                 </div>
-                <ChevronRight
-                  class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
-                  strokeWidth={1.75}
-                />
-              </div>
-            </A>
+              </A>
+              <ListEntryActions
+                itemId={entry.itemId}
+                listItemId={entry.listItemId}
+                itemTitle={entry.title}
+                itemType={entry.type}
+                itemSlug={entry.slug}
+                listShortCode={props.listShortCode}
+                onRequestMove={() => {
+                  /* TODO Commit B: open MoveItemDialog */
+                }}
+              />
+            </div>
           </li>
         )}
       </For>
