@@ -214,8 +214,6 @@ export default function Lists() {
 
       <ColumnGuide />
 
-      <InvitationsInbox />
-
       <DragDropProvider
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -223,8 +221,9 @@ export default function Lists() {
       >
         <DragDropSensors />
         <div class="flex flex-col md:flex-row md:items-start">
-          {/* Linke Spalte 2/3 — Deine Listen + Geteilte Listen */}
+          {/* Linke Spalte 2/3 — Einladungen + Deine Listen + Geteilte Listen */}
           <div class="md:w-2/3">
+            <InvitationsInbox />
             <Show
               when={lists.data}
               fallback={

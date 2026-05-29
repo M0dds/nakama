@@ -76,7 +76,7 @@ export function InvitationsInbox() {
         <ul class="-mx-5">
           <For each={invitations.data}>
             {(inv) => (
-              <li class="relative flex flex-col gap-3 px-5 py-3 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden sm:flex-row sm:items-center sm:justify-between">
+              <li class="relative flex flex-col gap-3 px-5 py-3 transition-colors hover:bg-surface after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-body text-text">
                   <span class="font-medium">{inv.inviterName}</span> lädt dich zu{" "}
                   <span class="font-medium">„{inv.listName}"</span> ein
