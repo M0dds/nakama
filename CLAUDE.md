@@ -13,12 +13,11 @@
 - Dev: `npm run dev` on port 5173 (kann auf 5174 ausweichen wenn 5173 belegt).
 
 **Next concrete steps** (see handshake §Offene Punkte for full detail):
-1. **Phase 6: Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Datenquellen sind die existierenden `episodes`-Tabellen + RPC `item_progress`.
-2. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text-Fallbacks, Cover-Fade-in beim onload, Theme-Switch-Transition. Plan wurde in letzter Session aufgesetzt und auf Phase 5 verschoben.
-3. Bei kleinen User-Wünschen vor Phase 6: gleich abarbeiten. Atomar committen.
+1. **Health-Refactoring-Backlog läuft parallel.** `HEALTH.md` listet 7 Bundles (Query-Effizienz, Drag-DRY, Episode-Enrichment-Unify, Format-Helpers, RPC-Migration, Mutation-Correctness, AddSheet-Origin + Pin-Race). User möchte die alle umgesetzt haben (ich code, er reviewt) — kein Bundle in einem Schritt, sondern atomar pro Session. Status pro Bundle wird in HEALTH.md mit Commit-SHA gepflegt.
+2. **Phase 6: Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Datenquellen sind die existierenden `episodes`-Tabellen + RPC `item_progress`.
+3. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.
+4. Bei kleinen User-Wünschen vor Phase 6: gleich abarbeiten. Atomar committen.
 
 @AGENTS.md
 @handshake.md
-
-@AGENTS.md
-@handshake.md
+@HEALTH.md
