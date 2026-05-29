@@ -69,26 +69,34 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     }));
   };
 
-  /** If we opened the sheet from `/lists/<id>`, pre-select that list. */
-  const listIdFromRoute = (): string | null => {
+  /** The list shortCode in the URL when we opened from `/lists/<shortCode>`,
+   *  else null. Note this is the shortCode (`mystic-coral-voyager`), NOT the
+   *  list UUID — it must be resolved against the loaded summaries below. */
+  const shortCodeFromRoute = (): string | null => {
     const m = location.pathname.match(/^\/lists\/([^/]+)$/);
     return m?.[1] ?? null;
   };
 
   const [targetListId, setTargetListId] = createSignal<string>("");
 
-  // Once the lists load, pick a sensible default: the route's list if we're
-  // on a detail page, otherwise the first list. Only do this once, so the
-  // user's manual change isn't clobbered by a later realtime refresh.
+  // Once the lists load, pick a sensible default: the list whose shortCode
+  // matches the route (when opened from a list-detail page), otherwise the
+  // first list. The route segment is a shortCode while the picker is keyed by
+  // UUID, so resolve shortCode → id against the summaries before selecting —
+  // matching the raw shortCode against UUIDs always missed and silently fell
+  // back to the first list. Only runs once so a later realtime refresh
+  // doesn't clobber a manual change.
   let pickedDefault = false;
   createEffect(() => {
     if (pickedDefault) return;
+    const data = listsQuery.data;
     const opts = listOptions();
-    if (opts.length === 0) return;
-    const fromRoute = listIdFromRoute();
-    const pick =
-      (fromRoute && opts.find((o) => o.id === fromRoute)?.id) ?? opts[0].id;
-    setTargetListId(pick);
+    if (!data || opts.length === 0) return;
+    const code = shortCodeFromRoute();
+    const fromRoute = code
+      ? [...data.private, ...data.shared].find((l) => l.shortCode === code)?.id
+      : undefined;
+    setTargetListId(fromRoute ?? opts[0].id);
     pickedDefault = true;
   });
 
@@ -195,13 +203,21 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
 
   let inputEl: HTMLInputElement | undefined;
 
-  onMount(() => {
-    // 1) Measure the BottomNav pill — that's our morph origin.
+  /** Measure the BottomNav pill — that's our morph origin (and the close-
+   *  morph target). Re-run on resize so a window-resize / rotation while the
+   *  sheet is open keeps the close animation landing on the pill's CURRENT
+   *  position instead of where it sat when the sheet opened (B5). */
+  const measureOrigin = () => {
     const anchor = document.querySelector<HTMLElement>("[data-add-anchor]");
     if (anchor) {
       const r = anchor.getBoundingClientRect();
       setOrigin({ left: r.left, top: r.top, width: r.width, height: r.height });
     }
+  };
+
+  onMount(() => {
+    // 1) Measure the BottomNav pill — that's our morph origin.
+    measureOrigin();
 
     // 2) Lock body scroll, esc-to-close.
     const onKey = (e: KeyboardEvent) => {
@@ -217,6 +233,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     const vv = window.visualViewport;
     const onResize = () => {
       setViewport({ w: window.innerWidth, h: window.innerHeight });
+      measureOrigin();
       if (vv) {
         const offset = window.innerHeight - vv.height - vv.offsetTop;
         setKeyboardOffset(Math.max(0, offset));
