@@ -1,6 +1,6 @@
 # Nakama — Handshake
 
-Master-Kontext. Lies das zuerst. Stand: Phase 4 mittendrin — AddSheet inkl. AniList-Suche fertig, Items-Rendering in /lists/:id + Item-Detail + Episode-Layer noch offen.
+Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen (außer Status-Control für Movies/Games — wartet auf TMDB/IGDB-Sources). Items + Item-Detail + Episode-Layer + Tick-Pattern + Reset + Pagination alle live. Phase 5 (Home Dashboard) ist als Nächstes dran; davor ein Polish-Pass (URL-Vereinfachung auf source:sourceId + Restricted-Access-UX).
 
 ---
 
@@ -73,10 +73,10 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 | `/styleguide` | public | done (14 Sektionen) |
 | `/` | protected (AppLayout) | Stub (Phase 5 Pending) |
 | `/lists` | protected (AppLayout) | done |
-| `/lists/:id` | protected (AppLayout) | items-Rows noch offen (Phase 4) |
+| `/lists/:id` | protected (AppLayout) | done |
+| `/item/:id` | protected (AppLayout) | done (UUID-Form; Source-Key-Form `/item/anilist:21` als Polish-Step geplant) |
 | `/profile` | protected (AppLayout) | done |
 | `/calendar` | — | NICHT existiert, Phase 6 |
-| `/item/:id` | — | NICHT existiert, Phase 4 |
 | `*` | public | NotFound |
 
 ---
@@ -118,6 +118,10 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 - `DeleteListButton` — Inline-Confirm „Wirklich löschen? · ✓ / ✗" im Aside-Slot. Beide States rendern direkt im h-6-Slot des PageHeaders, items-center, damit der Text in beiden Zuständen auf derselben Höhe sitzt
 - `EditableListName` — Inline-Rename im Heading, hover lifts Pencil + accent text. Edit-State benutzt `ring-1 ring-accent` (box-shadow, kein layout-impact)
 - `ListTrackingToggle` — per-User Tracken/Archiv-Segment
+- `ResetItemButton` — inline-confirm „Zurücksetzen ✓ / ✗" im Item-Detail-Aside. Calls `reset_item_progress` RPC, invalidiert `episodesQueryKey`. Sichtbar nur wenn `watched > 0`
+- `EpisodeList` (inline in `ItemDetail.tsx`) — read-only Rows + interaktive Buttons. Pointer-events (`onPointerDown/Up/Leave/Cancel`) für unified mouse+touch handling, 500 ms long-press timer für Cascade, `onContextMenu` für Desktop-Power-User-Right-Click. Press-Feedback via additive `classList={{ "bg-surface": pressing() }}` ON TOP of `hover:bg-surface` — additive statt ternary verhindert das Flicker beim Release (Lücke zwischen pressing=false und hover-Re-Apply)
+- `LoadMore` (inline in `ItemDetail.tsx`) — „Weitere laden"-Button am Listen-Ende. KEIN Button-Optik — nur centered Mono-CAPS-Caption + ChevronDown + hover:bg-surface bis Spaltenrand (via `<div class="-mx-5">` wrapper). Pattern für „kontinuierliche Affordance" innerhalb einer Liste
+- `ProgressBar` (inline in `ItemDetail.tsx`) — Hairline-Track + accent-Fill, Mono-CAPS-Caption mit `watched/total · pct %`. Bei `total=0` → em-dash statt 0, leerer Track
 
 ---
 
@@ -143,28 +147,64 @@ export async function deleteList(id)
 export async function setListTracking(user, input)
 ```
 
-`src/lib/queries/items.ts` (Phase 4):
+`src/lib/queries/items.ts`:
 
 ```typescript
-// Items + Episodes-Layer. Stand: Search + addItemToList fertig.
-// Episode-Queries + lazy fetch folgen.
+export const itemQueryKey = (id: string) => ["item", id] as const;
+export function itemQueryOptions(id: string)
+// Single item by id. RLS scoped via list membership.
 
 export async function addItemToList(input: { listId: string; source: AniListResult }): Promise<void>
 // Upsert items(source,source_id) → insert list_items. 23505 (unique_violation
 // auf list_items) wird als success behandelt (already in list).
 ```
 
-`src/lib/anilist.ts` (Phase 4):
+`src/lib/queries/episodes.ts`:
 
 ```typescript
-// AniList GraphQL client — läuft DIREKT im Browser. CORS open, kein API-Key,
-// 90 req/min Rate-Limit. Kein Proxy nötig im Gegensatz zu Logbook (das hatte
-// einen Next-API-Route weil server-side).
-export interface AniListResult { sourceId; type; title; year; coverUrl; format }
-export async function searchAniList(q: string, signal?: AbortSignal): Promise<AniListResult[]>
+export const episodesQueryKey = (itemId: string) => ["episodes", itemId] as const;
+// Concrete query keys are [...episodesQueryKey(itemId), limit] — invalidations
+// target the prefix and clear all paginations.
 
-// Noch nicht geschrieben — kommt mit Item-Detail-Phase:
-// export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisode[]>
+export function episodesQueryOptions(user, itemId, limit = 26)
+// Lazy fetch + 12 h stale gate (items.metadata.episodesFetchedAt). Returns
+// { episodes: EpisodeRow[], total, watched, fetchable }. Latest `limit`
+// episodes, descending (newest on top). Head-count queries for total +
+// watched so counts are exact past PostgREST's 1000-row read cap.
+
+export async function toggleEpisode({ episodeId, userId, watched })
+// Single tap: insert OR delete on episode_watches. Idempotent both ways.
+
+export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
+// Long-press cascade: mark_episodes_watched RPC, _list_item_id=null
+// (sync fan-out follows Phase 7).
+
+export async function resetItemProgress(itemId)
+// Reset-Item-Aside: reset_item_progress RPC. Set-based delete server-side.
+```
+
+`src/lib/anilist.ts`:
+
+```typescript
+// AniList GraphQL — runs in the browser. CORS open, no API key, 90 req/min.
+export interface AniListResult { sourceId; type; title; year; coverUrl; format }
+export async function searchAniList(q, signal?): Promise<AniListResult[]>
+
+export interface AniListEpisode { seasonNumber; episodeNumber; title; airDate }
+export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisode[]>
+// Paginates airingSchedule for dates, reads streamingEpisodes for titles
+// (Logbook deliberately skipped titles; we pull them because the value is
+// real and the falls-back-to-em-dash UX is honest). Manga: chapter count
+// from AniList; for ongoing titles MangaDex fallback via fetchMangaDexChapterCount.
+```
+
+`src/lib/mangadex.ts`:
+
+```typescript
+// Browser-side chapter count for ongoing manga via AniList-id match on
+// MangaDex's manga.attributes.links.al. Reads max chapter number from
+// the all-language aggregate. Returns null on no match / no data.
+export async function fetchMangaDexChapterCount(aniListId, title): Promise<number | null>
 ```
 
 **Pattern für jede neue Feature-Area:**
@@ -183,6 +223,7 @@ export async function searchAniList(q: string, signal?: AbortSignal): Promise<An
 **Verwendet in:**
 - `/lists` overview → channel `lists-overview`, listens to lists/list_members/list_items, invalidates `listsQueryKey`
 - `/lists/:id` detail → channel `list-{id}`, listens to lists/list_members/list_items, invalidates `listQueryKey(id) + listsQueryKey + listItemsQueryKey(id)`
+- `/item/:id` detail → channel `item-{id}`, listens to episodes/episode_watches, invalidates `episodesQueryKey(id)` (covers all paginations via prefix-match)
 
 **Anti-Pattern aus Logbook das wir hier NICHT machen:** Auf SUBSCRIBED ein Refresh feuern. In Logbook (Next 16) führte das zu einem Re-Render pro Page-Mount und hat den Router-Cache zerschossen. In Nakama brauchen wir das nicht weil TanStack Query staleTime handhabt + Mutations + Postgres-Events alle Wege abdecken.
 
@@ -217,7 +258,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **1 · Foundation + Styleguide** | ✓ done — Primitives, Auth-Context, 14-Sektionen-Styleguide |
 | **2 · Auth & Shell** | ✓ done — Login (Discord OAuth + Magic-Link), AuthCallback, AppShell, BottomNav, Profile |
 | **3 · Listen** | ✓ done — `/lists` overview, `/lists/:id` detail, Create, Rename, Delete, ListTrackingToggle, Realtime, Optimistic Updates |
-| **4 · Items + Tracking** | **teilweise** — siehe unten |
+| **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe unten) |
 | **5 · Home Dashboard** | offen — Was kommt, Fortsetzen, Logbuch (jetzt mit punktuellen Updates, kein Polling-Fallback) |
 | **6 · Kalender** | offen — Wochen-/Monatsansicht, Tag-Pane, Quick-Tick |
 | **7 · Sharing** | offen — Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator, Ownership-Transfer |
@@ -228,43 +269,49 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 | Sub | Status |
 |---|---|
-| AniList GraphQL Client | ✓ done — `src/lib/anilist.ts`, läuft direkt im Browser |
+| AniList GraphQL Client | ✓ done — `src/lib/anilist.ts` (Search + Episodes) |
 | `addItemToList` Mutation | ✓ done — `src/lib/queries/items.ts`, idempotent via 23505-handling |
 | AddSheet UI + Animation | ✓ done — `src/components/AddSheet.tsx`, Liquid Nav-Pill-Morph |
 | `+` in BottomNav verdrahtet | ✓ done — `data-add-anchor` auf der inneren Pille |
-| Items als Rows in `/lists/:id` | ❌ offen — aktuell nur Phase-4-Placeholder text |
-| Item-Detail-Seite `/item/:id` | ❌ offen — Route existiert noch nicht |
-| Episode-Layer (`episodes` table) | ❌ offen — DB-Schema da (geerbt aus Logbook), keine Queries |
-| Lazy `fetchAniListEpisodes` | ❌ offen — Logbook hat das, muss portiert werden |
-| EpisodeList UI (Desktop-Kacheln + Mobile-Rows) | ❌ offen |
-| Cascade / Single / „Bis hier" Tick-Pattern | ❌ offen — RPCs sind da (`mark_episodes_watched`) |
-| Status-Control für Movies/Games (`item_history`) | ❌ offen |
+| Items als Rows in `/lists/:id` | ✓ done — `ListEntries` in `ListDetail.tsx`, klickbar auf `/item/:id` |
+| Item-Detail-Seite `/item/:id` | ✓ done — Cover (Section 02) + Episode-Liste (Section 01) + Details |
+| Lazy `fetchAniListEpisodes` | ✓ done — `airingSchedule` paginiert für Daten + `streamingEpisodes` für Titel + MangaDex-Fallback |
+| Episode-Layer (`episodes` table) | ✓ done — `src/lib/queries/episodes.ts`, 12 h stale-gate, prefix-keyed pagination |
+| EpisodeList UI | ✓ done — Rows mit Episode-Nr / Titel / Datum / Watched-Dot. Desktop-Kacheln aus Logbook bewusst nicht portiert — Rows lesen sich besser im 2/3-Layout |
+| Cascade / Single / „Bis hier" Tick-Pattern | ✓ done — Single-Tap (`toggleEpisode`), Long-Press 500 ms / Right-Click Cascade (`markEpisodesWatchedUpTo`) |
+| Reset-Item-Progress | ✓ done — `ResetItemButton` im PageHeader-Aside (inline-confirm) |
+| „Weitere laden"-Pagination | ✓ done — `PAGE_SIZE=26`, limit-Signal, `placeholderData: prev` während Fetch |
+| Status-Control für Movies/Games (`item_history`) | ⏸ deprio'd — wartet auf TMDB/IGDB-Sources (AniList kennt nur Anime/Manga) |
 
 ---
 
-## Offene Punkte (Stand: Phase 4 mittendrin)
+## Offene Punkte (Stand: Phase 4 done, vor Phase 5)
 
 ### Konkret offen für die nächste Session
 
-1. **Items als Rows in `/lists/:id` rendern.** Aktuell steht da nur ein Placeholder-Text „Einträge folgen in Phase 4 — Item-Suche + AddSheet." obwohl die Items über AddSheet schon hinzugefügt werden können (man sieht den `itemCount` in der Details-Spalte via Realtime hochzählen). Die `listItemsQueryOptions(id)` Query und der `ListEntry`-Type sind schon in `lists.ts` definiert — nur das UI fehlt. Pattern wie die Listen-Rows auf `/lists`: BentoModule mit `-mx-5 <ul>`, hover step UP nach surface, hairline `::after`-divider, klickbar auf später `/item/:id`.
+1. **URL-Polish auf `/item/:source/:sourceId` (oder `/item/:sourceKey`).** Aktuell sind die Routen auf Supabase-UUIDs gemount (z.B. `/item/0bf9a8c1-...`), unlesbar + nicht deep-link-tauglich. `(source, source_id)` ist im items-Schema bereits unique → keine Migration nötig. Plan: Route-Pattern umstellen, `itemQueryOptions` auf `.eq("source", s).eq("source_id", sid)` switchen, `ListEntries`-Row + `/lists/:id`-Listing entsprechend verlinken. Same für `episodesQueryOptions` (via item-Lookup oder direkt mitliefern).
 
-2. **Item-Detail-Seite `/item/:id`.** Route in `routes/index.tsx` als Child von `AppLayout` registrieren. PageHeader mit kicker `LISTEN > <listname>` (oder aus dem context), title = item-title, optional backHref. Layout-Anlehnung an Logbook's `/item/[id]/page.tsx` (steht im Logbook-Repo).
+2. **Restricted-Access UX.** RLS macht den hard block schon (jede Item/List-Query gibt `null` für non-members) — kein Datenleak. Aber: aktueller `navigate("/lists", { replace: true })` Bounce ist stumm. Beim URL-Polish gleich eine kleine `NoAccess`-Page bauen (statt silent redirect): PageHeader „Kein Zugriff", Body „Diese Liste/dieses Item gibt es nicht oder gehört nicht zu dir. RLS verrät bewusst nicht welches der beiden." + Back-Link nach /lists. Macht den block sichtbar ohne Info zu leaken.
 
-3. **Episode-Layer.** Im Logbook-handshake stehen `episodes`, `episode_watches`, `item_history` Tabellen. Die existieren in der shared Supabase-DB schon, nur die Queries und das UI fehlen in Nakama. Anfangen mit:
-   - `src/lib/queries/episodes.ts` mit `episodesQueryOptions(itemId)` + `markEpisodesWatched` (ruft die RPC).
-   - `src/lib/anilist.ts` erweitern um `fetchAniListEpisodes(sourceId, type)` — aus Logbook portieren, inkl. MangaDex-Fallback für ongoing Mangas (siehe Logbook `src/lib/anilist.ts` Zeile 162+).
-   - Lazy fetch: bei erster Item-Detail-Öffnung Episodes von AniList holen, in `episodes` table upserten, dann readen.
+3. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe handshake): „Was kommt" (kommende Episodes aus tracked-home Listen, nach Air-Date sortiert), „Fortsetzen" (Items mit Progress > 0 und nicht 100%), „Logbuch" (zuletzt ge-tickte Episodes). Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. Continue-Watching RPC ist da (`continue_watching`), `item_progress` ebenfalls. Logbook hat alle drei Module — portierbar.
 
-4. **EpisodeList UI.** Desktop: Kachel-Grid mit `aspect-square` Tiles, Episode-Number drin, ticked = accent-bg. Mobile: vertikale Rows mit Datum + Tick-Button rechts. Logbook-Vorlage: `src/components/item/*`.
+### Geplant, aber NICHT akut
 
-5. **Cascade / Single / „Bis hier"-Pattern.** RPCs `mark_episodes_watched` und `toggle_episode_synced` sind da. UI: ein Click auf Episode-Tile = single tick. Long-press oder Modifier = „bis hier alle ticken" (cascade). Sync-Toggle für shared lists wenn Phase 7 ranraucht.
+- **Sonner / Toast-System.** Aktuell sind alle wichtigen Feedbacks inline (✓ in AddSheet, weg-navigieren nach Delete, Häkchen verschwinden nach Reset). Toast bringt erst Mehrwert mit Async-Events — natürlicher Trigger ist Phase 7 Sharing (Invite akzeptiert vom Partner während User auf anderer Seite). Bis dahin nicht bauen. Wenn dann: kleine Side-Toast (rechts unten? links unten?), keine groß-aufdringliche Variante.
 
-6. **Status-Control für Movies/Games** (`item_history` table, status enum). Eigene Komponente, sitzt im Item-Detail rechts wo bei Anime/Manga der Episode-Counter wäre.
+- **Status-Control für Movies/Games** (`item_history` table). Wartet auf TMDB/IGDB-Source. AniList kennt nur Anime/Manga.
 
-### Bekannte tech-debt / kleine Sachen, NICHT dringend
+- **Sync-Fan-out für Cascade & Single-Toggle.** Aktuell rufe `mark_episodes_watched` mit `_list_item_id=null` → keine Mit-Member-Updates. Wenn Phase 7 das Invite-Modell baut, muss die UI die richtige `list_item.id` ermitteln (über die Listen-Route die der User durchgegangen ist, oder über einen item-pro-list-Resolver) und in beide Tick-Mutations als Parameter durchreichen. Toggle ebenfalls auf RPC `toggle_episode_synced` umstellen (Logbook-Pattern).
 
-- **Such-Pill innere Content-Fade beim Schließen** geht aktuell mit 300ms over ease-out, das fadet die search-input + icon weg während der Pill noch morpht. Bei sehr schnellen User-Aktionen könnte das sichtbar werden (Inhalt verschwindet während Pill noch breit ist). Nicht akut — wenn's auffällt, content-fade timing aufbohren oder synchronisieren mit dem Morph.
-- **`origin()` wird beim Mount EINMAL gemessen** und während der ganzen Sheet-Session nicht updated. Wenn die NavBar während AddSheet offen reflows (z.B. window resize), könnte der Close-Morph zur falschen Position laufen. visualViewport listener ist da, aber der updated nur viewport + keyboardOffset, nicht origin. Nicht akut auf Mobile (Resize selten), wäre für Desktop nice-to-have.
+- **AddSheet + BottomNav im Styleguide.** Beide sind Production-Komponenten ohne Styleguide-Eintrag. handshake-Regel „erst Styleguide, dann Feature" wurde bei diesen zwei aus Phase 2/4 nicht eingehalten — bei nächster Polish-Welle nachholen.
+
+- **One Piece / langlaufende Anime: Folge-Titel-Lücken.** AniList's `streamingEpisodes` deckt typischerweise nur die letzten ~100-150 Folgen ab (was Streaming-Dienste aktuell führen). Ältere Folgen kriegen `null` Titel → em-dash. Ehrliches MVP-Verhalten. Mögliche Ergänzung später: Jikan / MyAnimeList als zweite Quelle (90 %+ Coverage für ältere Shows).
+
+### Bekannte tech-debt
+
+- **AddSheet: Such-Pill innere Content-Fade beim Schließen** geht mit 300 ms over ease-out, fadet input + icon weg während der Pill noch morpht. Bei sehr schnellen User-Aktionen sichtbar. Nicht akut.
+- **AddSheet: `origin()` wird beim Mount EINMAL gemessen.** Window-Resize während Sheet offen kann den Close-Morph zur falschen Position laufen lassen. Auf Mobile selten, Desktop nice-to-have.
+- **`/item/:id` ohne Listen-Kontext.** Wenn man via Deep-Link ankommt (oder Item ist in mehreren Listen), kennt die Detail-Page die „aktuelle Liste" nicht — Back-Button geht via `history.back()`, sonst Fallback `/lists`. Mit URL-Polish (item-Route hängt nicht mehr an einer Liste) wird das relevanter; ggf. via location-state vom A-Link mitgegeben.
 
 ---
 
