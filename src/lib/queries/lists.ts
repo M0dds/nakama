@@ -374,8 +374,8 @@ interface RawListItemRow {
  *  `bySectionThenSort` rationale on the lists query above).
  *
  *  Each entry gets a per-user `hasNewEpisode` flag derived from the same
- *  getItemsWithNewEpisodes() helper that powers the overview badge —
- *  cheap because the helper is bounded by NEW_WINDOW_DAYS. */
+ *  findItemsWithNewEpisodes() helper that powers the overview badge,
+ *  called here scoped to this list's items only. */
 export function listItemsQueryOptions(user: User, shortCode: string) {
   return {
     queryKey: listItemsQueryKey(shortCode),

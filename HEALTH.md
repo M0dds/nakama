@@ -12,9 +12,9 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 ### Performance × user-visible
 
-- **A1** — `getItemsWithNewEpisodes` doppelt aufgerufen pro /lists+detail flow (lists.ts:165)
-- **A2** — `listsQueryOptions` queried `list_items` zweimal (lists.ts:169 + lists.ts:298)
-- **A3** — `listItemsQueryOptions` fetcht globale new-items Map, brauchte nur list-scoped
+- ~~**A1**~~ — `getItemsWithNewEpisodes` doppelt aufgerufen pro /lists+detail flow → **gefixt 7ab0563** (Bundle 1): Helper jetzt scopable, kein doppelter Call
+- ~~**A2**~~ — `listsQueryOptions` queried `list_items` zweimal → **gefixt 7ab0563** (Bundle 1): eine Query mit embedded items.type
+- ~~**A3**~~ — `listItemsQueryOptions` fetcht globale new-items Map → **gefixt 7ab0563** (Bundle 1): list-scoped, scant nur N statt M Items
 - **A4** — `newEpisodeSinceLastWatch` limit-2000 cliff bei Heavy-Watchers (home.ts:226)
 - **A5** — `episodesQueryOptions` 4-5 Round-Trips pro Item-Page-Load
 - **A6** — `WATCH_FETCH=250` zu klein für aktive geteilte Listen (home.ts:113)
@@ -22,7 +22,7 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Correctness / robustness
 
 - **B1** — `setListPin`/`setListItemPin` nicht atomar vs `reorder*` RPCs (race auf sort_order)
-- **B2** — `.select()` silent-RLS-check inkonsistent: fehlt in `removeListItem`, `deleteList`, `moveListItem`, `toggleEpisode`
+- **B2** — `.select()` silent-RLS-check inkonsistent: fehlt in `removeListItem`, `deleteList`, `moveListItem`, `toggleEpisode` → **teilweise gefixt 68d631b** (Bundle 1): `removeListItem` + `moveListItem` jetzt mit `.select() + null-check`. `deleteList` (owner-gated) + `toggleEpisode` (idempotent) bewusst gelassen — landet in Bundle 6 falls überhaupt
 - **B3** — Stamp-on-Failure in `enrichJikanTitles`/`enrichMangaDexTitles` silenced transiente API-Fehler permanent (episodes.ts:232, :299)
 - **B4** — `cascadeMut` optimistic-count nur korrekt für visible window (ItemDetail.tsx:170-189); off-window cascade flasht falschen `watched` bis onSettled
 - **B5** — AddSheet `origin()` einmal beim Mount gemessen — Resize während offen → falscher Close-Morph
@@ -51,17 +51,16 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 ### Bundle 1 — Query-Effizienz auf /lists + /lists/:shortCode
 
-**Adressiert:** A1, A2, A3 (+ optional B2 für list-mutations)
-**Status:** TODO
-**Why now:** größter user-erlebbarer Win — cold `/lists`-Load aktuell 4-8 round-trips, sollte 2-3 sein.
+**Adressiert:** A1, A2, A3, B2 (list-mutations)
+**Status:** ✅ **DONE** — branch `bundle/1-query-efficiency-lists`
+  - 7ab0563 — refactor(lists): scope new-episode helper + dedup list_items queries
+  - 68d631b — fix(lists): silent-RLS detection on remove + move mutations
 
-**Scope:**
-- `getItemsWithNewEpisodes(userId, listIds?)` scopable machen
-- In `listsQueryOptions`: eine einzige `list_items` Query, daraus beide Aggregationen (itemIds + (list_id, item_id) pairs)
-- In `listItemsQueryOptions`: list-scoped Variante aufrufen
-- Optional: `.select()` + null-detection an `removeListItem`, `moveListItem`
-
-**Estimated:** ~150 Zeilen Touch, 1 atomic PR.
+**Outcome:**
+- `findItemsWithNewEpisodes(userId, itemIds)` ersetzt globalen Helper; Type-Resolution wandert zum Caller (er hat's eh).
+- `/lists` cold-load: 4-5 → 3 critical-path Round-Trips
+- `/lists/:short` cold-load: 4 → 3 critical-path Round-Trips. Datenmenge im Helper: M (alle User-Items) → N (Items in Scope).
+- `removeListItem` + `moveListItem` werfen jetzt bei silent-RLS-Block statt false success.
 
 ---
 
@@ -173,7 +172,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 
 ## Suggested execution order
 
-1. **Bundle 1** — größter user-erlebbarer Win, isolated change
+1. ~~**Bundle 1**~~ — done
 2. **Bundle 2** — Phase 6 prep, reduces complexity
 3. **Bundle 4** — klein, gewinnt Lesbarkeit, helpful für Bundle 5
 4. **Bundle 6** — low-risk Cleanup, kann zwischendurch
