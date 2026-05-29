@@ -99,31 +99,6 @@ async function storeEpisodes(item: ItemForFetch): Promise<void> {
     item.type as "anime" | "manga",
   );
 
-  // Title-fallback via Jikan (MyAnimeList). AniList's streamingEpisodes is
-  // a moving window of ~60-150 entries provided by streaming services —
-  // for long-running anime it misses both the very-early AND the very-
-  // latest episodes. Jikan ships MAL's full catalogue. We only call it
-  // when (a) we have a MAL id from AniList AND (b) there's at least one
-  // released-but-titleless episode worth filling. Manga gets skipped —
-  // Jikan's manga endpoint has chapters but not titles for them, and
-  // MangaDex already handles the chapter-count fallback.
-  if (item.type === "anime" && malId != null && hasAiredTitleGap(episodes)) {
-    try {
-      const jikanTitles = await fetchJikanEpisodeTitles(malId);
-      if (jikanTitles.size > 0) {
-        for (const ep of episodes) {
-          if (ep.title === null) {
-            const fromJikan = jikanTitles.get(ep.episodeNumber);
-            if (fromJikan) ep.title = fromJikan;
-          }
-        }
-      }
-    } catch (err) {
-      // Jikan is a best-effort enrichment — never block the store.
-      console.error("Jikan episode-title fallback failed", err);
-    }
-  }
-
   if (episodes.length > 0) {
     await supabase.from("episodes").upsert(
       episodes.map((e) => ({
@@ -136,191 +111,190 @@ async function storeEpisodes(item: ItemForFetch): Promise<void> {
       { onConflict: "item_id,season_number,episode_number" },
     );
   }
-  // Stamp the fetch time even on empty results so we don't pound the API for
-  // works that genuinely have no countable episodes yet (ongoing manga
-  // before MangaDex picks them up, etc.). Persist malId so the one-time
-  // backfill below doesn't need to re-query AniList for it. Bump the
-  // titleEnrichmentVersion so the version gate in ensureEpisodes knows
-  // this item has up-to-date title coverage (Jikan for anime, MangaDex
-  // for manga — both run inside fetchAniListEpisodes by now).
-  const now = new Date().toISOString();
+
+  // Fill missing titles through the SAME backfill path the version gate
+  // uses (was a duplicated inline Jikan loop here — C4). Only anime needs
+  // the explicit call: fetchAniListEpisodes already runs MangaDex for manga
+  // above, so a second pass would just re-fetch the same patchy coverage.
+  // Carry the fresh malId in so the Jikan path skips re-querying AniList.
+  const withMal: ItemForFetch = {
+    ...item,
+    metadata: { ...item.metadata, ...(malId != null ? { malId } : {}) },
+  };
+  const enrich: EnrichResult =
+    item.type === "anime"
+      ? await enrichTitles(withMal)
+      : { ok: true, malId };
+
+  // Single metadata write: episodesFetchedAt always (gates the 12 h re-
+  // store, even on empty results so we don't pound the API for works with
+  // no countable episodes yet); titleEnrichmentVersion only when enrichment
+  // didn't transiently fail (B3 — a transient miss leaves the gate open so
+  // the next visit retries via ensureEpisodes); resolved malId persisted so
+  // future runs skip the AniList lookup.
+  await stampEnrichment(item, {
+    bumpVersion: enrich.ok,
+    malId: enrich.malId ?? malId,
+    touchFetchedAt: true,
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Title enrichment — shared gap-backfill core + per-source wrappers
+// ──────────────────────────────────────────────────────────────────────────
+
+interface EnrichResult {
+  /** True when the source lookup completed without throwing — including the
+   *  permanent-miss case (no MAL link, no MangaDex match). False ONLY on a
+   *  transient API error (network / rate-limit / 5xx), which leaves the
+   *  version gate open so the next visit retries. */
+  ok: boolean;
+  /** A freshly-resolved MAL id worth persisting, or null. Existing
+   *  metadata.malId is preserved by the spread in stampEnrichment either
+   *  way — this only carries a NEW resolution forward. */
+  malId: number | null;
+}
+
+/** Aired/untitled gap episode-numbers for one item. `airedOnly` restricts to
+ *  released episodes — MAL has no unaired titles either, so for anime an
+ *  unaired gap isn't fillable. Manga passes false: chapters carry no air-date
+ *  release model. Bounded by GAP_QUERY_LIMIT so long shows don't hit
+ *  PostgREST's implicit 1000-row default (the v2-enrichment tail-loss bug). */
+async function selectTitleGaps(
+  itemId: string,
+  airedOnly: boolean,
+): Promise<number[]> {
+  let q = supabase
+    .from("episodes")
+    .select("episode_number")
+    .eq("item_id", itemId)
+    .is("title", null);
+  if (airedOnly) q = q.lte("air_date", new Date().toISOString());
+  const { data } = await q.limit(GAP_QUERY_LIMIT);
+  return (data ?? []).map((g) => g.episode_number as number);
+}
+
+/** Bulk-upsert titles for the given gap episode-numbers. Single round-trip —
+ *  the per-row UPDATE-by-id loop this replaced was a non-starter for shows
+ *  like One Piece (1100+ gaps × ~100 ms ≈ 110 s; the tab got killed before
+ *  it ever committed, so the next visit re-ran the same broken loop). */
+async function writeTitles(
+  itemId: string,
+  gaps: number[],
+  titles: Map<number, string>,
+): Promise<void> {
+  const updates = gaps.flatMap((n) => {
+    const t = titles.get(n);
+    if (!t) return [];
+    return [{ item_id: itemId, season_number: 1, episode_number: n, title: t }];
+  });
+  if (updates.length > 0) {
+    await supabase
+      .from("episodes")
+      .upsert(updates, { onConflict: "item_id,season_number,episode_number" });
+  }
+}
+
+/** Persist enrichment metadata in one write. Bumps titleEnrichmentVersion
+ *  only when `bumpVersion`; carries a freshly-resolved malId forward;
+ *  touches episodesFetchedAt on the store path. Skips the write entirely
+ *  when there's nothing to persist (transient failure with no new malId). */
+async function stampEnrichment(
+  item: ItemForFetch,
+  opts: { bumpVersion: boolean; malId?: number | null; touchFetchedAt?: boolean },
+): Promise<void> {
+  const extra: Record<string, unknown> = {};
+  if (opts.malId != null) extra.malId = opts.malId;
+  if (opts.bumpVersion) extra.titleEnrichmentVersion = TITLE_ENRICHMENT_VERSION;
+  if (opts.touchFetchedAt) extra.episodesFetchedAt = new Date().toISOString();
+  if (Object.keys(extra).length === 0) return;
   await supabase
     .from("items")
-    .update({
-      metadata: {
-        ...item.metadata,
-        ...(malId != null ? { malId } : {}),
-        episodesFetchedAt: now,
-        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
-      },
-    })
+    .update({ metadata: { ...item.metadata, ...extra } })
     .eq("id", item.id);
 }
 
 /**
- * One-time title backfill driven by the version-gate. For each type the
- * source is different (Jikan for anime, MangaDex for manga). Bulk-upserts
- * all gap titles in a single round-trip — the previous per-row UPDATE
- * loop timed out for shows like One Piece (1100+ gaps × ~100 ms ≈ 110 s)
- * and stamped "done" without actually filling anything.
- *
- * Anime: needs MAL id. Reads it from items.metadata.malId (populated by
- * storeEpisodes), or one-shot queries AniList when absent (items stored
- * before that stamp existed).
- *
- * Stamps `titleEnrichmentVersion` regardless of how many titles came back
- * so we don't retry the same lookup on every load. A future logic change
- * bumps the version and forces a re-run.
+ * Shared title-backfill core. Cheap gap check FIRST — skip the external API
+ * entirely when nothing's missing (the common case on freshly-stored items
+ * whose AniList/MangaDex pass already covered every gap; also subsumes the
+ * old `hasAiredTitleGap` short-circuit). Then fetch from the source and bulk-
+ * fill. Returns `ok: false` only on a transient throw so the caller leaves
+ * the version gate open; a successful lookup that finds nothing still
+ * returns ok (retrying won't help until the logic — and version — changes).
  */
-async function enrichJikanTitles(item: ItemForFetch): Promise<void> {
-  let malId =
-    typeof item.metadata.malId === "number"
-      ? (item.metadata.malId as number)
-      : null;
-
-  if (malId == null) {
-    const ali = await fetchAniListEpisodes(item.sourceId, "anime");
-    malId = ali.malId;
-  }
-
-  if (malId != null) {
-    try {
-      const titles = await fetchJikanEpisodeTitles(malId);
-      if (titles.size > 0) {
-        const { data: gaps } = await supabase
-          .from("episodes")
-          .select("episode_number")
-          .eq("item_id", item.id)
-          .is("title", null)
-          .lte("air_date", new Date().toISOString())
-          .limit(GAP_QUERY_LIMIT);
-        // Build the update set as a single bulk upsert. The earlier
-        // per-row UPDATE-by-id loop was a non-starter for shows like One
-        // Piece (1100+ gaps × ~100 ms per round-trip ≈ 110 s, way past
-        // any reasonable user wait — the browser tab would be killed
-        // before the loop ever stamped `jikanEnrichedAt`, so the next
-        // visit re-ran the same broken loop).
-        const updates = (gaps ?? []).flatMap((g) => {
-          const n = g.episode_number as number;
-          const t = titles.get(n);
-          if (!t) return [];
-          return [
-            {
-              item_id: item.id,
-              season_number: 1,
-              episode_number: n,
-              title: t,
-            },
-          ];
-        });
-        if (updates.length > 0) {
-          await supabase
-            .from("episodes")
-            .upsert(updates, {
-              onConflict: "item_id,season_number,episode_number",
-            });
-        }
-      }
-    } catch (err) {
-      console.error("Jikan backfill failed", err);
-    }
-  }
-
-  // Stamp even on failure — we'd rather skip retrying for an item with no
-  // MAL link than pound the APIs on every visit. A future logic change
-  // bumps TITLE_ENRICHMENT_VERSION and forces a re-run from this gate.
-  await supabase
-    .from("items")
-    .update({
-      metadata: {
-        ...item.metadata,
-        ...(malId != null ? { malId } : {}),
-        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
-      },
-    })
-    .eq("id", item.id);
-}
-
-/**
- * MangaDex chapter-title backfill — manga counterpart to enrichJikanTitles.
- * Coverage is much patchier than Jikan's (officially-licensed series have
- * uploads removed, weeklys often carry no title at all), so the resulting
- * map may be small. We stamp the version regardless to avoid retrying the
- * same lookup on every visit.
- */
-async function enrichMangaDexTitles(item: ItemForFetch): Promise<void> {
-  // Need the AniList title for the MangaDex lookup. items.title is the
-  // canonical AniList title at insert time — fetch it once here.
-  const { data: itemRow } = await supabase
-    .from("items")
-    .select("title")
-    .eq("id", item.id)
-    .maybeSingle();
-  const title =
-    typeof itemRow?.title === "string" ? (itemRow.title as string) : null;
-
+async function backfillTitles(
+  item: ItemForFetch,
+  opts: {
+    label: string;
+    airedOnly: boolean;
+    fetchTitles: () => Promise<{ titles: Map<number, string>; malId: number | null }>;
+  },
+): Promise<EnrichResult> {
   try {
-    const titles = await fetchMangaDexChapterTitles(
-      Number(item.sourceId),
-      title,
-    );
-    if (titles.size > 0) {
-      const { data: gaps } = await supabase
-        .from("episodes")
-        .select("episode_number")
-        .eq("item_id", item.id)
-        .is("title", null)
-        .limit(GAP_QUERY_LIMIT);
-      const updates = (gaps ?? []).flatMap((g) => {
-        const n = g.episode_number as number;
-        const t = titles.get(n);
-        if (!t) return [];
-        return [
-          {
-            item_id: item.id,
-            season_number: 1,
-            episode_number: n,
-            title: t,
-          },
-        ];
-      });
-      if (updates.length > 0) {
-        await supabase
-          .from("episodes")
-          .upsert(updates, {
-            onConflict: "item_id,season_number,episode_number",
-          });
-      }
-    }
+    const gaps = await selectTitleGaps(item.id, opts.airedOnly);
+    if (gaps.length === 0) return { ok: true, malId: null };
+    const { titles, malId } = await opts.fetchTitles();
+    if (titles.size > 0) await writeTitles(item.id, gaps, titles);
+    return { ok: true, malId };
   } catch (err) {
-    console.error("MangaDex chapter-title backfill failed", err);
+    console.error(`${opts.label} title backfill failed`, err);
+    return { ok: false, malId: null };
   }
-
-  await supabase
-    .from("items")
-    .update({
-      metadata: {
-        ...item.metadata,
-        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
-      },
-    })
-    .eq("id", item.id);
 }
 
-/** True when there's at least one released episode (air_date in the past)
- *  with no title — the case Jikan can fill. Future episodes without titles
- *  aren't a Jikan job (MAL doesn't have unaired titles either). */
-function hasAiredTitleGap(
-  episodes: { title: string | null; airDate: string | null }[],
-): boolean {
-  const now = Date.now();
-  for (const e of episodes) {
-    if (e.title !== null) continue;
-    if (!e.airDate) continue;
-    const t = Date.parse(e.airDate);
-    if (Number.isFinite(t) && t <= now) return true;
-  }
-  return false;
+/** Anime → Jikan (MyAnimeList) episode titles. AniList's streamingEpisodes
+ *  is a moving ~60-150 entry window from streaming services that misses both
+ *  the very-early and very-latest episodes of long shows; Jikan ships MAL's
+ *  full catalogue. Resolves the MAL id from metadata, or one-shot from
+ *  AniList for items stored before the malId stamp existed. */
+function enrichAnime(item: ItemForFetch): Promise<EnrichResult> {
+  return backfillTitles(item, {
+    label: "Jikan",
+    airedOnly: true,
+    fetchTitles: async () => {
+      let malId =
+        typeof item.metadata.malId === "number"
+          ? (item.metadata.malId as number)
+          : null;
+      if (malId == null) {
+        const ali = await fetchAniListEpisodes(item.sourceId, "anime");
+        malId = ali.malId;
+      }
+      if (malId == null) return { titles: new Map(), malId: null };
+      return { titles: await fetchJikanEpisodeTitles(malId), malId };
+    },
+  });
+}
+
+/** Manga → MangaDex chapter titles via the AniList-id bridge. Coverage is
+ *  patchier than Jikan's (officially-licensed series have uploads removed,
+ *  weeklys often carry no title), so the map may be small — best-effort.
+ *  Needs the AniList title (items.title) for the lookup. */
+function enrichManga(item: ItemForFetch): Promise<EnrichResult> {
+  return backfillTitles(item, {
+    label: "MangaDex",
+    airedOnly: false,
+    fetchTitles: async () => {
+      const { data: itemRow } = await supabase
+        .from("items")
+        .select("title")
+        .eq("id", item.id)
+        .maybeSingle();
+      const title =
+        typeof itemRow?.title === "string" ? (itemRow.title as string) : null;
+      const titles = await fetchMangaDexChapterTitles(Number(item.sourceId), title);
+      return { titles, malId: null };
+    },
+  });
+}
+
+/** Dispatch title enrichment by type. Other types resolve to a no-op ok
+ *  result (shouldn't reach here — callers gate on anime/manga). */
+function enrichTitles(item: ItemForFetch): Promise<EnrichResult> {
+  if (item.type === "anime") return enrichAnime(item);
+  if (item.type === "manga") return enrichManga(item);
+  return Promise.resolve({ ok: true, malId: null });
 }
 
 /** Populate episodes from AniList the first time (or after STALE_MS). Only
@@ -343,8 +317,12 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
   const v = item.metadata.titleEnrichmentVersion;
   const enrichedVersion = typeof v === "number" ? v : 0;
   if (enrichedVersion < TITLE_ENRICHMENT_VERSION) {
-    if (item.type === "anime") await enrichJikanTitles(item);
-    else if (item.type === "manga") await enrichMangaDexTitles(item);
+    // One-time backfill for items stored under older enrichment logic.
+    // bumpVersion gates on a non-transient run so a network blip doesn't
+    // permanently silence the retry (B3); the gate stays open until a
+    // lookup actually completes.
+    const { ok, malId } = await enrichTitles(item);
+    await stampEnrichment(item, { bumpVersion: ok, malId });
   }
 }
 
