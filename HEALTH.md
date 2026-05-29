@@ -18,12 +18,13 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 - **A4** — `newEpisodeSinceLastWatch` limit-2000 cliff bei Heavy-Watchers (home.ts:226)
 - **A5** — `episodesQueryOptions` 4-5 Round-Trips pro Item-Page-Load
 - **A6** — `WATCH_FETCH=250` zu klein für aktive geteilte Listen (home.ts:113)
+- **A7** — `listsQueryOptions` pairs-Query (lists.ts:267) ohne explizites `.limit()` → PostgREST 1000-Row-Cap. Heute harmlos, aber Phase 7 Sharing multipliziert `list_items` über alle Member → `newCounts` würden für manche Listen still falsch (kein Error, kein Badge). Gleiche LIMIT-and-hope-Klasse wie A4/A6 + die `GAP_QUERY_LIMIT`-Falle in episodes.ts. Fix: explizites `.limit(5000)` als billige Versicherung.
 
 ### Correctness / robustness
 
 - **B1** — `setListPin`/`setListItemPin` nicht atomar vs `reorder*` RPCs (race auf sort_order)
 - ~~**B2**~~ — `.select()` silent-RLS-check inkonsistent → **gefixt 68d631b + d0cf97e**: `removeListItem` + `moveListItem` (Bundle 1), `deleteList` (Bundle 6, defends Phase-7-Ownership-Race). `toggleEpisode` bewusst gelassen — Idempotenz heißt 0-rows ist mehrdeutig, .select() würde false positives erzeugen
-- **B3** — Stamp-on-Failure in `enrichJikanTitles`/`enrichMangaDexTitles` silenced transiente API-Fehler permanent (episodes.ts:232, :299)
+- ~~**B3**~~ — Stamp-on-Failure in `enrichJikanTitles`/`enrichMangaDexTitles` silenced transiente API-Fehler permanent → **gefixt 508ac01** (Bundle 3): `backfillTitles` returnt `ok:false` nur bei transientem Throw → Version-Gate bleibt offen, nächster Visit retried. Permanenter Miss (kein MAL-Link / kein MangaDex-Match) schließt das Gate weiterhin.
 - ~~**B4**~~ — `cascadeMut` off-window flash → **dokumentiert d0cf97e** (Bundle 6): explicit Comment im Code; onSettled-Refetch korrigiert, bessere Schätzung wäre nicht möglich (Cache hat keine off-window Watch-States)
 - **B5** — AddSheet `origin()` einmal beim Mount gemessen — Resize während offen → falscher Close-Morph
 - **B6** — Logbuch self-toggle Frame-Flicker beim Mount; localStorage-Read nach erstem Paint (Home.tsx:498)
@@ -32,8 +33,8 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 - ~~**C1**~~ — Drag-Reorder-Logik dupliziert → **gefixt 3ca3fa8** (Bundle 2): beide Routen konsumieren jetzt `useDragSettling` + `reorderSection` aus `src/lib/sortable.ts`
 - ~~**C2**~~ — Pin-Toggle-Handler dupliziert → **gefixt 3ca3fa8** (Bundle 2): `topOfSection`-Helper
-- **C3** — `enrichJikanTitles` und `enrichMangaDexTitles` ~80% identisch (episodes.ts:175 vs :251)
-- **C4** — Inline-Jikan in `storeEpisodes` überlappt mit `enrichJikanTitles` backfill
+- ~~**C3**~~ — `enrichJikanTitles` und `enrichMangaDexTitles` ~80% identisch → **gefixt 508ac01** (Bundle 3): shared `backfillTitles`-Core + `selectTitleGaps`/`writeTitles`/`stampEnrichment`, dünne `enrichAnime`/`enrichManga`-Wrapper
+- ~~**C4**~~ — Inline-Jikan in `storeEpisodes` überlappt mit Backfill → **gefixt 508ac01** (Bundle 3): `storeEpisodes` routet durch denselben Backfill-Pfad; Manga bleibt bei `fetchAniListEpisodes` (kein MangaDex-Doppel-Fetch)
 - ~~**C5**~~ — `dayOffset`/`formatDate`/`typeLabel`/`typeInitial` parallel → **gefixt d70169d** (Bundle 4): canonical in `src/lib/format.ts`
 - ~~**C6**~~ — PostgREST embed-unwrap + `[...new Set(...)]` repeated → **gefixt d70169d** (Bundle 4): `embedCount()` + `unique()` helpers
 - ~~**C7**~~ — `toggleMut` delta-Arithmetik kompliziert → **gefixt d0cf97e** (Bundle 6): ternary-on-ternary kollabiert auf `ep.watched ? -1 : 1`, gleicher output
@@ -82,15 +83,15 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 3 — Episode-Enrichment unify
 
 **Adressiert:** C3, C4, B3
-**Status:** TODO
-**Why now:** vor Phase 7. Shared lists multiplizieren Enrichment-Trigger (jeder co-member Visit re-checked). Dedup + permanent-silence-Fix jetzt = shared-list Metadata bleibt zuverlässig.
+**Status:** ✅ **DONE** — branch `bundle/3-episode-enrichment-unify`
+  - 508ac01 — refactor(episodes): unify title-enrichment + transient-failure gate
 
-**Scope:**
-- `bulkBackfillTitles(item, fetchTitles, opts)` Helper
-- Version-Stamp nur bei PERMANENTEN Failures (no MAL-Link / no MangaDex-Match) — NICHT bei transienten API-Errors
-- `storeEpisodes` inline-Jikan → durch Helper ersetzen
-
-**Estimated:** ~150 Zeilen Reduktion.
+**Outcome:**
+- Shared `backfillTitles`-Core (+ `selectTitleGaps`/`writeTitles`/`stampEnrichment`), dünne `enrichAnime`/`enrichManga`-Wrapper, dispatch via `enrichTitles`. Die zwei ~80%-identischen Funktionen sind weg.
+- `storeEpisodes` routet jetzt durch denselben Backfill-Pfad → **eine** Title-Enrichment-Implementierung. Manga bleibt bei `fetchAniListEpisodes` (MangaDex läuft dort schon) — kein Doppel-Fetch.
+- Version-Stamp gated auf non-transienten Run: Netzwerk-/Rate-Limit-/5xx-Throw → `ok:false`, Gate bleibt offen, nächster Visit retried. Permanenter Miss schließt das Gate weiter.
+- Bonus: Gap-Pre-Check läuft VOR dem externen Fetch → Items ohne aired/untitled Gaps sparen den API-Call ganz (subsumed `hasAiredTitleGap`).
+- Netto -21 Zeilen (die ~150-Schätzung war optimistisch; Wert liegt in B3-Korrektheit + Single-Path, nicht Zeilenzahl).
 
 ---
 
@@ -172,7 +173,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 2. ~~**Bundle 2**~~ — done
 3. ~~**Bundle 4**~~ — done
 4. ~~**Bundle 6**~~ — done
-5. **Bundle 3** — vor Phase 7
+5. ~~**Bundle 3**~~ — done
 6. **Bundle 5** — vor Phase 7, DB-Migration
 7. **Bundle 7** — Phase 8 oder bei Bug-Hit früher
 
