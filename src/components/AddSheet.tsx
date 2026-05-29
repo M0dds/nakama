@@ -20,23 +20,38 @@ import {
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 
 /**
- * Add/Search sheet. Bottom-sheet on mobile, centered modal on desktop. Flow
- * (mirrors Logbook's validated UX): pick the target list once at the top,
- * search AniList (anime + manga), tap a result to drop it into that list —
- * stay open to add several in one session.
+ * Add/Search sheet — two-piece layout with a liquid morph entrance.
  *
- * Liquid character: the panel slides in on mount, slides out on close (the
- * outer overlay handles the backdrop fade). No teardown-during-flight: the
- * caller (AppLayout) only unmounts AddSheet after the close animation has
- * ended, so we never see a flash of partial state. The +-button in BottomNav
- * is what opens this — when triggered from `/lists/:id` we pre-select that
- * list, so the most common path ("I'm on a list and want to add to it") is
- * a zero-decision flow.
+ * The visual idea (Apple-style shared-element transition):
+ *
+ *   ┌─────────────────────────┐
+ *   │ ●HINZUFÜGEN ZU ▾Liste ✕│ ← Card (page-tier: bg, hairlines, hard corners)
+ *   ├─────────────────────────┤
+ *   │ Result rows …           │
+ *   └─────────────────────────┘
+ *   [🔍  Anime suchen …       ] ← Search-Pill (nav-tier: nav-bg, capsule)
+ *
+ *   The Pill MORPHS from the BottomNav's `+`-button rect: it starts at that
+ *   button's exact bounding rect (44×44, fully round) and animates left/top/
+ *   width/height in lockstep to its target geometry above the (mobile)
+ *   keyboard. The `+` in the nav fades to opacity-0 on the same curve, so
+ *   it visually reads as the button *becoming* the search tool. The Card
+ *   fades in from above on the same timing.
+ *
+ * Mobile keyboard handling: a visualViewport listener keeps the pill seated
+ * above the keyboard as it slides up/down — so typing doesn't push the pill
+ * off-screen and the Card resizes to match the available space.
  *
  * Search-as-you-type with a small debounce; AbortController kills in-flight
  * fetches so a fast typist doesn't get rows from an older query trail in.
  */
-export function AddSheet(props: { onClose: () => void }) {
+interface Rect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -163,104 +178,271 @@ export function AddSheet(props: { onClose: () => void }) {
     addMutation.mutate(r);
   };
 
-  // ── Mount: focus the input, lock scroll, esc to close ──────────────────
+  // ── Entry/exit transition ──────────────────────────────────────────────
+  // The pill morphs from the BottomNav's pill rect to its target rect.
+  // Card + backdrop fade/slide on the same 300ms ease-quart curve. The
+  // open/closed state is OWNED by AppShell (props.visible) so the nav-pill
+  // fade and the search-pill morph stay perfectly synced — see AppShell.tsx
+  // for the two-state mount/visible split that enables that.
+  const ANIM_MS = 420;
+  const [origin, setOrigin] = createSignal<Rect | null>(null);
+  /** Bottom-edge offset for the pill — reads as 0 normally, grows when the
+   *  mobile soft keyboard pushes the visualViewport up. */
+  const [keyboardOffset, setKeyboardOffset] = createSignal(0);
+  /** Viewport size — re-evaluated on resize so the pill/card recompute
+   *  their target geometry on rotation / window-resize. */
+  const [viewport, setViewport] = createSignal({
+    w: typeof window !== "undefined" ? window.innerWidth : 0,
+    h: typeof window !== "undefined" ? window.innerHeight : 0,
+  });
+
   let inputEl: HTMLInputElement | undefined;
+
   onMount(() => {
+    // 1) Measure the BottomNav pill — that's our morph origin.
+    const anchor = document.querySelector<HTMLElement>("[data-add-anchor]");
+    if (anchor) {
+      const r = anchor.getBoundingClientRect();
+      setOrigin({ left: r.left, top: r.top, width: r.width, height: r.height });
+    }
+
+    // 2) Lock body scroll, esc-to-close.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") props.onClose();
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Wait a frame so the slide-in transition gets its starting state.
-    requestAnimationFrame(() => inputEl?.focus());
+
+    // 3) Visual-viewport tracking for the mobile soft keyboard. When it
+    //    opens, vv.height shrinks below window.innerHeight; we offset the
+    //    pill by the difference so it floats above the keyboard.
+    const vv = window.visualViewport;
+    const onResize = () => {
+      setViewport({ w: window.innerWidth, h: window.innerHeight });
+      if (vv) {
+        const offset = window.innerHeight - vv.height - vv.offsetTop;
+        setKeyboardOffset(Math.max(0, offset));
+      }
+    };
+    window.addEventListener("resize", onResize);
+    vv?.addEventListener("resize", onResize);
+    vv?.addEventListener("scroll", onResize);
+    onResize();
+
+    // Focus the input after the morph is well underway so iOS doesn't open
+    // the keyboard before the pill has reached its target — that would
+    // yank vvOffset mid-transition and look jittery.
+    window.setTimeout(() => inputEl?.focus(), ANIM_MS - 50);
+
     onCleanup(() => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
+      window.removeEventListener("resize", onResize);
+      vv?.removeEventListener("resize", onResize);
+      vv?.removeEventListener("scroll", onResize);
       abort?.abort();
       if (debounceTimer !== null) window.clearTimeout(debounceTimer);
     });
   });
 
-  // Entry transition — render at opacity 0 / translate-y, flip to 1 / 0 on
-  // next frame. Closing is symmetrical: parent unmounts after a short delay.
-  const [entered, setEntered] = createSignal(false);
-  onMount(() => requestAnimationFrame(() => setEntered(true)));
+  // ── Target geometry ────────────────────────────────────────────────────
+  /** Where the pill should LAND. Height + vertical position match the nav-
+   *  pill exactly (so the morph is pure width-expansion, no height jump);
+   *  only the width grows and the pill recenters horizontally. When the
+   *  mobile soft keyboard appears, we lift the pill above it. */
+  const targetRect = (): Rect => {
+    const o = origin();
+    if (!o) {
+      // Sensible fallback while anchor is being measured.
+      return { left: 0, top: 0, width: 0, height: 56 };
+    }
+    const { w, h } = viewport();
+    const isDesktop = w >= 768;
+    const pillH = o.height;
+    const sideGap = 16;
+    // Default: same vertical position as the nav-pill. If the keyboard is
+    // up, lift the pill so it sits just above the keyboard edge.
+    const top =
+      keyboardOffset() > 0 ? h - keyboardOffset() - pillH - 16 : o.top;
+    if (isDesktop) {
+      const width = Math.min(w - 2 * sideGap, 576);
+      return {
+        left: (w - width) / 2,
+        top,
+        width,
+        height: pillH,
+      };
+    }
+    return {
+      left: sideGap,
+      top,
+      width: w - 2 * sideGap,
+      height: pillH,
+    };
+  };
+
+  /** Pill style — origin-rect while resting, target-rect while entered.
+   *  Border-radius interpolates from full-pill (44/2=22 → matches the nav
+   *  button) to the target's half-height pill. */
+  const pillStyle = () => {
+    const o = origin();
+    if (!o) return { opacity: "0" };
+    const r = props.visible ? targetRect() : o;
+    return {
+      left: `${r.left}px`,
+      top: `${r.top}px`,
+      width: `${r.width}px`,
+      height: `${r.height}px`,
+      "border-radius": "9999px", // capsule throughout — origin is round too
+    };
+  };
+
+  /** Card sits just above the pill, fills the space up to the top of the
+   *  viewport (minus a small safe-area). */
+  const cardStyle = () => {
+    const t = targetRect();
+    const topGap = 24;
+    const innerGap = 12; // space between card and pill
+    return {
+      left: `${t.left}px`,
+      top: `${topGap}px`,
+      width: `${t.width}px`,
+      height: `${t.top - topGap - innerGap}px`,
+    };
+  };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Hinzufügen"
-      class={`fixed inset-0 z-50 flex flex-col justify-end transition-opacity duration-200 ease-out md:items-center md:justify-center ${
-        entered() ? "opacity-100" : "opacity-0"
-      }`}
-    >
-      {/* Backdrop — click to close. Theme-agnostic dark dim (not bg/80) so
-          there's enough contrast between the page underneath and the panel,
-          which itself sits on bg now. */}
+    <div role="dialog" aria-modal="true" aria-label="Hinzufügen">
+      {/* Backdrop — z-40, ABOVE the BottomNav (z-30). Together with the
+          nav-pill fading to opacity-0, this makes the nav effectively
+          recede into the background — the search-pill on z-50 is now the
+          only active control. Color + blur transition on the same 300ms
+          ease-quart as the pill morph. */}
       <button
         type="button"
         aria-label="Schließen"
         onClick={props.onClose}
-        class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        class={`fixed inset-0 z-40 transition-all duration-500 [transition-timing-function:var(--ease-quart)] ${
+          props.visible
+            ? "bg-black/50 backdrop-blur-sm"
+            : "bg-black/0 backdrop-blur-none"
+        }`}
       />
 
-      {/* Panel — bottom-sheet on mobile, centered card on desktop. Sits on
-          `bg` (the "table" tier) so row-hover can step UP to surface,
-          mirroring the /lists pattern. */}
-      <div
-        class={`relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden bg-bg shadow-floating transition-transform duration-300 [transition-timing-function:var(--ease-quart)] md:max-w-xl md:rounded-md ${
-          entered() ? "translate-y-0" : "translate-y-6 md:translate-y-3"
-        }`}
-      >
+      {/* Results card — z-50, above the nav. Page-tier styling: bg, hairline
+          rules, hard corners. Pure opacity fade — symmetric in both
+          directions, no scale/translate. Pill morph carries the spatial
+          motion of the entry; the card just fades alongside it. Gated by
+          <Show> on origin() so first render commits with the correct
+          position/size, otherwise the cardStyle transitions would
+          interpolate from their fallback zeros. */}
+      <Show when={origin()}>
+        <div
+          class={`fixed z-50 flex flex-col overflow-hidden bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] md:rounded-md ${
+            props.visible ? "opacity-100" : "opacity-0"
+          }`}
+          style={cardStyle()}
+        >
         <header class="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
-          <div class="flex items-center gap-2">
+          <div class="flex min-w-0 items-center gap-3">
             <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
-            <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-              Hinzufügen
+            <span class="shrink-0 font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
+              Hinzufügen zu
             </span>
+            <Show
+              when={listOptions().length > 0}
+              fallback={
+                <span class="truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                  —
+                </span>
+              }
+            >
+              <div class="min-w-0 max-w-[12rem]">
+                <SelectMenu
+                  value={targetListId()}
+                  options={listOptions()}
+                  onChange={setTargetListId}
+                  ariaLabel="Ziel-Liste"
+                />
+              </div>
+            </Show>
           </div>
           <button
             type="button"
             onClick={props.onClose}
             aria-label="Schließen"
-            class="-mr-1 inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-text"
+            class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-text"
           >
             <X class="size-4" strokeWidth={1.75} />
           </button>
         </header>
 
-        {/* List picker — fixed at the top so the choice is persistent across
-            search churn. */}
-        <div class="space-y-3 border-b border-rule px-5 py-4">
-          <label class="block font-mono text-mini uppercase tracking-wider text-text-muted">
-            Liste
-          </label>
+        <div class="min-h-0 flex-1 overflow-y-auto">
           <Show
             when={listOptions().length > 0}
             fallback={
-              <p class="text-body text-text-muted">
+              <p class="px-5 py-10 text-center text-body text-text-muted">
                 Lege erst eine Liste an, dann kannst du Einträge hinzufügen.
               </p>
             }
           >
-            <SelectMenu
-              value={targetListId()}
-              options={listOptions()}
-              onChange={setTargetListId}
-              ariaLabel="Ziel-Liste"
+            <ResultsBody
+              query={query()}
+              lastQuery={lastQuery()}
+              results={results()}
+              searching={searching()}
+              pending={pending()}
+              isAdded={(r) =>
+                added().has(addedKey(targetListId(), r.sourceId))
+              }
+              canAdd={!!targetListId() && listOptions().length > 0}
+              onAdd={onAdd}
             />
           </Show>
         </div>
+        </div>
+      </Show>
 
-        {/* Search input. */}
-        <div class="border-b border-rule px-5 py-4">
-          <label class="relative block">
-            <span class="sr-only">Suchen</span>
+      {/* Search pill — z-50, nav-tier styling (inverted colors, capsule).
+          MORPHS from the `+`-button rect on the BottomNav. Gated by <Show>
+          on `origin()` so the pill's FIRST render commits to the origin rect
+          directly — without that gate, `transition-all` would interpolate
+          from the element's default position (0/0/intrinsic) to the origin,
+          and the pill would glide in from the viewport corner instead of
+          starting precisely on top of the `+`. */}
+      <Show when={origin()}>
+        <div
+          class={`fixed z-50 flex items-center overflow-hidden bg-nav-bg shadow-floating ${
+            props.visible ? "opacity-100" : "opacity-0"
+          }`}
+          style={{
+            ...pillStyle(),
+            // Sequential handoff (no crossfade dip): on OPEN, the search-pill
+            // rises first (delay 0, dur 50) so it occludes the NavBar before
+            // the NavBar fades out (delay 50). On CLOSE, the inverse — the
+            // NavBar rises first (delay 400) while the search-pill is still
+            // opaque, then the search-pill fades out (delay 450) with the
+            // NavBar already at full opacity underneath. Either direction,
+            // the combined alpha of "search-pill OR NavBar at the pill
+            // location" stays at 1.0 throughout — no visible crossfade.
+            transition: [
+              "left 500ms var(--ease-quart)",
+              "top 500ms var(--ease-quart)",
+              "width 500ms var(--ease-quart)",
+              "height 500ms var(--ease-quart)",
+              `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
+            ].join(", "),
+          }}
+        >
+          <div
+            class={`flex w-full items-center gap-2 px-5 transition-opacity duration-300 ease-out ${
+              props.visible ? "opacity-100 delay-150" : "opacity-0"
+            }`}
+          >
             <Search
               aria-hidden
-              class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+              class="size-4 shrink-0 text-nav-fg/60"
               strokeWidth={1.75}
             />
             <input
@@ -269,27 +451,14 @@ export function AddSheet(props: { onClose: () => void }) {
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder="Anime oder Manga suchen …"
-              class="block w-full rounded-sm border border-border bg-transparent py-2 pl-9 pr-3 text-body text-text placeholder:text-text-muted focus:border-accent focus:outline-none"
+              class="min-w-0 flex-1 bg-transparent py-2 text-body text-nav-fg placeholder:text-nav-fg/50 focus:outline-none"
               autocomplete="off"
               spellcheck={false}
+              aria-label="Suchen"
             />
-          </label>
+          </div>
         </div>
-
-        {/* Results. */}
-        <div class="min-h-0 flex-1 overflow-y-auto">
-          <ResultsBody
-            query={query()}
-            lastQuery={lastQuery()}
-            results={results()}
-            searching={searching()}
-            pending={pending()}
-            isAdded={(r) => added().has(addedKey(targetListId(), r.sourceId))}
-            canAdd={!!targetListId() && listOptions().length > 0}
-            onAdd={onAdd}
-          />
-        </div>
-      </div>
+      </Show>
     </div>
   );
 }

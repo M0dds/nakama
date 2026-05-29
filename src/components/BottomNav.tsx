@@ -38,7 +38,16 @@ interface IndicatorBox {
   height: number;
 }
 
-export function BottomNav(props: { onAddClick?: () => void }) {
+export function BottomNav(props: {
+  onAddClick?: () => void;
+  /** While AddSheet is open, the ENTIRE nav-pill is the morph-origin of the
+   *  search-pill. The nav-pill fades to opacity-0 (synced 300ms with the
+   *  search-pill's morph) so the user sees one continuous element
+   *  transforming from "navigation" into "search" — Apple-style toolbar
+   *  swap. We keep the nav-pill in the DOM (visibility, not display) so
+   *  its bounding rect stays measurable for the morph origin/return. */
+  addSheetOpen?: boolean;
+}) {
   const location = useLocation();
   const isActive = (href: string) => location.pathname === href;
 
@@ -117,11 +126,26 @@ export function BottomNav(props: { onAddClick?: () => void }) {
   return (
     <nav
       aria-label="Hauptnavigation"
-      class="fixed inset-x-0 bottom-[26px] z-40 flex justify-center px-4"
+      class="fixed inset-x-0 bottom-[26px] z-30 flex justify-center px-4"
     >
       <div
         ref={pillEl!}
-        class="relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating"
+        data-add-anchor
+        class={`relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating ${
+          props.addSheetOpen ? "pointer-events-none opacity-0" : "opacity-100"
+        }`}
+        style={{
+          // Sequential handoff with the search-pill in AddSheet — see the
+          // comment there for the full reasoning. Short version: on CLOSE
+          // (addSheetOpen: true → false), the NavBar rises BEFORE the
+          // search-pill falls; on OPEN (addSheetOpen: false → true), the
+          // search-pill rises BEFORE the NavBar falls. The 50ms windows
+          // never overlap, so the combined nav-bg pill stays at full
+          // opacity throughout — no crossfade dip.
+          transition: `opacity 50ms linear ${
+            props.addSheetOpen ? "50ms" : "400ms"
+          }`,
+        }}
       >
         {/* Sliding accent. Always rendered so the element persists across
             path changes (Solid would otherwise tear down + remount the
@@ -154,14 +178,11 @@ export function BottomNav(props: { onAddClick?: () => void }) {
           href="/lists"
           isActive={isActive("/lists")}
         />
-        <NavButton
-          icon={Calendar}
-          label="Kalender"
-          href="/calendar"
-          isActive={isActive("/calendar")}
-        />
-        {/* + opens the AddSheet (Phase 4). Not a route — sits in-between as
-            a button so it never owns the active tab state. */}
+        {/* + sits CENTER. Opens the AddSheet (Phase 4). Not a route — sits
+            in-between two tabs so it never owns the active tab state. When
+            the sheet opens, the parent nav-pill fades out (the whole pill
+            morphs into the search-pill); the `+` rides along with that
+            fade — no special handling needed here. */}
         <button
           type="button"
           onClick={props.onAddClick}
@@ -170,6 +191,12 @@ export function BottomNav(props: { onAddClick?: () => void }) {
         >
           <Plus class="size-5" strokeWidth={1.75} aria-hidden />
         </button>
+        <NavButton
+          icon={Calendar}
+          label="Kalender"
+          href="/calendar"
+          isActive={isActive("/calendar")}
+        />
         <NavButton
           icon={User}
           label="Profil"

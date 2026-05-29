@@ -6,18 +6,48 @@ import { AddSheet } from "@/components/AddSheet";
  * Layout wrapper for every authed app surface (Home, Listen, Detailseiten,
  * Profil). Mounted ONCE by the AppLayout route — see src/routes/index.tsx —
  * so the BottomNav + AddSheet plumbing survives navigation between protected
- * surfaces. Adds the bottom safe-area so the last content row isn't covered
- * by the floating nav pill.
+ * surfaces.
  *
- * The grain layer + base color come from <App> in src/App.tsx — every route
- * lands inside that wrapper. AppShell only adds the nav-aware spacing + the
- * `+`-button affordance.
+ * Two distinct states for the AddSheet, so the nav-pill ↔ search-pill morph
+ * stays a SINGLE continuous animation in both directions:
+ *
+ *   - addMounted  controls whether <AddSheet> is in the DOM at all. We keep
+ *                 it mounted for ~300ms after the user closes, so the exit
+ *                 animation can play to completion.
+ *   - addVisible  controls what the morph "looks like" — it flips synchronously
+ *                 with the user's intent (open/close click), so the nav-pill
+ *                 starts fading in/out in lockstep with the search-pill's
+ *                 morph in the AddSheet. Without this split, the nav would
+ *                 only start fading back IN after AddSheet had already
+ *                 finished unmounting — two sequential animations instead
+ *                 of one, which reads as a flash/flicker on close.
  */
 export function AppShell(props: ParentProps) {
-  // AddSheet state lives here so the `+` button in the floating nav can
-  // open it regardless of which route is showing. The sheet itself reads
-  // the current path to pre-select the target list when relevant.
-  const [addOpen, setAddOpen] = createSignal(false);
+  const [addMounted, setAddMounted] = createSignal(false);
+  const [addVisible, setAddVisible] = createSignal(false);
+  // 500ms with ease-quart in both directions — entry plays forward, exit
+  // plays the same curve in reverse. Symmetric feel, predictable timing.
+  const ANIM_MS = 500;
+
+  const openAdd = () => {
+    setAddMounted(true);
+    // Double-rAF: a single rAF isn't enough in Solid's render loop. With one
+    // rAF the browser may apply BOTH the mount and the visible-flip styles
+    // in the same frame, skipping the initial (scale-50 + opacity-0) state
+    // entirely — the card then "just appears" instead of animating in. Two
+    // rAFs guarantee one paint of the initial state before we trigger the
+    // transition, so CSS interpolates from "small + invisible" → "big +
+    // visible" properly.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setAddVisible(true));
+    });
+  };
+
+  const closeAdd = () => {
+    if (!addVisible()) return; // ignore double-close while fade-out is in flight
+    setAddVisible(false);
+    window.setTimeout(() => setAddMounted(false), ANIM_MS);
+  };
 
   return (
     <>
@@ -25,9 +55,9 @@ export function AppShell(props: ParentProps) {
           (26 px) + breathing (24 px). The pill is `position: fixed` so it
           doesn't reserve flow space on its own. */}
       <div class="pb-[94px]">{props.children}</div>
-      <BottomNav onAddClick={() => setAddOpen(true)} />
-      <Show when={addOpen()}>
-        <AddSheet onClose={() => setAddOpen(false)} />
+      <BottomNav onAddClick={openAdd} addSheetOpen={addVisible()} />
+      <Show when={addMounted()}>
+        <AddSheet visible={addVisible()} onClose={closeAdd} />
       </Show>
     </>
   );
