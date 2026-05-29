@@ -22,11 +22,11 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 ### Correctness / robustness
 
-- **B1** — `setListPin`/`setListItemPin` nicht atomar vs `reorder*` RPCs (race auf sort_order)
+- ~~**B1**~~ — `setListPin`/`setListItemPin` nicht atomar vs `reorder*` RPCs → **gefixt 657102d** (Bundle 7): neue `set_list_pin`/`set_list_item_pin` RPCs berechnen sort_order server-side im selben UPDATE wie pinned_at → kein client-read-then-write-Gap mehr (Migration `20260529130000`)
 - ~~**B2**~~ — `.select()` silent-RLS-check inkonsistent → **gefixt 68d631b + d0cf97e**: `removeListItem` + `moveListItem` (Bundle 1), `deleteList` (Bundle 6, defends Phase-7-Ownership-Race). `toggleEpisode` bewusst gelassen — Idempotenz heißt 0-rows ist mehrdeutig, .select() würde false positives erzeugen
 - ~~**B3**~~ — Stamp-on-Failure in `enrichJikanTitles`/`enrichMangaDexTitles` silenced transiente API-Fehler permanent → **gefixt 508ac01** (Bundle 3): `backfillTitles` returnt `ok:false` nur bei transientem Throw → Version-Gate bleibt offen, nächster Visit retried. Permanenter Miss (kein MAL-Link / kein MangaDex-Match) schließt das Gate weiterhin.
 - ~~**B4**~~ — `cascadeMut` off-window flash → **dokumentiert d0cf97e** (Bundle 6): explicit Comment im Code; onSettled-Refetch korrigiert, bessere Schätzung wäre nicht möglich (Cache hat keine off-window Watch-States)
-- **B5** — AddSheet `origin()` einmal beim Mount gemessen — Resize während offen → falscher Close-Morph
+- ~~**B5**~~ — AddSheet `origin()` einmal beim Mount gemessen → **gefixt b7a2180** (Bundle 7): `measureOrigin()` läuft jetzt auch im resize-Handler → Close-Morph landet auf der aktuellen Pillen-Position
 - ~~**B6**~~ — Logbuch self-toggle Frame-Flicker beim Mount → **gefixt 242ba62** (Bundle 5): `showSelf` liest localStorage synchron beim Signal-Setup statt in `onMount` (Home.tsx)
 
 ### Code quality / DRY
@@ -141,15 +141,16 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 ### Bundle 7 — AddSheet Origin Re-measure + Pin-Race
 
-**Adressiert:** B1, B5
-**Status:** TODO
-**Why now:** Phase 8 Polish, oder sooner wenn einer der Bugs hits.
+**Adressiert:** B1, B5 (+ AddSheet-Preselect-Bug, kein HEALTH-Finding, mitgenommen)
+**Status:** ✅ **DONE** (Code) — branch `bundle/7-addsheet-origin-pin-race`. ⚠️ **Braucht Migration `20260529130000_atomic_pin.sql`** (nur für B1; B5 + Preselect sind client-only und laufen sofort).
+  - b7a2180 — fix(addsheet): preselect current list + re-measure morph origin on resize
+  - b22c9f5 — feat(db): atomic pin RPCs — set_list_pin + set_list_item_pin
+  - 657102d — refactor(pin): route pin toggles through atomic RPCs
 
-**Scope:**
-- `ResizeObserver` auf `[data-add-anchor]` während AddSheet open → `origin()` bleibt fresh
-- Pin-Mutations atomar via neue RPCs `set_list_pin` / `set_list_item_pin` mit server-side sort_order Assignment
-
-**Estimated:** Klein, aber Pin-Atomicity braucht DB-Migration.
+**Outcome:**
+- B5: `measureOrigin()` extrahiert + auch im resize-Handler aufgerufen statt nur once-on-mount. Statt `ResizeObserver` (Scope-Vorschlag) reicht der schon vorhandene resize-Listener — ein Mess-Aufruf mehr, kein neuer Observer.
+- B1: `set_list_pin`/`set_list_item_pin` RPCs (Stil gespiegelt von `reorder_*`) vergeben sort_order server-side im selben UPDATE → kein stale-cache-Race. TS-Mutations rufen RPCs, returnen void, werfen bei access-denied. Caller behalten den client-sortOrder nur fürs Optimistic.
+- Bonus: AddSheet-Preselect-Bug (shortCode-vs-UUID-Mismatch) gleich mitgefixt, da dieselbe Datei.
 
 ---
 
@@ -172,6 +173,6 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 4. ~~**Bundle 6**~~ — done
 5. ~~**Bundle 3**~~ — done
 6. ~~**Bundle 5**~~ — done (Migration `20260529120000` angewendet)
-7. **Bundle 7** — Phase 8 oder bei Bug-Hit früher
+7. ~~**Bundle 7**~~ — Code done, ⚠️ Migration `20260529130000` (nur B1) muss noch laufen
 
 Jeder Bundle ist independent — Reihenfolge umstellen wenn Kontext es verlangt.
