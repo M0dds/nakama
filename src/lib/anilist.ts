@@ -9,7 +9,10 @@
  * normalized shape.
  */
 
-import { fetchMangaDexChapterCount } from "@/lib/mangadex";
+import {
+  fetchMangaDexChapterCount,
+  fetchMangaDexChapterTitles,
+} from "@/lib/mangadex";
 
 export interface AniListResult {
   sourceId: string; // AniList media id, stringified → items.source_id
@@ -32,7 +35,7 @@ const SEARCH_QUERY = `
         seasonYear
         startDate { year }
         title { english romaji native }
-        coverImage { large medium }
+        coverImage { extraLarge large medium }
       }
     }
   }
@@ -49,7 +52,32 @@ interface RawMedia {
     romaji: string | null;
     native: string | null;
   } | null;
-  coverImage: { large: string | null; medium: string | null } | null;
+  /** AniList's field naming is misleading: the URL path segment lags one
+   *  step behind the field name. `medium` returns a `/cover/small/` URL,
+   *  `large` returns `/cover/medium/`, and `extraLarge` returns the actual
+   *  `/cover/large/` (~430×615 px) — which is what we want for cards. */
+  coverImage: {
+    extraLarge: string | null;
+    large: string | null;
+    medium: string | null;
+  } | null;
+}
+
+/** Upgrade an AniList cover URL to its highest-resolution variant. Items
+ *  added before we started requesting `extraLarge` were stored with a
+ *  `/cover/medium/` URL (the field AniList misleadingly calls `large`) —
+ *  which renders pixelated in larger surfaces like the Was-kommt hero
+ *  cards. This swaps the path segment in place; new items already come
+ *  in at `/cover/large/` from the updated search query.
+ *
+ *  Safe no-op for non-AniList URLs and for URLs that already point at the
+ *  high-res variant. */
+export function highResCover(url: string | null): string | null {
+  if (!url) return null;
+  return url.replace(
+    /(\/anilistcdn\/media\/(?:anime|manga)\/cover)\/(?:small|medium)\//,
+    "$1/large/",
+  );
 }
 
 /** Search anime + manga by title. Returns [] on network / parse failure so
@@ -89,7 +117,11 @@ export async function searchAniList(
       m.title?.native ||
       "Ohne Titel",
     year: m.seasonYear ?? m.startDate?.year ?? null,
-    coverUrl: m.coverImage?.large || m.coverImage?.medium || null,
+    coverUrl:
+      m.coverImage?.extraLarge ||
+      m.coverImage?.large ||
+      m.coverImage?.medium ||
+      null,
     format: m.format ?? null,
   }));
 }
@@ -108,6 +140,14 @@ export interface AniListEpisode {
   airDate: string | null; // ISO 8601, or null when unknown / unreleased
 }
 
+/** What the episode fetch returns: the normalized episodes plus the linked
+ *  MyAnimeList id when AniList knows one. Caller uses malId to fall back
+ *  to Jikan for any titles AniList's streamingEpisodes left null. */
+export interface AniListEpisodesResult {
+  episodes: AniListEpisode[];
+  malId: number | null;
+}
+
 // Defensive cap so a 1000+ episode work (One Piece…) can't insert a runaway
 // number of rows. Tracking still works up to the cap.
 const MAX_EPISODES = 2000;
@@ -119,6 +159,7 @@ const MEDIA_QUERY = `
   query ($id: Int) {
     Media(id: $id) {
       id
+      idMal
       type
       episodes
       chapters
@@ -178,21 +219,29 @@ async function anilistRequest(
  *    "Episode 12 - Whose Side Are You On?"
  *    "Episode 5. Title"
  *    "Ep 7: Title"
- *  We parse the leading number — that's the canonical episode mapping (more
- *  reliable than assuming the array is in order). Fall back to array index +
- *  the full title if no recognizable prefix. */
+ *  We parse the leading number — that IS the canonical episode mapping.
+ *
+ *  No index-based fallback: for long-running anime AniList only exposes
+ *  a window of streaming entries (~60-150) which often does NOT start at
+ *  episode 1 — e.g. One Piece returns indices 0..68 for episodes 62..130.
+ *  An "index + 1" fallback would assign those titles to episodes 1..69
+ *  and the real episode-1 title would silently disappear. Better: drop
+ *  unparseable entries and let Jikan (jikan.ts) fill the gaps. */
 function parseStreamingEpisode(
   s: RawStreamingEpisode,
-  index: number,
 ): { episode: number; title: string } | null {
   if (!s.title) return null;
-  const m = s.title.match(/^Ep(?:isode)?\.?\s*(\d+)\s*[-:.]?\s*(.*)$/i);
-  if (m) {
-    const n = Number(m[1]);
-    const title = m[2].trim();
-    return { episode: n, title: title || s.title.trim() };
-  }
-  return { episode: index + 1, title: s.title.trim() };
+  // Accept "Episode N", "Ep. N", "Ep N", "EP N" with any separator
+  // (hyphen, en-dash, em-dash, colon, period, pipe) before the title.
+  const m = s.title.match(/^Ep(?:isode)?\.?\s*(\d+)\b[\s\-–—:|.]*(.*)$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 1) return null;
+  const title = m[2].trim();
+  // Return only when there's actual title text — bare "Episode 1163" with
+  // nothing after is no signal worth storing.
+  if (!title) return null;
+  return { episode: n, title };
 }
 
 /**
@@ -207,13 +256,14 @@ function parseStreamingEpisode(
 export async function fetchAniListEpisodes(
   sourceId: string,
   type: "anime" | "manga",
-): Promise<AniListEpisode[]> {
+): Promise<AniListEpisodesResult> {
   const id = Number(sourceId);
-  if (!Number.isFinite(id)) return [];
+  if (!Number.isFinite(id)) return { episodes: [], malId: null };
 
   const json = (await anilistRequest(MEDIA_QUERY, { id })) as {
     data?: {
       Media?: {
+        idMal: number | null;
         episodes: number | null;
         chapters: number | null;
         title: {
@@ -234,23 +284,35 @@ export async function fetchAniListEpisodes(
     };
   } | null;
   const m = json?.data?.Media;
-  if (!m) return [];
+  if (!m) return { episodes: [], malId: null };
+  const malId = m.idMal;
 
   // ── Manga branch ─────────────────────────────────────────────────────
   if (type === "manga") {
+    const fallbackTitle =
+      m.title?.english || m.title?.romaji || m.title?.native || null;
     let count = m.chapters ?? 0;
     if (count < 1) {
-      const title =
-        m.title?.english || m.title?.romaji || m.title?.native || null;
-      count = (await fetchMangaDexChapterCount(id, title)) ?? 0;
+      count = (await fetchMangaDexChapterCount(id, fallbackTitle)) ?? 0;
     }
-    if (count < 1) return [];
-    return range(Math.min(count, MAX_EPISODES)).map((n) => ({
-      seasonNumber: 1,
-      episodeNumber: n,
-      title: null,
-      airDate: null,
-    }));
+    if (count < 1) return { episodes: [], malId };
+
+    // Best-effort chapter titles via MangaDex. Coverage varies wildly:
+    // weeklys often carry no title, officially-licensed runs (One Piece)
+    // have most chapters removed from MD. We get what we can; missing
+    // chapters keep title=null and the UI surfaces the standard fallback
+    // for them.
+    const mdTitles = await fetchMangaDexChapterTitles(id, fallbackTitle);
+
+    return {
+      episodes: range(Math.min(count, MAX_EPISODES)).map((n) => ({
+        seasonNumber: 1,
+        episodeNumber: n,
+        title: mdTitles.get(n) ?? null,
+        airDate: null,
+      })),
+      malId,
+    };
   }
 
   // ── Anime branch ─────────────────────────────────────────────────────
@@ -297,27 +359,31 @@ export async function fetchAniListEpisodes(
 
   // streamingEpisodes → episode-number-keyed titles. Only the FIRST entry
   // for each number wins, so we don't overwrite a parsed match with a later
-  // duplicate.
+  // duplicate. Unparseable entries (no leading "Episode N") are dropped —
+  // Jikan fills those gaps downstream (see jikan.ts).
   const titleByEpisode = new Map<number, string>();
-  (m.streamingEpisodes ?? []).forEach((s, idx) => {
-    const parsed = parseStreamingEpisode(s, idx);
+  for (const s of m.streamingEpisodes ?? []) {
+    const parsed = parseStreamingEpisode(s);
     if (parsed && !titleByEpisode.has(parsed.episode)) {
       titleByEpisode.set(parsed.episode, parsed.title);
     }
-  });
+  }
 
   const count = Math.min(knownCount ?? maxSeen, MAX_EPISODES);
-  if (count < 1) return [];
+  if (count < 1) return { episodes: [], malId };
 
-  return range(count).map((n) => {
-    const at = airByEpisode.get(n);
-    return {
-      seasonNumber: 1,
-      episodeNumber: n,
-      title: titleByEpisode.get(n) ?? null,
-      airDate: at != null ? new Date(at * 1000).toISOString() : null,
-    };
-  });
+  return {
+    episodes: range(count).map((n) => {
+      const at = airByEpisode.get(n);
+      return {
+        seasonNumber: 1,
+        episodeNumber: n,
+        title: titleByEpisode.get(n) ?? null,
+        airDate: at != null ? new Date(at * 1000).toISOString() : null,
+      };
+    }),
+    malId,
+  };
 }
 
 /** [1, 2, …, n] */

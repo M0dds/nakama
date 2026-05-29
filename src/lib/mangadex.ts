@@ -38,16 +38,13 @@ async function mdRequest(path: string): Promise<unknown> {
   }
 }
 
-/**
- * Latest released chapter number for an AniList manga, via MangaDex matched
- * on the AniList id. Returns null when there's no reliable id match or no
- * chapter data — the caller then falls back to "no chapters" rather than
- * guessing.
- */
-export async function fetchMangaDexChapterCount(
+/** Search MangaDex by title and resolve the work's MD id via an exact
+ *  AniList-id match on `attributes.links.al`. Shared by the chapter-count
+ *  and chapter-title lookups — both want the same canonical MD entry. */
+async function findMangaDexId(
   aniListId: number,
   title: string | null,
-): Promise<number | null> {
+): Promise<string | null> {
   if (!title) return null;
 
   const search = (await mdRequest(
@@ -59,9 +56,23 @@ export async function fetchMangaDexChapterCount(
   const match = (search?.data ?? []).find(
     (m) => m.attributes.links?.al === String(aniListId),
   );
-  if (!match) return null;
+  return match?.id ?? null;
+}
 
-  const agg = (await mdRequest(`/manga/${match.id}/aggregate`)) as {
+/**
+ * Latest released chapter number for an AniList manga, via MangaDex matched
+ * on the AniList id. Returns null when there's no reliable id match or no
+ * chapter data — the caller then falls back to "no chapters" rather than
+ * guessing.
+ */
+export async function fetchMangaDexChapterCount(
+  aniListId: number,
+  title: string | null,
+): Promise<number | null> {
+  const mdId = await findMangaDexId(aniListId, title);
+  if (!mdId) return null;
+
+  const agg = (await mdRequest(`/manga/${mdId}/aggregate`)) as {
     volumes?: Record<
       string,
       { chapters?: Record<string, { chapter?: string }> }
@@ -77,4 +88,58 @@ export async function fetchMangaDexChapterCount(
     }
   }
   return max >= 1 ? Math.floor(max) : null;
+}
+
+/**
+ * Per-chapter English titles from MangaDex, keyed by chapter number.
+ * Returns an empty map on no-match or no-data. Coverage is BEST-EFFORT —
+ * officially-licensed series (One Piece etc.) have many uploads removed
+ * and most weekly shounen chapters carry no title at all, so even a
+ * successful lookup often only fills a handful of chapters. Multiple
+ * translation groups can upload the same chapter; first-encountered wins.
+ *
+ * Pages the feed at MangaDex's max limit (500). Caps the total at SANE_MAX
+ * so a runaway response can't blow the request body up on the next upsert.
+ */
+export async function fetchMangaDexChapterTitles(
+  aniListId: number,
+  title: string | null,
+): Promise<Map<number, string>> {
+  const result = new Map<number, string>();
+  const mdId = await findMangaDexId(aniListId, title);
+  if (!mdId) return result;
+
+  const limit = 500;
+  let offset = 0;
+
+  while (offset < SANE_MAX) {
+    const feed = (await mdRequest(
+      `/manga/${mdId}/feed?translatedLanguage%5B%5D=en&order%5Bchapter%5D=asc&limit=${limit}&offset=${offset}`,
+    )) as {
+      data?: {
+        attributes: {
+          chapter: string | null;
+          title: string | null;
+        };
+      }[];
+      total?: number;
+    } | null;
+
+    const rows = feed?.data ?? [];
+    for (const r of rows) {
+      const n = Number(r.attributes.chapter);
+      const t = typeof r.attributes.title === "string"
+        ? r.attributes.title.trim()
+        : "";
+      if (Number.isFinite(n) && n >= 1 && n < SANE_MAX && t && !result.has(n)) {
+        result.set(n, t);
+      }
+    }
+
+    if (rows.length < limit) break;
+    offset += rows.length;
+    if (typeof feed?.total === "number" && offset >= feed.total) break;
+  }
+
+  return result;
 }

@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import { fetchAniListEpisodes } from "@/lib/anilist";
+import { fetchJikanEpisodeTitles } from "@/lib/jikan";
+import { fetchMangaDexChapterTitles } from "@/lib/mangadex";
 
 /**
  * Episodes data layer. The `episodes` and `episode_watches` tables live in
@@ -51,6 +53,27 @@ const EPISODIC_TYPES = new Set(["anime", "manga", "series"]);
 
 const STALE_MS = 1000 * 60 * 60 * 12; // 12 h — re-fetch ongoing schedules
 
+/** Bumped whenever the title-enrichment logic changes (Jikan for anime,
+ *  MangaDex for manga). Items stored under an older version trigger a
+ *  one-time re-enrichment on the next visit — independent of STALE_MS, so
+ *  we don't have to wait 12 h for fixes to propagate. Version history:
+ *    1 — initial Jikan enrichment (had a per-row UPDATE loop that timed
+ *        out on long shows like One Piece, leaving titles unfilled but
+ *        still stamping "done")
+ *    2 — bulk-upsert + MangaDex chapter-title fallback
+ *    3 — explicit 5000-row limit on the gap query — without it PostgREST
+ *        capped the SELECT at 1000 rows, so on One Piece (1100+ gaps)
+ *        the newest ~100 episodes silently went unfilled even though
+ *        Jikan returned their titles
+ *  (gap limit also caps storage at 5000 episodes/item — anything past
+ *  that is on the same wishlist as anilist.ts MAX_EPISODES) */
+const TITLE_ENRICHMENT_VERSION = 3;
+/** Cap for the gap-detection SELECT. PostgREST's implicit default is 1000
+ *  which silently lopped off the tail of long-running shows on the v2
+ *  enrichment — we explicitly request more so the bulk-upsert below sees
+ *  every gap that needs filling. */
+const GAP_QUERY_LIMIT = 5000;
+
 // ──────────────────────────────────────────────────────────────────────────
 // Lazy fetch + upsert
 // ──────────────────────────────────────────────────────────────────────────
@@ -71,10 +94,36 @@ function isFetchable(item: ItemForFetch): boolean {
 }
 
 async function storeEpisodes(item: ItemForFetch): Promise<void> {
-  const episodes = await fetchAniListEpisodes(
+  const { episodes, malId } = await fetchAniListEpisodes(
     item.sourceId,
     item.type as "anime" | "manga",
   );
+
+  // Title-fallback via Jikan (MyAnimeList). AniList's streamingEpisodes is
+  // a moving window of ~60-150 entries provided by streaming services —
+  // for long-running anime it misses both the very-early AND the very-
+  // latest episodes. Jikan ships MAL's full catalogue. We only call it
+  // when (a) we have a MAL id from AniList AND (b) there's at least one
+  // released-but-titleless episode worth filling. Manga gets skipped —
+  // Jikan's manga endpoint has chapters but not titles for them, and
+  // MangaDex already handles the chapter-count fallback.
+  if (item.type === "anime" && malId != null && hasAiredTitleGap(episodes)) {
+    try {
+      const jikanTitles = await fetchJikanEpisodeTitles(malId);
+      if (jikanTitles.size > 0) {
+        for (const ep of episodes) {
+          if (ep.title === null) {
+            const fromJikan = jikanTitles.get(ep.episodeNumber);
+            if (fromJikan) ep.title = fromJikan;
+          }
+        }
+      }
+    } catch (err) {
+      // Jikan is a best-effort enrichment — never block the store.
+      console.error("Jikan episode-title fallback failed", err);
+    }
+  }
+
   if (episodes.length > 0) {
     await supabase.from("episodes").upsert(
       episodes.map((e) => ({
@@ -89,26 +138,214 @@ async function storeEpisodes(item: ItemForFetch): Promise<void> {
   }
   // Stamp the fetch time even on empty results so we don't pound the API for
   // works that genuinely have no countable episodes yet (ongoing manga
-  // before MangaDex picks them up, etc.).
+  // before MangaDex picks them up, etc.). Persist malId so the one-time
+  // backfill below doesn't need to re-query AniList for it. Bump the
+  // titleEnrichmentVersion so the version gate in ensureEpisodes knows
+  // this item has up-to-date title coverage (Jikan for anime, MangaDex
+  // for manga — both run inside fetchAniListEpisodes by now).
+  const now = new Date().toISOString();
   await supabase
     .from("items")
     .update({
       metadata: {
         ...item.metadata,
-        episodesFetchedAt: new Date().toISOString(),
+        ...(malId != null ? { malId } : {}),
+        episodesFetchedAt: now,
+        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
       },
     })
     .eq("id", item.id);
 }
 
+/**
+ * One-time title backfill driven by the version-gate. For each type the
+ * source is different (Jikan for anime, MangaDex for manga). Bulk-upserts
+ * all gap titles in a single round-trip — the previous per-row UPDATE
+ * loop timed out for shows like One Piece (1100+ gaps × ~100 ms ≈ 110 s)
+ * and stamped "done" without actually filling anything.
+ *
+ * Anime: needs MAL id. Reads it from items.metadata.malId (populated by
+ * storeEpisodes), or one-shot queries AniList when absent (items stored
+ * before that stamp existed).
+ *
+ * Stamps `titleEnrichmentVersion` regardless of how many titles came back
+ * so we don't retry the same lookup on every load. A future logic change
+ * bumps the version and forces a re-run.
+ */
+async function enrichJikanTitles(item: ItemForFetch): Promise<void> {
+  let malId =
+    typeof item.metadata.malId === "number"
+      ? (item.metadata.malId as number)
+      : null;
+
+  if (malId == null) {
+    const ali = await fetchAniListEpisodes(item.sourceId, "anime");
+    malId = ali.malId;
+  }
+
+  if (malId != null) {
+    try {
+      const titles = await fetchJikanEpisodeTitles(malId);
+      if (titles.size > 0) {
+        const { data: gaps } = await supabase
+          .from("episodes")
+          .select("episode_number")
+          .eq("item_id", item.id)
+          .is("title", null)
+          .lte("air_date", new Date().toISOString())
+          .limit(GAP_QUERY_LIMIT);
+        // Build the update set as a single bulk upsert. The earlier
+        // per-row UPDATE-by-id loop was a non-starter for shows like One
+        // Piece (1100+ gaps × ~100 ms per round-trip ≈ 110 s, way past
+        // any reasonable user wait — the browser tab would be killed
+        // before the loop ever stamped `jikanEnrichedAt`, so the next
+        // visit re-ran the same broken loop).
+        const updates = (gaps ?? []).flatMap((g) => {
+          const n = g.episode_number as number;
+          const t = titles.get(n);
+          if (!t) return [];
+          return [
+            {
+              item_id: item.id,
+              season_number: 1,
+              episode_number: n,
+              title: t,
+            },
+          ];
+        });
+        if (updates.length > 0) {
+          await supabase
+            .from("episodes")
+            .upsert(updates, {
+              onConflict: "item_id,season_number,episode_number",
+            });
+        }
+      }
+    } catch (err) {
+      console.error("Jikan backfill failed", err);
+    }
+  }
+
+  // Stamp even on failure — we'd rather skip retrying for an item with no
+  // MAL link than pound the APIs on every visit. A future logic change
+  // bumps TITLE_ENRICHMENT_VERSION and forces a re-run from this gate.
+  await supabase
+    .from("items")
+    .update({
+      metadata: {
+        ...item.metadata,
+        ...(malId != null ? { malId } : {}),
+        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
+      },
+    })
+    .eq("id", item.id);
+}
+
+/**
+ * MangaDex chapter-title backfill — manga counterpart to enrichJikanTitles.
+ * Coverage is much patchier than Jikan's (officially-licensed series have
+ * uploads removed, weeklys often carry no title at all), so the resulting
+ * map may be small. We stamp the version regardless to avoid retrying the
+ * same lookup on every visit.
+ */
+async function enrichMangaDexTitles(item: ItemForFetch): Promise<void> {
+  // Need the AniList title for the MangaDex lookup. items.title is the
+  // canonical AniList title at insert time — fetch it once here.
+  const { data: itemRow } = await supabase
+    .from("items")
+    .select("title")
+    .eq("id", item.id)
+    .maybeSingle();
+  const title =
+    typeof itemRow?.title === "string" ? (itemRow.title as string) : null;
+
+  try {
+    const titles = await fetchMangaDexChapterTitles(
+      Number(item.sourceId),
+      title,
+    );
+    if (titles.size > 0) {
+      const { data: gaps } = await supabase
+        .from("episodes")
+        .select("episode_number")
+        .eq("item_id", item.id)
+        .is("title", null)
+        .limit(GAP_QUERY_LIMIT);
+      const updates = (gaps ?? []).flatMap((g) => {
+        const n = g.episode_number as number;
+        const t = titles.get(n);
+        if (!t) return [];
+        return [
+          {
+            item_id: item.id,
+            season_number: 1,
+            episode_number: n,
+            title: t,
+          },
+        ];
+      });
+      if (updates.length > 0) {
+        await supabase
+          .from("episodes")
+          .upsert(updates, {
+            onConflict: "item_id,season_number,episode_number",
+          });
+      }
+    }
+  } catch (err) {
+    console.error("MangaDex chapter-title backfill failed", err);
+  }
+
+  await supabase
+    .from("items")
+    .update({
+      metadata: {
+        ...item.metadata,
+        titleEnrichmentVersion: TITLE_ENRICHMENT_VERSION,
+      },
+    })
+    .eq("id", item.id);
+}
+
+/** True when there's at least one released episode (air_date in the past)
+ *  with no title — the case Jikan can fill. Future episodes without titles
+ *  aren't a Jikan job (MAL doesn't have unaired titles either). */
+function hasAiredTitleGap(
+  episodes: { title: string | null; airDate: string | null }[],
+): boolean {
+  const now = Date.now();
+  for (const e of episodes) {
+    if (e.title !== null) continue;
+    if (!e.airDate) continue;
+    const t = Date.parse(e.airDate);
+    if (Number.isFinite(t) && t <= now) return true;
+  }
+  return false;
+}
+
 /** Populate episodes from AniList the first time (or after STALE_MS). Only
- *  for fetchable items — others are no-ops. */
+ *  for fetchable items — others are no-ops. When the stored data is still
+ *  fresh but its title-enrichment version is older than the current logic
+ *  (TITLE_ENRICHMENT_VERSION), trigger a one-time backfill so existing
+ *  items pick up the missing-title coverage without waiting for the 12 h
+ *  stale window. */
 async function ensureEpisodes(item: ItemForFetch): Promise<void> {
   if (!isFetchable(item)) return;
   const at = item.metadata.episodesFetchedAt;
   const fetchedAt = typeof at === "string" ? Date.parse(at) : NaN;
-  if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt < STALE_MS) return;
-  await storeEpisodes(item);
+  const isFresh = Number.isFinite(fetchedAt) && Date.now() - fetchedAt < STALE_MS;
+
+  if (!isFresh) {
+    await storeEpisodes(item);
+    return;
+  }
+
+  const v = item.metadata.titleEnrichmentVersion;
+  const enrichedVersion = typeof v === "number" ? v : 0;
+  if (enrichedVersion < TITLE_ENRICHMENT_VERSION) {
+    if (item.type === "anime") await enrichJikanTitles(item);
+    else if (item.type === "manga") await enrichMangaDexTitles(item);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
