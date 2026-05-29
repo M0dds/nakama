@@ -488,27 +488,41 @@ export async function deleteList(listId: string): Promise<void> {
 /** Remove an item from a list (delete the list_items row). The item itself
  *  stays in `items` — it's still in the catalogue, just no longer on this
  *  list. Watch progress is keyed on items.id, so it's preserved even if the
- *  same item gets re-added later. */
+ *  same item gets re-added later.
+ *
+ *  `.select()` after the delete so a silent RLS block (0 rows, no error)
+ *  surfaces as a thrown error instead of the optimistic UI claiming success
+ *  while the row stays in the table. */
 export async function removeListItem(listItemId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("list_items")
     .delete()
-    .eq("id", listItemId);
+    .eq("id", listItemId)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (data === null)
+    throw new Error("Eintrag konnte nicht entfernt werden.");
 }
 
 /** Move a list_items row to a different list. Sync is reset to false because
  *  the new list may have different members — if the caller wants sync in the
- *  new list, they re-enable it there (handshake §Phase 7). */
+ *  new list, they re-enable it there (handshake §Phase 7).
+ *
+ *  `.select()` + null-check same rationale as removeListItem above. */
 export async function moveListItem(input: {
   listItemId: string;
   targetListId: string;
 }): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("list_items")
     .update({ list_id: input.targetListId, sync_enabled: false })
-    .eq("id", input.listItemId);
+    .eq("id", input.listItemId)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (data === null)
+    throw new Error("Eintrag konnte nicht verschoben werden.");
 }
 
 /**
