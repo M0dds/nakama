@@ -7,6 +7,7 @@ import {
   readTheme,
   readModePref,
 } from "@/lib/themes";
+import { Segmented } from "@/components/Segmented";
 
 /**
  * The shared theme + mode picker. Used in the Profile page and demoed in the
@@ -42,24 +43,16 @@ export function ThemeSwitcher() {
         <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
           Modus
         </p>
-        <div class="inline-flex rounded-sm border border-border p-0.5">
-          <For each={["light", "dark", "system"] as ThemeModePref[]}>
-            {(m) => (
-              <button
-                type="button"
-                onClick={() => pickMode(m)}
-                aria-pressed={mode() === m}
-                class="rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors aria-pressed:bg-text aria-pressed:text-bg"
-              >
-                {m === "light"
-                  ? "Hell"
-                  : m === "dark"
-                    ? "Dunkel"
-                    : "System"}
-              </button>
-            )}
-          </For>
-        </div>
+        <Segmented<ThemeModePref>
+          ariaLabel="Modus"
+          value={mode()}
+          onChange={pickMode}
+          options={[
+            { value: "light", label: "Hell" },
+            { value: "dark", label: "Dunkel" },
+            { value: "system", label: "System" },
+          ]}
+        />
       </div>
 
       <div>

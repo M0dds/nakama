@@ -7,7 +7,9 @@ import {
   listsQueryKey,
   type ListSummary,
 } from "@/lib/queries/lists";
-import { cn } from "@/lib/cn";
+import { Segmented } from "@/components/Segmented";
+
+type TrackingValue = "track" | "archive";
 
 /**
  * Per-user "Auf Home tracken"-Toggle (list_members.tracks_home). OFF =
@@ -84,40 +86,21 @@ export function ListTrackingToggle(props: {
     },
   }));
 
-  const pick = (next: boolean) => {
-    if (next === enabled() || mutation.isPending) return;
-    mutation.mutate(next);
-  };
-
-  const optionClass = (active: boolean) =>
-    cn(
-      "rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider transition-colors",
-      active ? "bg-text text-bg" : "text-text-muted hover:text-text",
-    );
-
   return (
     <div class="mt-5 border-t border-border pt-5">
       <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
         Auf Home tracken
       </p>
-      <div class="inline-flex rounded-sm border border-border p-0.5">
-        <button
-          type="button"
-          aria-pressed={enabled()}
-          onClick={() => pick(true)}
-          class={optionClass(enabled())}
-        >
-          Tracken
-        </button>
-        <button
-          type="button"
-          aria-pressed={!enabled()}
-          onClick={() => pick(false)}
-          class={optionClass(!enabled())}
-        >
-          Archiv
-        </button>
-      </div>
+      <Segmented<TrackingValue>
+        ariaLabel="Auf Home tracken"
+        value={enabled() ? "track" : "archive"}
+        onChange={(v) => mutation.mutate(v === "track")}
+        disabled={mutation.isPending}
+        options={[
+          { value: "track", label: "Tracken" },
+          { value: "archive", label: "Archiv" },
+        ]}
+      />
       <p class="mt-2 text-mini text-text-muted">
         Off bedeutet: Einträge dieser Liste fallen aus DEINEM Home, Kalender
         und Logbuch raus. Andere Mitglieder entscheiden für sich.

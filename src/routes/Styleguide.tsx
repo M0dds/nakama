@@ -28,6 +28,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { PageHeader } from "@/components/PageHeader";
 import { Tooltip } from "@/components/Tooltip";
 import { SelectMenu } from "@/components/SelectMenu";
+import { Segmented } from "@/components/Segmented";
 
 /**
  * Styleguide — the source of truth for every visual decision. New primitives
@@ -38,6 +39,7 @@ export default function Styleguide() {
   const [theme, setTheme] = createSignal<ThemeId>("default");
   const [mode, setMode] = createSignal<ThemeModePref>("system");
   const [demoOption, setDemoOption] = createSignal("anime");
+  const [segDemo, setSegDemo] = createSignal<"track" | "archive">("track");
   const auth = useAuth();
 
   onMount(() => {
@@ -110,19 +112,17 @@ export default function Styleguide() {
 
           <div>
             <p class={dtClass}>Modus</p>
-            <div class="mt-3 inline-flex rounded-sm border border-border p-0.5">
-              <For each={["light", "dark", "system"] as ThemeModePref[]}>
-                {(m) => (
-                  <button
-                    type="button"
-                    onClick={() => pickMode(m)}
-                    aria-pressed={mode() === m}
-                    class="rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors aria-pressed:bg-text aria-pressed:text-bg"
-                  >
-                    {m === "light" ? "Hell" : m === "dark" ? "Dunkel" : "System"}
-                  </button>
-                )}
-              </For>
+            <div class="mt-3">
+              <Segmented<ThemeModePref>
+                ariaLabel="Modus"
+                value={mode()}
+                onChange={pickMode}
+                options={[
+                  { value: "light", label: "Hell" },
+                  { value: "dark", label: "Dunkel" },
+                  { value: "system", label: "System" },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -468,8 +468,69 @@ export default function Styleguide() {
         </p>
       </Section>
 
-      {/* ── 16 · Anti-Patterns ───────────────────────────────────── */}
-      <Section number="16" label="Anti-Patterns · Verbote">
+      {/* ── 16 · Segmented ───────────────────────────────────────── */}
+      <Section number="16" label="Segmented">
+        <p class="mb-4 text-body text-text-muted">
+          Liquid 2/3-Wege-Switch mit derselben Stretch-and-Contract-Bubble wie
+          der BottomNav-Indicator. Die aktive Option trägt{" "}
+          <code class="font-mono text-mini">data-active="true"</code>; eine
+          absolute-positionierte <code class="font-mono text-mini">span</code>{" "}
+          mit <code class="font-mono text-mini">bg-text</code> misst dessen
+          offsetLeft + offsetWidth und morpht in zwei Phasen: erst Kapsel über
+          OLD + NEW (Phase 1 Stretch), dann Contract zur Destination nach
+          100 ms (Phase 2). 200 ms ease-out auf{" "}
+          <code class="font-mono text-mini">transition-all</code>. Bei
+          3-Wege-Switches mit übersprungener Mitte stretcht die Kapsel über
+          alle drei Slots und kontraktiert dann zum Ziel — der Skip ist
+          dadurch ein Flow, kein Sprung.
+        </p>
+        <div class="space-y-6">
+          <div>
+            <p class={dtClass}>2-Wege</p>
+            <div class="mt-3">
+              <Segmented<"track" | "archive">
+                ariaLabel="Demo zwei Optionen"
+                value={segDemo()}
+                onChange={setSegDemo}
+                options={[
+                  { value: "track", label: "Tracken" },
+                  { value: "archive", label: "Archiv" },
+                ]}
+              />
+            </div>
+          </div>
+          <div>
+            <p class={dtClass}>3-Wege</p>
+            <p class="mt-3 text-body text-text-muted">
+              Live-Demo: Sektion 01 → Modus. Wechsel von „Hell" zu „System"
+              zeigt den Skip-Stretch (Kapsel über alle drei Slots).
+            </p>
+          </div>
+          <div>
+            <p class={dtClass}>Disabled</p>
+            <div class="mt-3">
+              <Segmented<"a" | "b">
+                ariaLabel="Disabled Demo"
+                value="a"
+                onChange={() => {}}
+                disabled
+                options={[
+                  { value: "a", label: "Eins" },
+                  { value: "b", label: "Zwei" },
+                ]}
+              />
+            </div>
+            <p class="mt-2 text-mini text-text-muted">
+              Beide Optionen <code class="font-mono text-mini">cursor-not-allowed</code>{" "}
+              + 50 % Opacity. Verwendet während verbundener Mutationen pending
+              sind (siehe <code class="font-mono text-mini">ListTrackingToggle</code>).
+            </p>
+          </div>
+        </div>
+      </Section>
+
+      {/* ── 17 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="17" label="Anti-Patterns · Verbote">
         <p class="mb-6 text-body text-text-muted">
           Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
           hier kurz nachschauen.
