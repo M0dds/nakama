@@ -30,8 +30,8 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 
 ### Code quality / DRY
 
-- **C1** — Drag-Reorder-Logik 95% dupliziert zwischen Lists.tsx (164-219) und ListDetail.tsx (122-207)
-- **C2** — Pin-Toggle-Handler dupliziert (gleicher `minSort - 1` Algorithmus)
+- ~~**C1**~~ — Drag-Reorder-Logik dupliziert → **gefixt 3ca3fa8** (Bundle 2): beide Routen konsumieren jetzt `useDragSettling` + `reorderSection` aus `src/lib/sortable.ts`
+- ~~**C2**~~ — Pin-Toggle-Handler dupliziert → **gefixt 3ca3fa8** (Bundle 2): `topOfSection`-Helper
 - **C3** — `enrichJikanTitles` und `enrichMangaDexTitles` ~80% identisch (episodes.ts:175 vs :251)
 - **C4** — Inline-Jikan in `storeEpisodes` überlappt mit `enrichJikanTitles` backfill
 - **C5** — `dayOffset`/`formatDate`/`typeLabel`/`typeInitial` parallel in Home + ItemDetail + ListDetail
@@ -67,15 +67,15 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 2 — Drag-Reorder + Pin-Toggle DRY
 
 **Adressiert:** C1, C2
-**Status:** TODO
-**Why now:** Phase 6 Kalender wird vermutlich weitere sortable Surface bringen (Tag-Pane?). Hook ready → neue Surface bekommt das Pattern gratis.
+**Status:** ✅ **DONE** — branch `bundle/2-drag-reorder-dry`
+  - 6910499 — feat(sortable): extract drag-reorder building blocks
+  - 3ca3fa8 — refactor(lists): consume sortable helpers in /lists + /lists/:short
 
-**Scope:**
-- `useSortableList<T>`-Hook in `src/lib/sortable.ts` extrahieren
-- `computePinSortOrder<T>` Helper
-- Lists.tsx + ListDetail.tsx konsumieren
-
-**Estimated:** ~120 Zeilen Net-Reduktion.
+**Outcome:**
+- Neue `src/lib/sortable.ts` mit `useDragSettling`, `topOfSection`, `reorderSection`, `sortableRowStyle`, `SETTLE_MS`
+- Lists.tsx: 481 → 425 Zeilen (-56)
+- ListDetail.tsx: 582 → 521 Zeilen (-61)
+- Phase 6 Kalender (oder andere neue sortable Surface) bekommt das Pattern jetzt gratis
 
 ---
 
@@ -173,7 +173,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 ## Suggested execution order
 
 1. ~~**Bundle 1**~~ — done
-2. **Bundle 2** — Phase 6 prep, reduces complexity
+2. ~~**Bundle 2**~~ — done
 3. **Bundle 4** — klein, gewinnt Lesbarkeit, helpful für Bundle 5
 4. **Bundle 6** — low-risk Cleanup, kann zwischendurch
 5. **Bundle 3** — vor Phase 7
