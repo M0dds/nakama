@@ -1,6 +1,6 @@
 # Nakama — Handshake
 
-Master-Kontext. Lies das zuerst. Stand: Ende Phase 3 + erste Design-Pass-Korrekturen.
+Master-Kontext. Lies das zuerst. Stand: Phase 4 mittendrin — AddSheet inkl. AniList-Suche fertig, Items-Rendering in /lists/:id + Item-Detail + Episode-Layer noch offen.
 
 ---
 
@@ -60,17 +60,21 @@ Realtime change:                      Realtime change:
 
 ## Routing
 
-Programmatic in `src/routes/index.tsx`. `lazy()` pro Route. Public Routes ohne Guard, App-Routes mit `protect()`-Wrapper:
+Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
+
+**Wichtig — Layout-Persistenz:** Die vier protected App-Routes (`/`, `/lists`, `/lists/:id`, `/profile`) hängen als **Children eines einzigen `AppLayout`-Parent-Routes**, der `ProtectedRoute + AppShell` einmalig aufspannt. Solid Router hält die Parent-Component über Routenwechsel mounted — nur `props.children` tauscht. Dadurch persistieren BottomNav + AddSheet, BottomNav-Animation und der `+`-Klick-State überleben den Wechsel zwischen Surfaces. Ohne diese Nesting würde der ganze Shell pro Page-Mount neu aufgebaut (siehe alter Bug: NavBar-Flackern + Animation lief nicht).
+
+Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Level-Einträge ohne Layout-Wrapper.
 
 | Route | Guard | Status |
 |---|---|---|
 | `/login` | public | done |
 | `/auth/callback` | public | done |
 | `/styleguide` | public | done (14 Sektionen) |
-| `/` | protected | Stub (Phase 5 Pending) |
-| `/lists` | protected | done |
-| `/lists/:id` | protected | done |
-| `/profile` | protected | done |
+| `/` | protected (AppLayout) | Stub (Phase 5 Pending) |
+| `/lists` | protected (AppLayout) | done |
+| `/lists/:id` | protected (AppLayout) | items-Rows noch offen (Phase 4) |
+| `/profile` | protected (AppLayout) | done |
 | `/calendar` | — | NICHT existiert, Phase 6 |
 | `/item/:id` | — | NICHT existiert, Phase 4 |
 | `*` | public | NotFound |
@@ -105,9 +109,10 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route. Public Routes ohne G
 - `SelectMenu` — styled Single-Select, click-outside + Escape close
 - `ColumnGuide` — vertikale Trennlinie bei 2/3-Position des Viewports, `position: fixed inset-y-0` (volle Höhe egal wie hoch der Content), nur ab md sichtbar
 - `ThemeSwitcher` — Modus-Toggle (oben) + Theme-Grid (unten); benutzt im Profil und im Styleguide
-- `AppShell` — Layout-Wrapper für authed Routes, mountet BottomNav + pb-[94px]
-- `BottomNav` — Floating Pill mit 5 Tabs (Home / Listen / Kalender / + / Profil). Liquid Accent-Bubble via `data-accent`-Targeting + measure-and-stretch-then-contract Animation. **Hat momentan einen Bug: Animation läuft nicht zuverlässig, siehe „Offene Punkte" unten.**
+- `AppShell` — Layout-Wrapper für authed Routes, mountet **einmal** als Parent-Route (siehe Routing). Hält den AddSheet-State als **Two-Signal Split**: `addMounted` (DOM-Lifetime) und `addVisible` (Animation-State). Beim Open: setAddMounted+rAF×2+setAddVisible. Beim Close: setAddVisible(false), setTimeout(setAddMounted(false), 500ms). Das doppelte rAF beim Open ist nötig damit Solid's Render-Loop den initial-state paintet bevor die Transition triggert — sonst „taucht das Sheet einfach auf"
+- `BottomNav` — Floating Pill mit 5 Tabs (Home / Listen / + / Kalender / Profil). `+` sitzt **CENTER** (das ist die Add-Affordance) und trägt `data-add-anchor` auf der inneren Pille — das ist der Morph-Origin für die AddSheet. Liquid Accent-Bubble via `data-accent`-Targeting + measure-and-stretch-then-contract Animation. **Animation läuft jetzt zuverlässig**, war durch den Routing-Refactor (Parent-Route AppLayout) gefixt
 - `NavButton` — Nav-Item im Pill, setzt `data-accent=""` wenn aktiv (Bubble-Target)
+- `AddSheet` — Search + Add-to-list, **liquid morph aus der BottomNav**. Zwei-Teile-Layout: Card oben (page-tier `bg`, hard corners, kicker + Listen-Selektor + Close-X + scrollable Results) + Search-Pill unten (nav-tier `bg-nav-bg`, capsule). Pill morpht aus dem `[data-add-anchor]`-Rect der NavBar heraus zur Target-Rect (full-width minus padding, mobile keyboard-aware via visualViewport). NavBar selbst fadet **sequential-handoff-style** weg/zurück, nicht crossfade (siehe Memory `sequential-handoff-animation` und Gotchas). 500ms ease-quart in beiden Richtungen, ohne scale/translate auf der Card (pure opacity-fade — die Pill trägt die räumliche Bewegung). Pre-selected Liste wenn aus `/lists/:id` geöffnet. Search-as-you-type mit 220ms debounce + AbortController. Tap auf Result-Row triggert `addItemToList` mit ✓-Markierung in der Session
 - `ProtectedRoute` — Route-Guard
 - `CreateListForm` — TanStack-Mutation, Optimistic via `setQueryData`
 - `DeleteListButton` — Inline-Confirm „Wirklich löschen? · ✓ / ✗" im Aside-Slot. Beide States rendern direkt im h-6-Slot des PageHeaders, items-center, damit der Text in beiden Zuständen auf derselben Höhe sitzt
@@ -136,6 +141,30 @@ export async function createList(user, input)
 export async function renameList(input)
 export async function deleteList(id)
 export async function setListTracking(user, input)
+```
+
+`src/lib/queries/items.ts` (Phase 4):
+
+```typescript
+// Items + Episodes-Layer. Stand: Search + addItemToList fertig.
+// Episode-Queries + lazy fetch folgen.
+
+export async function addItemToList(input: { listId: string; source: AniListResult }): Promise<void>
+// Upsert items(source,source_id) → insert list_items. 23505 (unique_violation
+// auf list_items) wird als success behandelt (already in list).
+```
+
+`src/lib/anilist.ts` (Phase 4):
+
+```typescript
+// AniList GraphQL client — läuft DIREKT im Browser. CORS open, kein API-Key,
+// 90 req/min Rate-Limit. Kein Proxy nötig im Gegensatz zu Logbook (das hatte
+// einen Next-API-Route weil server-side).
+export interface AniListResult { sourceId; type; title; year; coverUrl; format }
+export async function searchAniList(q: string, signal?: AbortSignal): Promise<AniListResult[]>
+
+// Noch nicht geschrieben — kommt mit Item-Detail-Phase:
+// export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisode[]>
 ```
 
 **Pattern für jede neue Feature-Area:**
@@ -188,37 +217,54 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **1 · Foundation + Styleguide** | ✓ done — Primitives, Auth-Context, 14-Sektionen-Styleguide |
 | **2 · Auth & Shell** | ✓ done — Login (Discord OAuth + Magic-Link), AuthCallback, AppShell, BottomNav, Profile |
 | **3 · Listen** | ✓ done — `/lists` overview, `/lists/:id` detail, Create, Rename, Delete, ListTrackingToggle, Realtime, Optimistic Updates |
-| **4 · Items + Tracking** | offen — AniList-Suche, AddSheet, Item-Detail, EpisodeList (Desktop-Kacheln + Mobile-Rows), Cascade/Single/„Bis hier", lazy episode fetch, Status-Control |
+| **4 · Items + Tracking** | **teilweise** — siehe unten |
 | **5 · Home Dashboard** | offen — Was kommt, Fortsetzen, Logbuch (jetzt mit punktuellen Updates, kein Polling-Fallback) |
 | **6 · Kalender** | offen — Wochen-/Monatsansicht, Tag-Pane, Quick-Tick |
 | **7 · Sharing** | offen — Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator, Ownership-Transfer |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Animations-Pass |
 | **9 · PWA-Manifest fertigstellen + Hosting** | teilweise — Manifest steht in `vite.config.ts`, Deploy auf Vercel/Cloudflare Pages noch nicht |
 
+### Phase 4 — Detail-Status
+
+| Sub | Status |
+|---|---|
+| AniList GraphQL Client | ✓ done — `src/lib/anilist.ts`, läuft direkt im Browser |
+| `addItemToList` Mutation | ✓ done — `src/lib/queries/items.ts`, idempotent via 23505-handling |
+| AddSheet UI + Animation | ✓ done — `src/components/AddSheet.tsx`, Liquid Nav-Pill-Morph |
+| `+` in BottomNav verdrahtet | ✓ done — `data-add-anchor` auf der inneren Pille |
+| Items als Rows in `/lists/:id` | ❌ offen — aktuell nur Phase-4-Placeholder text |
+| Item-Detail-Seite `/item/:id` | ❌ offen — Route existiert noch nicht |
+| Episode-Layer (`episodes` table) | ❌ offen — DB-Schema da (geerbt aus Logbook), keine Queries |
+| Lazy `fetchAniListEpisodes` | ❌ offen — Logbook hat das, muss portiert werden |
+| EpisodeList UI (Desktop-Kacheln + Mobile-Rows) | ❌ offen |
+| Cascade / Single / „Bis hier" Tick-Pattern | ❌ offen — RPCs sind da (`mark_episodes_watched`) |
+| Status-Control für Movies/Games (`item_history`) | ❌ offen |
+
 ---
 
-## Offene Punkte (am Ende des letzten Chats stehen geblieben)
+## Offene Punkte (Stand: Phase 4 mittendrin)
 
-### 1. ⚠️ BottomNav Liquid-Animation läuft nicht zuverlässig
+### Konkret offen für die nächste Session
 
-**Beobachtung:** User sieht keine Animation beim Tab-Wechsel. Mehrere Iterationen versucht (spread → direct attribute für data-accent, queueMicrotask → requestAnimationFrame, `on()` Helper → plain createEffect, `<Show>` wrapper → always-render mit opacity). Aktueller Stand: `src/components/BottomNav.tsx` mit always-rendered Bubble, plain createEffect, requestAnimationFrame. Dev-Server wurde nach jeder Änderung neu gestartet.
+1. **Items als Rows in `/lists/:id` rendern.** Aktuell steht da nur ein Placeholder-Text „Einträge folgen in Phase 4 — Item-Suche + AddSheet." obwohl die Items über AddSheet schon hinzugefügt werden können (man sieht den `itemCount` in der Details-Spalte via Realtime hochzählen). Die `listItemsQueryOptions(id)` Query und der `ListEntry`-Type sind schon in `lists.ts` definiert — nur das UI fehlt. Pattern wie die Listen-Rows auf `/lists`: BentoModule mit `-mx-5 <ul>`, hover step UP nach surface, hairline `::after`-divider, klickbar auf später `/item/:id`.
 
-**Was wurde NICHT geprüft (für nächste Session):**
-- Ob `data-accent` Attribut tatsächlich im DOM landet (Chrome DevTools inspizieren beim live-Server)
-- Ob `pillEl.querySelector("[data-accent]")` non-null returned
-- Ob `setBubble()` mit echten Pixel-Werten aufgerufen wird (console.log)
-- Ob die `<span>` mit den style-Werten tatsächlich gerendert wird
-- Ob `transition-all duration-200 ease-out` Tailwind v4 Utility ist (mglw. `transition-[left,top,width,height]` explicit zu nutzen)
+2. **Item-Detail-Seite `/item/:id`.** Route in `routes/index.tsx` als Child von `AppLayout` registrieren. PageHeader mit kicker `LISTEN > <listname>` (oder aus dem context), title = item-title, optional backHref. Layout-Anlehnung an Logbook's `/item/[id]/page.tsx` (steht im Logbook-Repo).
 
-**Hypothese die ich noch nicht getestet habe:** Solid's `style={{...}}` Bindings könnten bei `bubble()?.left` (Optional Chaining mit Fallback `?? 0`) keine reaktive Subscription korrekt aufbauen. Möglicher Fix: `style` als Funktion oder einzeln per Memo aufgliedern.
+3. **Episode-Layer.** Im Logbook-handshake stehen `episodes`, `episode_watches`, `item_history` Tabellen. Die existieren in der shared Supabase-DB schon, nur die Queries und das UI fehlen in Nakama. Anfangen mit:
+   - `src/lib/queries/episodes.ts` mit `episodesQueryOptions(itemId)` + `markEpisodesWatched` (ruft die RPC).
+   - `src/lib/anilist.ts` erweitern um `fetchAniListEpisodes(sourceId, type)` — aus Logbook portieren, inkl. MangaDex-Fallback für ongoing Mangas (siehe Logbook `src/lib/anilist.ts` Zeile 162+).
+   - Lazy fetch: bei erster Item-Detail-Öffnung Episodes von AniList holen, in `episodes` table upserten, dann readen.
 
-### 2. ⚠️ Aside-Slot-Höhe — Text-Position-Konsistenz
+4. **EpisodeList UI.** Desktop: Kachel-Grid mit `aspect-square` Tiles, Episode-Number drin, ticked = accent-bg. Mobile: vertikale Rows mit Datum + Tick-Button rechts. Logbook-Vorlage: `src/components/item/*`.
 
-User hat zuletzt klargestellt: der TEXT (nicht die Buttons) muss in beiden DeleteListButton-States (Trigger vs Confirm) auf identischer Höhe sitzen. Mein letzter Fix war `PageHeader` aside-slot auf `h-6 items-center`, DeleteListButton ohne eigenen Wrapper. **Tatsächliche visuelle Verifikation steht aus** — User soll im Browser checken.
+5. **Cascade / Single / „Bis hier"-Pattern.** RPCs `mark_episodes_watched` und `toggle_episode_synced` sind da. UI: ein Click auf Episode-Tile = single tick. Long-press oder Modifier = „bis hier alle ticken" (cascade). Sync-Toggle für shared lists wenn Phase 7 ranraucht.
 
-### 3. Aktuelles Verhalten nach Refresh ungewiss
+6. **Status-Control für Movies/Games** (`item_history` table, status enum). Eigene Komponente, sitzt im Item-Detail rechts wo bei Anime/Manga der Episode-Counter wäre.
 
-Letzter Dev-Server-Restart kam am Ende des Chats. User-Feedback zum Stand der Animation und Aside-Baseline NACH dem Restart fehlt. **Bitte als ersten Schritt in neuer Session beim User nachfragen oder selber im Browser inspizieren.**
+### Bekannte tech-debt / kleine Sachen, NICHT dringend
+
+- **Such-Pill innere Content-Fade beim Schließen** geht aktuell mit 300ms over ease-out, das fadet die search-input + icon weg während der Pill noch morpht. Bei sehr schnellen User-Aktionen könnte das sichtbar werden (Inhalt verschwindet während Pill noch breit ist). Nicht akut — wenn's auffällt, content-fade timing aufbohren oder synchronisieren mit dem Morph.
+- **`origin()` wird beim Mount EINMAL gemessen** und während der ganzen Sheet-Session nicht updated. Wenn die NavBar während AddSheet offen reflows (z.B. window resize), könnte der Close-Morph zur falschen Position laufen. visualViewport listener ist da, aber der updated nur viewport + keyboardOffset, nicht origin. Nicht akut auf Mobile (Resize selten), wäre für Desktop nice-to-have.
 
 ---
 
@@ -237,12 +283,27 @@ Letzter Dev-Server-Restart kam am Ende des Chats. User-Feedback zum Stand der An
 
 ## Gotchas
 
+### Solid / Router / Reactivity
+
 - **Solid ≠ React.** JSX sieht ähnlich aus, aber: `class` statt `className`, refs via direkte Variablen-Zuweisung (`ref={myEl!}`), keine Re-Renders sondern fine-grained Reactivity, `createEffect` statt `useEffect`, `createSignal` statt `useState`.
 - **JSX-Attribute spread funktioniert anders als in React.** `{...(cond ? {attr: ""} : {})}` produzierte inkonsistenten Output bei data-Attributen. Stattdessen direkt: `data-attr={cond ? "" : undefined}`.
 - **Solid Router params** sind `Partial<Record<string, string>>`. Bei Routes mit `:id` segment ist value zur Laufzeit garantiert, aber TypeScript braucht non-null-assertion oder explizites Typing: `useParams<{ id: string }>()`.
+- **Layout-Persistenz braucht Parent-Routes.** Wenn ein Layout-Wrapper über Routenwechsel hinweg mounted bleiben soll (= Animationen + State überleben), MUSS er als Parent-Route in `routes/index.tsx` deklariert sein mit den Pages als `children`-Array. Per-Page-Import des Wrappers führt zu Re-Mount pro Navigation (war der „BottomNav-Animation-läuft-nicht" Bug der ersten Session).
 - **`on()` vs plain `createEffect`:** `on(deps, fn)` DEFERRED den ersten Run per default. Plain `createEffect` fires on initial setup AND on dep changes. Für „läuft beim Mount UND bei jeder Änderung" → plain createEffect.
-- **Show-Wrapper + Transitions:** Wenn `<Show>` ein animiertes Element umhüllt, kann beim Wechsel von falsy → truthy → falsy das Element unmount → remount, was Transitions zerschießt. Lösung: Always-render mit opacity gating.
-- **Tailwind v4 + ease-quart:** `--ease-quart` in `@theme inline` SOLLTE die Utility `ease-quart` generieren. Falls die nicht zieht, Fallback auf Tailwinds standard `ease-out`.
+- **Show-Wrapper + Transitions:** Wenn `<Show>` ein animiertes Element umhüllt, kann beim Wechsel von falsy → truthy → falsy das Element unmount → remount, was Transitions zerschießt. Lösung: Always-render mit opacity gating. Ausnahme: wenn das Element von einem **gemessenen Wert** abhängt (z.B. AddSheet's pill style von `origin()`), dann `<Show when={origin()}>` damit das erste Render schon mit korrekten Werten kommt — sonst interpoliert `transition-all` von default-zeros zu den richtigen Werten und das Element gleitet aus der Ecke rein.
+
+### Animation-Patterns (Stand Phase 4)
+
+- **Doppel-rAF für CSS-Transitions in Solid.** Ein einzelnes `requestAnimationFrame` reicht oft nicht — Solid's Render-Loop kann Mount + State-Flip in derselben Paint-Frame zusammenfassen, der Browser sieht nie den Initial-State, und die Transition läuft nicht (Element „taucht einfach auf"). Pattern: `rAF(() => rAF(() => setVisible(true)))` — zweites rAF garantiert dass der Browser den initial-state mindestens einmal paintet bevor die Transition triggert.
+- **Two-Signal-Pattern für animierte Mount/Unmount.** Ein State (`addMounted`) für DOM-Lifetime, ein zweiter (`addVisible`) für die Animation. Visible flippt sofort beim User-Klick, mounted erst nach `ANIM_MS` (für Open: erst mount, dann visible mit rAF×2; für Close: erst visible=false, dann setTimeout für mount=false). Dadurch laufen Exit-Animationen parallel zu allen anderen Animationen ohne sequentielle Latenz.
+- **Sequential handoff statt crossfade.** Zwei gleichfarbige gestapelte Layer (z.B. NavBar-Pill + Search-Pill an gleicher Position) NIE per Crossfade swappen — combined alpha dipt mathematisch auf 0.75, was als Flicker sichtbar wird. Stattdessen: appearing layer rises ZUERST (während disappearing layer noch opacity-1 und occluding), dann disappearing layer fällt mit dem appearing schon dahinter. Konkret: 50ms windows mit non-overlapping delays. Siehe Memory `sequential-handoff-animation` für Details + Reference-Implementierung in AddSheet.
+- **Liquid motion language.** Nakama's Animations-Charakter ist „liquid" — stretchy, organic, mercury-like. Default-Easing: `var(--ease-quart)` (`cubic-bezier(0.16, 1, 0.3, 1)`). Default-Duration für sichtbare Chrome-Bewegungen: 500ms (Search-Pill-Morph), 300ms für content-fades. Hard cuts/snaps sind OK für Content (Werte/Text), liquid bleibt für Interface-Chrome (Indicators, Sheets, Drags). Siehe Memory `motion-language-liquid`.
+- **Hard corners auch für Icon-Buttons.** `rounded-xs` ist der Default für icon-buttons (BackButton, X-Close, Add-Buttons). `rounded-full` nur für die BottomNav-Pille selbst (weil sie BUCHSTÄBLICH eine Capsule ist) und für den Akzent-Hanko-Dot. Siehe Memory `icon-buttons-hard-corners`.
+- **Tailwind v4 + ease-quart:** `--ease-quart` in `@theme inline` SOLLTE die Utility `ease-quart` generieren. In Praxis benutzen wir aktuell die arbitrary-syntax `[transition-timing-function:var(--ease-quart)]` — wirkt zuverlässiger.
+- **Per-property transition-timing braucht inline style.** Tailwind's `transition-{prop} duration-X delay-Y` setzt ein einziges timing für alle gelisteten properties. Für unterschiedliche Timings pro Property (z.B. morph 500ms + opacity 50ms): inline `style={{ transition: 'left 500ms ..., opacity 50ms ...' }}` mit comma-separierten Rules.
+
+### Daten / RLS
+
 - **PostgREST 1000-Row-Cap** (aus Logbook geerbt): bei langlaufenden Shows (One Piece) oder Massen-Episoden-Reads Window mit Range + RPC für aggregierte Counts.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
 - **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern.
