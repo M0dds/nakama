@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import { useParams, useNavigate } from "@solidjs/router";
+import { useParams } from "@solidjs/router";
 import {
   createMutation,
   createQuery,
@@ -20,6 +20,7 @@ import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
+import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
 
 const PAGE_SIZE = 26;
@@ -50,7 +51,6 @@ const PAGE_SIZE = 26;
 export default function ItemDetail() {
   const params = useParams<{ id: string }>();
   const auth = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const item = createQuery(() => ({
@@ -70,10 +70,11 @@ export default function ItemDetail() {
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
-  // Item resolved-but-null → not visible / not found / bad uuid. Bounce.
-  if (!item.isLoading && item.data === null) {
-    navigate("/lists", { replace: true });
-  }
+  // Item resolved-but-null → render the NotFound surface inline (items are
+  // public-ish — the message is just "Eintrag nicht gefunden", no privacy
+  // qualifier needed). Replaces the previous silent navigate("/lists")
+  // bounce that hid the failure.
+  const notFound = () => !item.isLoading && item.data === null;
 
   // Live updates: a partner ticking an episode (same item, shared list once
   // Phase 7 lands) or a backfill on this item refreshes the local cache.
@@ -174,6 +175,7 @@ export default function ItemDetail() {
     "font-mono text-mini uppercase tracking-wider text-text-muted";
 
   return (
+    <Show when={!notFound()} fallback={<NotFound kind="item" />}>
     <main class="w-full">
       <PageHeader
         kicker={
@@ -308,6 +310,7 @@ export default function ItemDetail() {
         </div>
       </div>
     </main>
+    </Show>
   );
 }
 

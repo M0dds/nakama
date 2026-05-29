@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { A, useParams, useNavigate } from "@solidjs/router";
+import { A, useParams } from "@solidjs/router";
 import { ChevronRight } from "lucide-solid";
 import { createQuery } from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,7 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
+import { NotFound } from "@/components/NotFound";
 
 /**
  * /lists/:id — detail view. Layout mirrors the Logbook handshake:
@@ -37,7 +38,6 @@ export default function ListDetail() {
   // a value at runtime, so the non-null assertion is safe.
   const params = useParams<{ id: string }>();
   const auth = useAuth();
-  const navigate = useNavigate();
 
   const list = createQuery(() => ({
     ...listQueryOptions(auth.user()!, params.id),
@@ -66,11 +66,11 @@ export default function ListDetail() {
     },
   ]);
 
-  // Resolved-but-null → list doesn't exist (or we can't see it). Bounce.
-  const notFound = () =>
-    !list.isLoading && list.data === null;
-
-  if (notFound()) navigate("/lists", { replace: true });
+  // Resolved-but-null → list doesn't exist OR RLS scoped it away. Render
+  // the NotFound surface inline (no privacy text — the message itself is
+  // intentionally indistinguishable between the two cases). Replaces the
+  // previous silent navigate("/lists") that hid the failure.
+  const notFound = () => !list.isLoading && list.data === null;
 
   const createdLabel = (iso: string) =>
     new Date(iso).toLocaleDateString("de-DE", {
@@ -83,6 +83,7 @@ export default function ListDetail() {
     "font-mono text-mini uppercase tracking-wider text-text-muted";
 
   return (
+    <Show when={!notFound()} fallback={<NotFound kind="list" />}>
     <main class="w-full">
       <PageHeader
         kicker="LISTEN"
@@ -179,6 +180,7 @@ export default function ListDetail() {
         </div>
       </div>
     </main>
+    </Show>
   );
 }
 
