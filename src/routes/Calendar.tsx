@@ -1,8 +1,16 @@
 import type { JSX } from "solid-js";
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { A } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, ChevronLeft, ChevronRight } from "lucide-solid";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { useAuth } from "@/lib/auth";
 import {
@@ -29,6 +37,7 @@ import {
   nextLabel,
   startOfMonth,
   typeInitial,
+  typeLabel,
   WEEKDAYS_MON,
 } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
@@ -51,8 +60,9 @@ import { Segmented } from "@/components/Segmented";
 type View = "week" | "month";
 const LONG_PRESS_MS = 500;
 
-/** Subtle today-cell tint — accent at 8% over the page bg. */
-const TODAY_TINT = "color-mix(in srgb, var(--accent) 8%, transparent)";
+/** Selected row/cell highlight — accent-tinted bg. Today is signalled by the
+ *  date number alone (accent-coloured), no background. */
+const SELECTED_TINT = "color-mix(in srgb, var(--accent) 12%, transparent)";
 
 export default function Calendar() {
   const auth = useAuth();
@@ -104,6 +114,12 @@ export default function Calendar() {
   const goToday = () => {
     setRefDate(new Date());
     setSelectedIso(isoDay(new Date()));
+  };
+  // Date-picker jump: move the anchor AND select the picked day so the
+  // day-pane immediately reflects the destination.
+  const goToDate = (d: Date) => {
+    setRefDate(d);
+    setSelectedIso(isoDay(d));
   };
   const periodLabel = () =>
     view() === "month" ? formatMonth(refDate()) : formatWeekRange(refDate());
@@ -188,9 +204,12 @@ export default function Calendar() {
             <Controls
               view={view()}
               periodLabel={periodLabel()}
+              refDate={refDate()}
+              todayIso={todayIso}
               onPrev={() => step(-1)}
               onNext={() => step(1)}
               onToday={goToday}
+              onPick={goToDate}
               onView={setView}
             />
 
@@ -242,9 +261,12 @@ export default function Calendar() {
 function Controls(props: {
   view: View;
   periodLabel: string;
+  refDate: Date;
+  todayIso: string;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onPick: (d: Date) => void;
   onView: (v: View) => void;
 }) {
   return (
@@ -253,9 +275,12 @@ function Controls(props: {
         <StepButton label="Zurück" onClick={props.onPrev}>
           <ChevronLeft class="size-4" strokeWidth={1.75} aria-hidden />
         </StepButton>
-        <span class="min-w-0 px-1 font-mono text-label uppercase tracking-wider text-text">
-          {props.periodLabel}
-        </span>
+        <DatePicker
+          label={props.periodLabel}
+          value={props.refDate}
+          todayIso={props.todayIso}
+          onPick={props.onPick}
+        />
         <StepButton label="Weiter" onClick={props.onNext}>
           <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
         </StepButton>
@@ -276,6 +301,136 @@ function Controls(props: {
           { value: "month", label: "Monat" },
         ]}
       />
+    </div>
+  );
+}
+
+/**
+ * Period label that doubles as a jump-to-date popover. Clicking opens a mini
+ * month grid (own browse-month state, seeded from the current anchor); ‹ ›
+ * page the month, a day-cell jumps there and closes. Click-outside + Escape
+ * dismiss. Dependency-free — same posture as SelectMenu / Tooltip.
+ */
+function DatePicker(props: {
+  label: string;
+  value: Date;
+  todayIso: string;
+  onPick: (d: Date) => void;
+}) {
+  const [open, setOpen] = createSignal(false);
+  const [viewMonth, setViewMonth] = createSignal(startOfMonth(props.value));
+  let wrapEl: HTMLDivElement | undefined;
+
+  const toggle = () => {
+    if (!open()) setViewMonth(startOfMonth(props.value)); // reseed on open
+    setOpen((o) => !o);
+  };
+  const close = () => setOpen(false);
+
+  const days = createMemo(() => {
+    const mon = mondayOf(viewMonth());
+    return Array.from({ length: 42 }, (_, i) => addDays(mon, i));
+  });
+
+  const pick = (d: Date) => {
+    props.onPick(d);
+    close();
+  };
+
+  onMount(() => {
+    const onDocPointer = (e: PointerEvent) => {
+      if (wrapEl && !wrapEl.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("pointerdown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    });
+  });
+
+  return (
+    <div ref={wrapEl!} class="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        class="flex items-center gap-1 rounded-xs px-1 py-0.5 font-mono text-label uppercase tracking-wider text-text transition-colors hover:bg-surface"
+      >
+        {props.label}
+        <ChevronDown
+          class="size-3.5 text-text-muted"
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      </button>
+
+      <Show when={open()}>
+        <div
+          role="dialog"
+          aria-label="Datum wählen"
+          class="absolute left-0 top-full z-40 mt-2 w-64 rounded-sm border border-border bg-bg p-3 shadow-floating"
+        >
+          {/* Month pager. */}
+          <div class="mb-2 flex items-center justify-between">
+            <StepButton
+              label="Vorheriger Monat"
+              onClick={() => setViewMonth((m) => addMonths(m, -1))}
+            >
+              <ChevronLeft class="size-4" strokeWidth={1.75} aria-hidden />
+            </StepButton>
+            <span class="font-mono text-label text-text">
+              {formatMonth(viewMonth())}
+            </span>
+            <StepButton
+              label="Nächster Monat"
+              onClick={() => setViewMonth((m) => addMonths(m, 1))}
+            >
+              <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
+            </StepButton>
+          </div>
+
+          {/* Weekday header. */}
+          <div class="grid grid-cols-7">
+            <For each={WEEKDAYS_MON}>
+              {(wd) => (
+                <div class="py-1 text-center font-mono text-mini uppercase text-text-muted">
+                  {wd}
+                </div>
+              )}
+            </For>
+          </div>
+
+          {/* Day cells. */}
+          <div class="grid grid-cols-7">
+            <For each={days()}>
+              {(d) => {
+                const iso = isoDay(d);
+                const inMonth = () => d.getMonth() === viewMonth().getMonth();
+                const isToday = () => iso === props.todayIso;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => pick(d)}
+                    class="flex aspect-square items-center justify-center rounded-xs font-mono text-mini tabular-nums transition-colors hover:bg-surface"
+                    classList={{
+                      "opacity-40": !inMonth(),
+                      "text-accent font-medium": isToday(),
+                      "text-text": !isToday(),
+                    }}
+                  >
+                    {d.getDate()}
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -312,6 +467,10 @@ function WeekGrid(props: {
         {(d, i) => {
           const iso = isoDay(d);
           const evs = () => props.events(iso);
+          // A week row fits two lines. Up to two events show in full; three
+          // or more collapse to the first event + a "+N weitere" line.
+          const shownEvs = () => (evs().length <= 2 ? evs() : evs().slice(0, 1));
+          const moreCount = () => (evs().length <= 2 ? 0 : evs().length - 1);
           const isToday = () => iso === props.todayIso;
           const isSel = () => iso === props.selectedIso;
           return (
@@ -320,8 +479,7 @@ function WeekGrid(props: {
                 type="button"
                 onClick={() => props.onSelect(iso)}
                 class="flex w-full items-start gap-3 px-5 py-3 text-left transition-colors hover:bg-surface"
-                classList={{ "ring-1 ring-inset ring-accent": isSel() }}
-                style={isToday() ? { "background-color": TODAY_TINT } : undefined}
+                style={isSel() ? { "background-color": SELECTED_TINT } : undefined}
               >
                 {/* Weekday + date column. */}
                 <div class="w-12 shrink-0">
@@ -345,7 +503,12 @@ function WeekGrid(props: {
                     when={evs().length > 0}
                     fallback={<span class="text-body text-text-muted">—</span>}
                   >
-                    <For each={evs()}>{(e) => <EventChip ev={e} />}</For>
+                    <For each={shownEvs()}>{(e) => <EventChip ev={e} />}</For>
+                    <Show when={moreCount() > 0}>
+                      <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                        +{moreCount()} weitere
+                      </span>
+                    </Show>
                   </Show>
                 </div>
               </button>
@@ -379,9 +542,19 @@ function EventChip(props: { ev: CalendarEvent }) {
       >
         {props.ev.title}
       </span>
-      <Show when={props.ev.watched}>
-        <Check class="size-3 shrink-0 text-accent-secondary" strokeWidth={2.5} aria-hidden />
-      </Show>
+      {/* Same dot vocabulary as the month grid: filled accent = watched,
+          hollow accent = released-unwatched, hollow grey = upcoming. Sits
+          directly behind the name at the same gap as to the episode code. */}
+      <span
+        aria-hidden
+        class="size-2 shrink-0 rounded-full"
+        classList={{
+          "bg-accent": props.ev.watched,
+          "bg-transparent ring-1 ring-accent":
+            props.ev.released && !props.ev.watched,
+          "bg-transparent ring-1 ring-border": !props.ev.released,
+        }}
+      />
     </div>
   );
 }
@@ -425,11 +598,8 @@ function MonthGrid(props: {
                 type="button"
                 onClick={() => props.onSelect(iso)}
                 class="flex min-h-[4.5rem] flex-col gap-1 border-b border-r border-border p-2 text-left transition-colors hover:bg-surface [&:nth-child(7n)]:border-r-0"
-                classList={{
-                  "opacity-40": !inMonth(),
-                  "ring-1 ring-inset ring-accent": isSel(),
-                }}
-                style={isToday() ? { "background-color": TODAY_TINT } : undefined}
+                classList={{ "opacity-40": !inMonth() }}
+                style={isSel() ? { "background-color": SELECTED_TINT } : undefined}
               >
                 <span
                   class="font-mono text-mini tabular-nums"
@@ -462,11 +632,14 @@ function DayDots(props: { events: CalendarEvent[] }) {
         {(e) => (
           <span
             aria-hidden
-            class="size-1.5 rounded-full"
+            // Filled accent = watched; hollow accent = released-but-unwatched
+            // (the "you missed this" state, glanceable); hollow grey = not yet
+            // aired. Mirrors the item-detail dot, with a third upcoming tier.
+            class="size-2 rounded-full"
             classList={{
-              "bg-text-muted": e.watched,
-              "bg-accent": e.released && !e.watched,
-              "border border-border": !e.released,
+              "bg-accent": e.watched,
+              "bg-transparent ring-1 ring-accent": e.released && !e.watched,
+              "bg-transparent ring-1 ring-border": !e.released,
             }}
           />
         )}
@@ -518,16 +691,22 @@ function DayPane(props: {
           </p>
         }
       >
+        {/* Index, not For: ticking replaces the event's object identity (the
+            optimistic patch + the settle-refetch each build fresh objects). A
+            reference-keyed For would dispose + remount the row on every update,
+            and the freshly-inserted DOM node loses its :hover for a frame —
+            the double flicker. Index keys by position, so the row stays
+            mounted and just its reactive props.ev updates. */}
         <ul class="-mx-5">
-          <For each={props.events}>
+          <Index each={props.events}>
             {(ev) => (
               <DayPaneRow
-                ev={ev}
-                onTap={() => props.onTap(ev)}
-                onCascade={() => props.onCascade(ev)}
+                ev={ev()}
+                onTap={() => props.onTap(ev())}
+                onCascade={() => props.onCascade(ev())}
               />
             )}
-          </For>
+          </Index>
         </ul>
       </Show>
     </div>
@@ -598,78 +777,93 @@ function DayPaneRow(props: {
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
 
   return (
-    <li class="relative flex items-center gap-3 px-5 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-      {/* Cover → item page. */}
-      <A
-        href={`/item/${props.ev.type}/${props.ev.slug}`}
-        class="my-2.5 block size-9 shrink-0 overflow-hidden rounded-xs border border-border bg-surface"
-        aria-label={`${props.ev.title} öffnen`}
+    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+      {/* Hover bg fills the full row (bleeds via the ul's -mx-5) — same shape
+          as the subpage list rows. Press-feedback shares the bg so the whole
+          row reacts to a long-press, not just the button. */}
+      <div
+        class="flex items-center gap-3 px-5 transition-colors hover:bg-surface"
+        classList={{ "bg-surface": pressing() }}
       >
+        {/* Cover → item page (sibling link, not nested in the button). */}
+        <A
+          href={`/item/${props.ev.type}/${props.ev.slug}`}
+          class="my-2.5 block h-[5.33rem] w-16 shrink-0 overflow-hidden rounded-xs border border-border bg-surface"
+          aria-label={`${props.ev.title} öffnen`}
+        >
+          <Show
+            when={cover()}
+            fallback={
+              <div class="flex h-full items-center justify-center font-mono text-mini text-text-muted opacity-50">
+                {typeInitial(props.ev.type)}
+              </div>
+            }
+          >
+            <img src={cover()!} alt="" class="h-full w-full object-cover" />
+          </Show>
+        </A>
+
         <Show
-          when={cover()}
+          when={props.ev.released}
           fallback={
-            <div class="flex h-full items-center justify-center font-mono text-mini text-text-muted opacity-50">
-              {typeInitial(props.ev.type)}
+            // Future episode — informational, not tickable.
+            <div class="flex min-w-0 flex-1 items-center gap-3 py-2.5">
+              <div class="min-w-0 flex-1">
+                <span class="block font-mono text-mini uppercase tracking-[0.15em] text-text-muted">
+                  {typeLabel(props.ev.type)}
+                </span>
+                <p class="truncate text-body text-text-muted">{props.ev.title}</p>
+                <p class="font-mono text-mini text-text-muted">
+                  {epLabel()} · noch nicht erschienen
+                </p>
+              </div>
             </div>
           }
         >
-          <img src={cover()!} alt="" class="h-full w-full object-cover" />
-        </Show>
-      </A>
-
-      <Show
-        when={props.ev.released}
-        fallback={
-          // Future episode — informational, not tickable.
-          <div class="flex min-w-0 flex-1 items-center gap-3 py-2.5">
+          <button
+            type="button"
+            onPointerDown={onPointerDown}
+            onPointerUp={stopPress}
+            onPointerLeave={stopPress}
+            onPointerCancel={stopPress}
+            onClick={onClick}
+            onContextMenu={onContextMenu}
+            aria-label={
+              props.ev.watched
+                ? `${props.ev.title} ${epLabel()}, gesehen. Tippen zum Entfernen, lang halten für „bis hier alles"`
+                : `${props.ev.title} ${epLabel()}. Tippen zum Markieren, lang halten für „bis hier alles"`
+            }
+            class="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left"
+          >
             <div class="min-w-0 flex-1">
-              <p class="truncate text-body text-text-muted">{props.ev.title}</p>
-              <p class="font-mono text-mini text-text-muted">
-                {epLabel()} · noch nicht erschienen
+              <span class="block font-mono text-mini uppercase tracking-[0.15em] text-text-muted">
+                {typeLabel(props.ev.type)}
+              </span>
+              <p class="truncate text-body text-text">{props.ev.title}</p>
+              <p class="truncate font-mono text-mini text-text-muted">
+                <Show when={props.ev.episodeTitle} fallback={epLabel()}>
+                  {epLabel()} · {props.ev.episodeTitle}
+                </Show>
               </p>
             </div>
-          </div>
-        }
-      >
-        <button
-          type="button"
-          onPointerDown={onPointerDown}
-          onPointerUp={stopPress}
-          onPointerLeave={stopPress}
-          onPointerCancel={stopPress}
-          onClick={onClick}
-          onContextMenu={onContextMenu}
-          aria-label={
-            props.ev.watched
-              ? `${props.ev.title} ${epLabel()}, gesehen. Tippen zum Entfernen, lang halten für „bis hier alles"`
-              : `${props.ev.title} ${epLabel()}. Tippen zum Markieren, lang halten für „bis hier alles"`
-          }
-          class="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left transition-colors"
-          classList={{ "bg-surface": pressing() }}
-        >
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-body text-text">{props.ev.title}</p>
-            <p class="truncate font-mono text-mini text-text-muted">
-              <Show when={props.ev.episodeTitle} fallback={epLabel()}>
-                {epLabel()} · {props.ev.episodeTitle}
-              </Show>
-            </p>
-          </div>
 
-          {/* Round tick indicator — filled when watched, hollow when not. */}
-          <span
-            aria-hidden
-            class="flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors duration-200 [transition-timing-function:var(--ease-quart)]"
-            classList={{
-              "border-accent-secondary bg-accent-secondary text-accent-on":
-                props.ev.watched,
-              "border-border text-transparent": !props.ev.watched,
-            }}
-          >
-            <Check class="size-3.5" strokeWidth={2.5} />
-          </span>
-        </button>
-      </Show>
+            {/* Right cluster. Phase 7 will slot the "who has watched" eye-icon
+                in HERE, to the LEFT of the dot. The watched dot mirrors the
+                item-detail episode list: filled accent = watched, hollow ring
+                = not yet. */}
+            <div class="flex shrink-0 items-center gap-2">
+              <span
+                aria-hidden
+                class={`size-2 shrink-0 rounded-full transition-colors ${
+                  props.ev.watched
+                    ? "bg-accent"
+                    : "bg-transparent ring-1 ring-border"
+                }`}
+              />
+            </div>
+          </button>
+        </Show>
+      </div>
     </li>
   );
 }
