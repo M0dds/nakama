@@ -1,6 +1,18 @@
 import { createSignal, onMount, For } from "solid-js";
 import { A } from "@solidjs/router";
-import { CircleCheck, CircleX, Info } from "lucide-solid";
+import {
+  Calendar,
+  Check,
+  CircleCheck,
+  CircleX,
+  House,
+  Info,
+  List,
+  Plus,
+  Search,
+  User,
+  X,
+} from "lucide-solid";
 import {
   THEMES,
   type ThemeId,
@@ -408,8 +420,56 @@ export default function Styleguide() {
         </p>
       </Section>
 
-      {/* ── 14 · Anti-Patterns ───────────────────────────────────── */}
-      <Section number="14" label="Anti-Patterns · Verbote">
+      {/* ── 14 · BottomNav ───────────────────────────────────────── */}
+      <Section number="14" label="BottomNav">
+        <p class="mb-4 text-body text-text-muted">
+          Floating Pill, fixed bottom-centered auf jedem Viewport.
+          Fünf Items: <code class="font-mono text-mini">Home · Listen · + · Kalender · Profil</code>.
+          Aktiver Tab bekommt einen liquid-sliding Accent-Bubble, der zwischen den
+          Buttons in zwei Phasen morpht — stretch-into-capsule, dann contract.
+          Das ist der einzige Ort in der App, wo <code class="font-mono text-mini">rounded-full</code>{" "}
+          benutzt wird (siehe Anti-Patterns 16); das Pill IST buchstäblich eine
+          Capsule.
+        </p>
+        <div class="space-y-4">
+          <BottomNavMock />
+          <p class="text-body text-text-muted">
+            Das <code class="font-mono text-mini">+</code> sitzt center und ist
+            keine Route — es öffnet die AddSheet (Section 15). Über
+            {" "}<code class="font-mono text-mini">data-add-anchor</code> markiert
+            die innere Pille den Morph-Origin für die Search-Pill der AddSheet.
+            Während die Sheet offen ist, fadet die BottomNav per
+            sequential-handoff weg (kein Crossfade — würde flackern, siehe
+            Memory).
+          </p>
+        </div>
+      </Section>
+
+      {/* ── 15 · AddSheet ────────────────────────────────────────── */}
+      <Section number="15" label="AddSheet">
+        <p class="mb-4 text-body text-text-muted">
+          Two-piece-Layout für Such-und-Hinzufügen: Card (page-tier
+          <code class="font-mono text-mini"> bg</code>, hairlines, hard
+          corners) oben und Search-Pill (nav-tier{" "}
+          <code class="font-mono text-mini">bg-nav-bg</code>, capsule) unten.
+          Die Pill morpht 500 ms aus dem{" "}
+          <code class="font-mono text-mini">[data-add-anchor]</code>-Rect der
+          BottomNav heraus zur Target-Position; die Card fadet pure-opacity
+          dazu, ohne räumliche Bewegung — die Pill trägt die Animation
+          allein.
+        </p>
+        <AddSheetMock />
+        <p class="mt-4 text-body text-text-muted">
+          Sequential handoff statt Crossfade (siehe Memory{" "}
+          <code class="font-mono text-mini">sequential-handoff-animation</code>):
+          Beim Öffnen rises die Search-Pill ZUERST (50 ms) während die
+          BottomNav noch opak ist; beim Schließen umgekehrt. Combined
+          alpha bleibt 1.0, kein flicker.
+        </p>
+      </Section>
+
+      {/* ── 16 · Anti-Patterns ───────────────────────────────────── */}
+      <Section number="16" label="Anti-Patterns · Verbote">
         <p class="mb-6 text-body text-text-muted">
           Was deliberately NICHT gebaut wird. Wenn du dich versucht fühlst —
           hier kurz nachschauen.
@@ -548,6 +608,134 @@ function AntiCard(props: { bad: string; good: string; why: string }) {
         {props.why}
       </p>
     </div>
+  );
+}
+
+/**
+ * Static mockup of the live BottomNav — same tokens, same layout, but
+ * inline (not fixed) and non-interactive. Renders Lists as the "active"
+ * tab so the sliding accent bubble has somewhere to sit.
+ */
+function BottomNavMock() {
+  return (
+    <div class="flex justify-center rounded-sm border border-border bg-bg p-6">
+      <div class="relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating">
+        {/* Static bubble — sits behind the active tab. In the real component
+            this slides between tabs in two phases. */}
+        <span
+          aria-hidden
+          class="pointer-events-none absolute size-11 rounded-full bg-accent"
+          style={{ left: "calc(6px + 44px + 4px)", top: "6px" }}
+        />
+        <NavMockButton icon={House} />
+        <NavMockButton icon={List} active />
+        <button
+          type="button"
+          aria-label="Hinzufügen"
+          class="relative z-10 inline-flex size-11 items-center justify-center rounded-full text-nav-fg/70"
+        >
+          <Plus class="size-5" strokeWidth={1.75} />
+        </button>
+        <NavMockButton icon={Calendar} />
+        <NavMockButton icon={User} />
+      </div>
+    </div>
+  );
+}
+
+function NavMockButton(props: {
+  icon: (p: { class?: string; strokeWidth?: number }) => unknown;
+  active?: boolean;
+}) {
+  return (
+    <span
+      class={`relative z-10 inline-flex size-11 items-center justify-center rounded-full ${
+        props.active ? "text-nav-bg" : "text-nav-fg/70"
+      }`}
+    >
+      {/* @ts-expect-error — lucide-solid icon constructor */}
+      <props.icon class="size-5" strokeWidth={1.75} />
+    </span>
+  );
+}
+
+/**
+ * Static mockup of the AddSheet. Shows the Card on top, Search-Pill below;
+ * skipped the morph-from-origin animation (would need real BottomNav
+ * coordinates and a full DOM overlay). Result-rows are dummy entries.
+ */
+function AddSheetMock() {
+  return (
+    <div class="rounded-sm border border-border bg-bg p-5">
+      {/* Card */}
+      <div class="border border-rule bg-bg">
+        <header class="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
+          <div class="flex items-center gap-3">
+            <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
+            <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
+              Hinzufügen zu
+            </span>
+            <span class="font-mono text-mini font-medium uppercase tracking-wider text-text">
+              Lieblings-Anime
+            </span>
+          </div>
+          <span class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted">
+            <X class="size-4" strokeWidth={1.75} />
+          </span>
+        </header>
+        <ul>
+          <ResultRowMock title="Frieren · Beyond Journey's End" type="Anime · 2023" added />
+          <ResultRowMock title="Vinland Saga" type="Anime · 2019" />
+          <ResultRowMock title="Chainsaw Man" type="Manga · 2018" last />
+        </ul>
+      </div>
+      {/* Pill */}
+      <div class="mt-3 flex items-center gap-2 rounded-full bg-nav-bg px-5 py-2.5">
+        <Search aria-hidden class="size-4 shrink-0 text-nav-fg/60" strokeWidth={1.75} />
+        <span class="text-body text-nav-fg/50">Anime oder Manga suchen …</span>
+      </div>
+    </div>
+  );
+}
+
+function ResultRowMock(props: {
+  title: string;
+  type: string;
+  added?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <li
+      class={`relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border ${
+        props.last ? "after:hidden" : ""
+      }`}
+    >
+      <div class="flex items-center gap-3 px-5 py-3">
+        <div class="flex size-12 shrink-0 items-center justify-center rounded-xs border border-border bg-surface font-mono text-mini text-text-muted">
+          A
+        </div>
+        <div class="min-w-0 flex-1">
+          <h4 class="truncate text-body text-text">{props.title}</h4>
+          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+            {props.type}
+          </p>
+        </div>
+        <span
+          aria-hidden
+          class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border ${
+            props.added
+              ? "border-accent bg-accent text-accent-on"
+              : "border-border text-text-muted"
+          }`}
+        >
+          {props.added ? (
+            <Check class="size-4" strokeWidth={2} />
+          ) : (
+            <Plus class="size-4" strokeWidth={1.75} />
+          )}
+        </span>
+      </div>
+    </li>
   );
 }
 
