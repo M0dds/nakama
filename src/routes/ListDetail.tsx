@@ -38,6 +38,7 @@ import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
 import { RowActions, type Confirming } from "@/components/RowActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
+import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
@@ -206,7 +207,23 @@ export default function ListDetail() {
     },
     {
       table: "list_members",
-      invalidates: [listQueryKey(params.shortCode), listsQueryKey],
+      invalidates: [
+        listQueryKey(params.shortCode),
+        listsQueryKey,
+        ["list-members"],
+      ],
+    },
+    {
+      // Invite sent / revoked / accepted / declined. is_shared + member-count
+      // ripple to the list header, so refresh the single-list + overview caches
+      // too; ["invitations","mine"] keeps the BottomNav badge live.
+      table: "list_invitations",
+      invalidates: [
+        ["list-invitations"],
+        ["invitations", "mine"],
+        listQueryKey(params.shortCode),
+        listsQueryKey,
+      ],
     },
     {
       table: "list_items",
@@ -357,6 +374,19 @@ export default function ListDetail() {
               )}
             </Show>
           </BentoModule>
+
+          {/* Mitglieder — sharing module. Hairline-separated from Details
+              within the same right column (BentoModule carries no divider of
+              its own). */}
+          <Show when={list.data}>
+            {(data) => (
+              <div class="border-t border-border">
+                <BentoModule label="Mitglieder" number="03">
+                  <MembersModule listId={data().id} isOwner={data().isOwner} />
+                </BentoModule>
+              </div>
+            )}
+          </Show>
         </div>
       </div>
     </main>
