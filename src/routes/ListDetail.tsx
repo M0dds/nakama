@@ -5,6 +5,15 @@ import {
   createQuery,
   useQueryClient,
 } from "@tanstack/solid-query";
+import {
+  closestCenter,
+  createSortable,
+  DragDropProvider,
+  DragDropSensors,
+  SortableProvider,
+  transformStyle,
+  type DragEvent,
+} from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
 import {
   listQueryOptions,
@@ -12,6 +21,7 @@ import {
   listQueryKey,
   listItemsQueryKey,
   listsQueryKey,
+  reorderListItems,
   setListItemPin,
   type ListEntry,
 } from "@/lib/queries/lists";
@@ -26,6 +36,7 @@ import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { PinButton } from "@/components/PinButton";
+import { DragHandle } from "@/components/DragHandle";
 
 /**
  * /lists/:id — detail view. Layout mirrors the Logbook handshake:
@@ -107,6 +118,64 @@ export default function ListDetail() {
         ? Math.min(...targetSection.map((e) => e.sortOrder))
         : 1;
     pinMut.mutate({ entry, pinned: targetPinned, sortOrder: minSort - 1 });
+  };
+
+  // Drag-reorder within pinned OR unpinned section. Cross-section drops
+  // are refused — handshake decision: pin-state changes go through the
+  // pin click, not the drag.
+  const reorderMut = createMutation(() => ({
+    mutationFn: (input: { orderedListItemIds: string[] }) =>
+      reorderListItems({ orderedListItemIds: input.orderedListItemIds }),
+    onError: (_err, _input, ctx) => {
+      const prev = (ctx as { prev?: unknown } | undefined)?.prev;
+      if (prev)
+        queryClient.setQueryData(listItemsQueryKey(params.shortCode), prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: listItemsQueryKey(params.shortCode),
+      });
+    },
+  }));
+
+  const onDragEnd = ({ draggable, droppable }: DragEvent) => {
+    if (!droppable || draggable.id === droppable.id) return;
+    const fromPinned = (draggable.data as { pinned: boolean }).pinned;
+    const toPinned = (droppable.data as { pinned: boolean }).pinned;
+    if (fromPinned !== toPinned) return;
+
+    const all = queryClient.getQueryData<ListEntry[]>(
+      listItemsQueryKey(params.shortCode),
+    );
+    if (!all) return;
+
+    const section = all.filter((e) => e.pinned === fromPinned);
+    const fromIndex = section.findIndex((e) => e.listItemId === draggable.id);
+    const toIndex = section.findIndex((e) => e.listItemId === droppable.id);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+    const nextSection = [...section];
+    const [moved] = nextSection.splice(fromIndex, 1);
+    nextSection.splice(toIndex, 0, moved);
+
+    const sortMap = new Map<string, number>(
+      nextSection.map((e, i) => [e.listItemId, i + 1]),
+    );
+    const orderedListItemIds = nextSection.map((e) => e.listItemId);
+
+    const next = [...all]
+      .map((e) =>
+        sortMap.has(e.listItemId)
+          ? { ...e, sortOrder: sortMap.get(e.listItemId)! }
+          : e,
+      )
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return a.sortOrder - b.sortOrder;
+      });
+    queryClient.setQueryData(listItemsQueryKey(params.shortCode), next);
+
+    reorderMut.mutate({ orderedListItemIds });
   };
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
@@ -203,12 +272,18 @@ export default function ListDetail() {
                 when={items.data && items.data.length > 0}
                 fallback={<EntriesEmpty />}
               >
-                <ListEntries
-                  items={items.data!}
-                  listShortCode={params.shortCode}
-                  onRequestMove={(entry) => setMovingEntry(entry)}
-                  onTogglePin={handleTogglePin}
-                />
+                <DragDropProvider
+                  onDragEnd={onDragEnd}
+                  collisionDetector={closestCenter}
+                >
+                  <DragDropSensors />
+                  <ListEntries
+                    items={items.data!}
+                    listShortCode={params.shortCode}
+                    onRequestMove={(entry) => setMovingEntry(entry)}
+                    onTogglePin={handleTogglePin}
+                  />
+                </DragDropProvider>
               </Show>
             </Show>
           </BentoModule>
@@ -311,60 +386,109 @@ function ListEntries(props: {
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
 }) {
+  const pinned = () => props.items.filter((e) => e.pinned);
+  const unpinned = () => props.items.filter((e) => !e.pinned);
+  const pinnedIds = () => pinned().map((e) => e.listItemId);
+  const unpinnedIds = () => unpinned().map((e) => e.listItemId);
+
   return (
     <ul class="-mx-5">
-      <For each={props.items}>
-        {(entry) => (
-          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border">
-            <div class="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface">
-              <A
-                href={`/item/${entry.type}/${entry.slug}`}
-                class="flex min-w-0 flex-1 items-center gap-3"
-              >
-                <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
-                  <Show
-                    when={entry.coverUrl}
-                    fallback={
-                      <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-                        {entry.type === "manga" ? "M" : "A"}
-                      </div>
-                    }
-                  >
-                    <img
-                      src={entry.coverUrl!}
-                      alt=""
-                      class="size-full object-cover"
-                      loading="lazy"
-                    />
-                  </Show>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-                    {entry.title}
-                  </h3>
-                  <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-                    {typeLabel(entry.type)}
-                  </p>
-                </div>
-              </A>
-              <PinButton
-                pinned={entry.pinned}
-                noun="Eintrag"
-                onToggle={() => props.onTogglePin(entry)}
-              />
-              <ListEntryActions
-                itemId={entry.itemId}
-                listItemId={entry.listItemId}
-                itemTitle={entry.title}
-                itemType={entry.type}
-                itemSlug={entry.slug}
-                listShortCode={props.listShortCode}
-                onRequestMove={() => props.onRequestMove(entry)}
-              />
-            </div>
-          </li>
-        )}
-      </For>
+      <SortableProvider ids={pinnedIds()}>
+        <For each={pinned()}>
+          {(entry) => (
+            <SortableEntryRow
+              entry={entry}
+              listShortCode={props.listShortCode}
+              onRequestMove={props.onRequestMove}
+              onTogglePin={props.onTogglePin}
+            />
+          )}
+        </For>
+      </SortableProvider>
+      <SortableProvider ids={unpinnedIds()}>
+        <For each={unpinned()}>
+          {(entry) => (
+            <SortableEntryRow
+              entry={entry}
+              listShortCode={props.listShortCode}
+              onRequestMove={props.onRequestMove}
+              onTogglePin={props.onTogglePin}
+            />
+          )}
+        </For>
+      </SortableProvider>
     </ul>
+  );
+}
+
+function SortableEntryRow(props: {
+  entry: ListEntry;
+  listShortCode: string;
+  onRequestMove: (entry: ListEntry) => void;
+  onTogglePin: (entry: ListEntry) => void;
+}) {
+  const sortable = createSortable(props.entry.listItemId, {
+    pinned: props.entry.pinned,
+  });
+  return (
+    <li
+      ref={sortable}
+      style={transformStyle(sortable.transform)}
+      class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border"
+      classList={{
+        "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
+      }}
+    >
+      <div class="group flex items-center gap-2 px-5 py-3 transition-colors hover:bg-surface">
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.entry.title}
+        />
+        <A
+          href={`/item/${props.entry.type}/${props.entry.slug}`}
+          class="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
+            <Show
+              when={props.entry.coverUrl}
+              fallback={
+                <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+                  {props.entry.type === "manga" ? "M" : "A"}
+                </div>
+              }
+            >
+              <img
+                src={props.entry.coverUrl!}
+                alt=""
+                class="size-full object-cover"
+                loading="lazy"
+              />
+            </Show>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+              {props.entry.title}
+            </h3>
+            <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+              {typeLabel(props.entry.type)}
+            </p>
+          </div>
+        </A>
+        <PinButton
+          pinned={props.entry.pinned}
+          noun="Eintrag"
+          onToggle={() => props.onTogglePin(props.entry)}
+        />
+        <ListEntryActions
+          itemId={props.entry.itemId}
+          listItemId={props.entry.listItemId}
+          itemTitle={props.entry.title}
+          itemType={props.entry.type}
+          itemSlug={props.entry.slug}
+          listShortCode={props.listShortCode}
+          onRequestMove={() => props.onRequestMove(props.entry)}
+        />
+      </div>
+    </li>
   );
 }
