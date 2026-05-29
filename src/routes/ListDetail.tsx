@@ -81,6 +81,10 @@ export default function ListDetail() {
         pinned: input.pinned,
       }),
     onMutate: async (input) => {
+      // Suppress hover-bg while the re-sort slides rows under the cursor —
+      // same settle window the drag path uses (otherwise the rows passing
+      // under the pointer flicker on pin).
+      settle();
       const key = listItemsQueryKey(params.shortCode);
       await queryClient.cancelQueries({ queryKey: key });
       const prev = queryClient.getQueryData<ListEntry[]>(key);
@@ -147,7 +151,7 @@ export default function ListDetail() {
   // Drag-reorder + hover-bg suppression. The hook owns the settle window;
   // we provide only the reorder logic. Refuse cross-section drops — pin-
   // state changes go through the pin click, not the drag.
-  const { dragSettling, onDragStart, onDragEnd } = useDragSettling(
+  const { dragSettling, onDragStart, onDragEnd, settle } = useDragSettling(
     ({ draggable, droppable }) => {
       if (!droppable || draggable.id === droppable.id) return;
       const fromPinned = (draggable.data as { pinned: boolean }).pinned;

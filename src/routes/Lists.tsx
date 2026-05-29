@@ -80,6 +80,10 @@ export default function Lists() {
         pinned: input.pinned,
       }),
     onMutate: async (input) => {
+      // Suppress hover-bg while the re-sort slides rows under the cursor —
+      // same settle window the drag path uses, otherwise the rows passing
+      // under the pointer flicker (B-fix follow-up to the pin RPC work).
+      settle();
       await queryClient.cancelQueries({ queryKey: listsQueryKey });
       const prev = queryClient.getQueryData<{
         private: ListSummary[];
@@ -152,7 +156,7 @@ export default function Lists() {
   // unconditional settle scheduling; we provide only the actual reorder
   // logic. Refuse cross-section drops (pinned/unpinned stay separate;
   // pin-state changes go through the pin click, not the drag).
-  const { dragSettling, onDragStart, onDragEnd } = useDragSettling(
+  const { dragSettling, onDragStart, onDragEnd, settle } = useDragSettling(
     ({ draggable, droppable }) => {
       if (!droppable || draggable.id === droppable.id) return;
       const fromSection = (draggable.data as { section: SectionKey }).section;

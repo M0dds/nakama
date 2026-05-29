@@ -60,7 +60,18 @@ export function useDragSettling(handler: (e: DragEvent) => void) {
     handler(e);
   };
 
-  return { dragSettling, onDragStart, onDragEnd };
+  /** Trigger one settle window for a NON-drag reflow that slides rows under a
+   *  stationary cursor — e.g. a pin toggle that re-sorts a section. Without
+   *  this the rows passing under the pointer each pick up :hover for a frame,
+   *  reading as the same bg flicker the drag path already suppresses. Call it
+   *  as the optimistic re-sort is applied. */
+  const settle = () => {
+    if (settleTimer) clearTimeout(settleTimer);
+    setDragSettling(true);
+    settleTimer = setTimeout(() => setDragSettling(false), SETTLE_MS);
+  };
+
+  return { dragSettling, onDragStart, onDragEnd, settle };
 }
 
 /**
