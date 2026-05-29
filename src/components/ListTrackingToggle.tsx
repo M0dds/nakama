@@ -22,7 +22,10 @@ import { cn } from "@/lib/cn";
  * the other one now") makes it obvious something happened.
  */
 export function ListTrackingToggle(props: {
+  /** UUID — what setListTracking's underlying UPDATE filters on. */
   listId: string;
+  /** URL-stable identifier — what listQueryKey/listsQueryKey are keyed on. */
+  shortCode: string;
   initialEnabled: boolean;
 }) {
   const auth = useAuth();
@@ -40,10 +43,10 @@ export function ListTrackingToggle(props: {
     onMutate: (next) => {
       setEnabled(next);
       const prev = queryClient.getQueryData<ListSummary | null>(
-        listQueryKey(props.listId),
+        listQueryKey(props.shortCode),
       );
       if (prev) {
-        queryClient.setQueryData(listQueryKey(props.listId), {
+        queryClient.setQueryData(listQueryKey(props.shortCode), {
           ...prev,
           tracksHome: next,
         });
@@ -53,13 +56,15 @@ export function ListTrackingToggle(props: {
     onError: (_e, _next, ctx) => {
       setEnabled(props.initialEnabled);
       if (ctx?.prev !== undefined)
-        queryClient.setQueryData(listQueryKey(props.listId), ctx.prev);
+        queryClient.setQueryData(listQueryKey(props.shortCode), ctx.prev);
     },
     onSuccess: (res, next) => {
       if (res.tracksHome === null) {
         // RLS silently blocked — revert.
         setEnabled(!next);
-        queryClient.invalidateQueries({ queryKey: listQueryKey(props.listId) });
+        queryClient.invalidateQueries({
+          queryKey: listQueryKey(props.shortCode),
+        });
         return;
       }
       // Overview cache reflects this list's tracksHome too — patch it so

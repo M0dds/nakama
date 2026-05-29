@@ -34,35 +34,38 @@ import { NotFound } from "@/components/NotFound";
  * the lists overview instead of showing a stale shell.
  */
 export default function ListDetail() {
-  // Solid Router types params as Partial<Record>; the :id segment guarantees
-  // a value at runtime, so the non-null assertion is safe.
-  const params = useParams<{ id: string }>();
+  // Solid Router types params as Partial<Record>; the :shortCode segment
+  // guarantees a value at runtime, so the non-null assertion is safe.
+  const params = useParams<{ shortCode: string }>();
   const auth = useAuth();
 
   const list = createQuery(() => ({
-    ...listQueryOptions(auth.user()!, params.id),
-    enabled: !!auth.user() && !!params.id,
+    ...listQueryOptions(auth.user()!, params.shortCode),
+    enabled: !!auth.user() && !!params.shortCode,
   }));
 
   const items = createQuery(() => ({
-    ...listItemsQueryOptions(params.id),
-    enabled: !!params.id,
+    ...listItemsQueryOptions(params.shortCode),
+    enabled: !!params.shortCode,
   }));
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
   // overview cache (so /lists sees the new name) and this detail cache.
-  useRealtimeInvalidation(`list-${params.id}`, [
+  useRealtimeInvalidation(`list-${params.shortCode}`, [
     {
       table: "lists",
-      invalidates: [listQueryKey(params.id), listsQueryKey],
+      invalidates: [listQueryKey(params.shortCode), listsQueryKey],
     },
     {
       table: "list_members",
-      invalidates: [listQueryKey(params.id), listsQueryKey],
+      invalidates: [listQueryKey(params.shortCode), listsQueryKey],
     },
     {
       table: "list_items",
-      invalidates: [listItemsQueryKey(params.id), listQueryKey(params.id)],
+      invalidates: [
+        listItemsQueryKey(params.shortCode),
+        listQueryKey(params.shortCode),
+      ],
     },
   ]);
 
@@ -92,6 +95,7 @@ export default function ListDetail() {
             {(data) => (
               <EditableListName
                 listId={data().id}
+                shortCode={data().shortCode}
                 initialName={data().name}
               />
             )}
@@ -171,6 +175,7 @@ export default function ListDetail() {
 
                   <ListTrackingToggle
                     listId={data().id}
+                    shortCode={data().shortCode}
                     initialEnabled={data().tracksHome}
                   />
                 </>
@@ -227,7 +232,7 @@ function ListEntries(props: { items: ListEntry[] }) {
         {(entry) => (
           <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
             <A
-              href={`/item/${entry.itemId}`}
+              href={`/item/${entry.type}/${entry.slug}`}
               class="group block transition-colors hover:bg-surface"
             >
               <div class="flex items-center gap-3 px-5 py-3">

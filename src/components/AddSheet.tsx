@@ -161,11 +161,19 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
         return next;
       });
       // Counts on the overview + the items list on the detail page should
-      // reflect the new row immediately.
+      // reflect the new row immediately. listItemsQueryKey is keyed on
+      // shortCode now — look it up from the loaded lists data.
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
-      void queryClient.invalidateQueries({
-        queryKey: listItemsQueryKey(targetListId()),
-      });
+      const all = [
+        ...(listsQuery.data?.private ?? []),
+        ...(listsQuery.data?.shared ?? []),
+      ];
+      const target = all.find((l) => l.id === targetListId());
+      if (target) {
+        void queryClient.invalidateQueries({
+          queryKey: listItemsQueryKey(target.shortCode),
+        });
+      }
     },
     onSettled: () => setPending(null),
   }));

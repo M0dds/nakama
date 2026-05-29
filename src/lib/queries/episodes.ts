@@ -42,8 +42,8 @@ export interface EpisodePayload {
   fetchable: boolean;
 }
 
-export const episodesQueryKey = (itemId: string) =>
-  ["episodes", itemId] as const;
+export const episodesQueryKey = (type: string, slug: string) =>
+  ["episodes", type, slug] as const;
 
 /** Types that carry an episode list. Movies / games → item_history (Phase 4-
  *  late). Series → TMDB integration (later phase). */
@@ -115,28 +115,33 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
 // Query options
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Episode payload for /item/:id. Triggers a lazy AniList fetch the first
- *  time + after 12 h. Empty + fetchable:false for non-episodic items.
+/** Episode payload for /item/:type/:slug. Triggers a lazy AniList fetch
+ *  the first time + after 12 h. Empty + fetchable:false for non-episodic
+ *  items.
  *
  *  `limit` controls how many of the latest episodes are returned (default
  *  26 — roughly one cour, fits most ongoing anime without needing to load
  *  more). "Weitere laden" in the UI bumps the limit by another 26. The
- *  queryKey is `[...episodesQueryKey(itemId), limit]` so each step is a
- *  cache entry; invalidations target the prefix and clear all of them. */
+ *  queryKey is `[...episodesQueryKey(type, slug), limit]` so each step is
+ *  its own cache entry; invalidations target the prefix and clear all
+ *  paginations at once. */
 export function episodesQueryOptions(
   user: User,
-  itemId: string,
+  type: string,
+  slug: string,
   limit: number = 26,
 ) {
   return {
-    queryKey: [...episodesQueryKey(itemId), limit] as const,
+    queryKey: [...episodesQueryKey(type, slug), limit] as const,
     queryFn: async (): Promise<EpisodePayload> => {
-      // Read the item first — we need source/sourceId/metadata for the
-      // lazy fetch decision. Single roundtrip, RLS scoped.
+      // Resolve the item via the natural key — we need its UUID for the
+      // episodes/episode_watches joins (foreign-keyed on items.id) and the
+      // source/sourceId/metadata for the lazy fetch decision.
       const { data: itemData } = await supabase
         .from("items")
         .select("id, source, source_id, type, metadata")
-        .eq("id", itemId)
+        .eq("type", type)
+        .eq("slug", slug)
         .maybeSingle();
 
       if (!itemData) {
@@ -159,12 +164,12 @@ export function episodesQueryOptions(
 
       await ensureEpisodes(item);
 
-      // Now read: total + watched (head counts) + latest 12 in parallel.
+      // Now read: total + watched (head counts) + latest `limit` in parallel.
       const [totalRes, watchedRes, latestRes] = await Promise.all([
         supabase
           .from("episodes")
           .select("id", { count: "exact", head: true })
-          .eq("item_id", itemId),
+          .eq("item_id", item.id),
         supabase
           .from("episode_watches")
           .select("episode_id, episodes!inner(item_id)", {
@@ -172,11 +177,11 @@ export function episodesQueryOptions(
             head: true,
           })
           .eq("user_id", user.id)
-          .eq("episodes.item_id", itemId),
+          .eq("episodes.item_id", item.id),
         supabase
           .from("episodes")
           .select("id, season_number, episode_number, title, air_date")
-          .eq("item_id", itemId)
+          .eq("item_id", item.id)
           .order("season_number", { ascending: false })
           .order("episode_number", { ascending: false })
           .limit(limit),

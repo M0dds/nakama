@@ -26,7 +26,7 @@ import { ResetItemButton } from "@/components/ResetItemButton";
 const PAGE_SIZE = 26;
 
 /**
- * /item/:id — Item-Detail. Layout:
+ * /item/:type/:slug — Item-Detail. Layout:
  *
  *   Section 01 (left 2/3, "Episoden"):
  *     Fortschritt 12 / 184           (progress bar)
@@ -49,13 +49,13 @@ const PAGE_SIZE = 26;
  * watched count from the server.
  */
 export default function ItemDetail() {
-  const params = useParams<{ id: string }>();
+  const params = useParams<{ type: string; slug: string }>();
   const auth = useAuth();
   const queryClient = useQueryClient();
 
   const item = createQuery(() => ({
-    ...itemQueryOptions(params.id),
-    enabled: !!auth.user() && !!params.id,
+    ...itemQueryOptions(params.type, params.slug),
+    enabled: !!auth.user() && !!params.type && !!params.slug,
   }));
 
   // Pagination — limit grows by PAGE_SIZE on each "Weitere laden". Each step
@@ -65,8 +65,8 @@ export default function ItemDetail() {
   const [limit, setLimit] = createSignal(PAGE_SIZE);
 
   const episodes = createQuery(() => ({
-    ...episodesQueryOptions(auth.user()!, params.id, limit()),
-    enabled: !!auth.user() && !!params.id,
+    ...episodesQueryOptions(auth.user()!, params.type, params.slug, limit()),
+    enabled: !!auth.user() && !!params.type && !!params.slug,
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
@@ -78,14 +78,16 @@ export default function ItemDetail() {
 
   // Live updates: a partner ticking an episode (same item, shared list once
   // Phase 7 lands) or a backfill on this item refreshes the local cache.
-  useRealtimeInvalidation(`item-${params.id}`, [
+  // Channel + invalidation key both keyed on (type, slug) — static from
+  // params, so safe to register onMount even before item.data lands.
+  useRealtimeInvalidation(`item-${params.type}-${params.slug}`, [
     {
       table: "episodes",
-      invalidates: [episodesQueryKey(params.id)],
+      invalidates: [episodesQueryKey(params.type, params.slug)],
     },
     {
       table: "episode_watches",
-      invalidates: [episodesQueryKey(params.id)],
+      invalidates: [episodesQueryKey(params.type, params.slug)],
     },
   ]);
 
@@ -100,7 +102,7 @@ export default function ItemDetail() {
         watched: !ep.watched,
       }),
     onMutate: (ep: EpisodeRow) => {
-      const key = episodesQueryKey(params.id);
+      const key = episodesQueryKey(params.type, params.slug);
       const prev = queryClient.getQueryData<EpisodePayload>(key);
       queryClient.setQueryData<EpisodePayload>(key, (old) => {
         if (!old) return old;
@@ -119,25 +121,31 @@ export default function ItemDetail() {
     },
     onError: (_e, _ep, ctx) => {
       if (ctx?.prev)
-        queryClient.setQueryData(episodesQueryKey(params.id), ctx.prev);
+        queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({
-        queryKey: episodesQueryKey(params.id),
+        queryKey: episodesQueryKey(params.type, params.slug),
       });
     },
   }));
 
   // Long-press cascade. Optimistic: tick all visible rows ≤ ep.episodeNumber;
-  // the true watched count refreshes via invalidate on settled.
+  // the true watched count refreshes via invalidate on settled. RPC needs
+  // the items.id UUID — pulled from item.data, which is guaranteed loaded
+  // by the time an episode row is interactive (EpisodeList only renders
+  // when episodes.data is present, which requires the item to resolve).
   const cascadeMut = createMutation(() => ({
-    mutationFn: (ep: EpisodeRow) =>
-      markEpisodesWatchedUpTo({
-        itemId: params.id,
+    mutationFn: (ep: EpisodeRow) => {
+      const itemId = item.data?.id;
+      if (!itemId) return Promise.reject(new Error("Item not loaded"));
+      return markEpisodesWatchedUpTo({
+        itemId,
         upToEpisodeId: ep.id,
-      }),
+      });
+    },
     onMutate: (ep: EpisodeRow) => {
-      const key = episodesQueryKey(params.id);
+      const key = episodesQueryKey(params.type, params.slug);
       const prev = queryClient.getQueryData<EpisodePayload>(key);
       queryClient.setQueryData<EpisodePayload>(key, (old) => {
         if (!old) return old;
@@ -159,11 +167,11 @@ export default function ItemDetail() {
     },
     onError: (_e, _ep, ctx) => {
       if (ctx?.prev)
-        queryClient.setQueryData(episodesQueryKey(params.id), ctx.prev);
+        queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({
-        queryKey: episodesQueryKey(params.id),
+        queryKey: episodesQueryKey(params.type, params.slug),
       });
     },
   }));
@@ -201,8 +209,12 @@ export default function ItemDetail() {
         }
         backHref="/lists"
         aside={
-          <Show when={(episodes.data?.watched ?? 0) > 0}>
-            <ResetItemButton itemId={params.id} />
+          <Show when={item.data && (episodes.data?.watched ?? 0) > 0}>
+            <ResetItemButton
+              itemId={item.data!.id}
+              type={params.type}
+              slug={params.slug}
+            />
           </Show>
         }
       />

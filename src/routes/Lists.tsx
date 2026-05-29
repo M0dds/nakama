@@ -125,7 +125,7 @@ function ListRows(props: { lists: ListSummary[] }) {
         {(list) => (
           <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
             <A
-              href={`/lists/${list.id}`}
+              href={`/lists/${list.shortCode}`}
               class="group block transition-colors hover:bg-surface"
             >
               <div class="flex items-center justify-between gap-4 px-5 py-3.5">

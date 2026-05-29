@@ -20,7 +20,10 @@ import {
  * the optimistic patch.
  */
 export function EditableListName(props: {
+  /** UUID — what renameList's underlying UPDATE filters on. */
   listId: string;
+  /** URL-stable identifier — what listQueryKey is keyed on. */
+  shortCode: string;
   initialName: string;
 }) {
   const queryClient = useQueryClient();
@@ -43,11 +46,11 @@ export function EditableListName(props: {
       // Optimistic patch: update both the detail cache + the list-in-overview
       // immediately so the heading swaps in 0 ms. We rollback in onError.
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: listQueryKey(props.listId) }),
+        queryClient.cancelQueries({ queryKey: listQueryKey(props.shortCode) }),
         queryClient.cancelQueries({ queryKey: listsQueryKey }),
       ]);
       const prevDetail = queryClient.getQueryData<ListSummary | null>(
-        listQueryKey(props.listId),
+        listQueryKey(props.shortCode),
       );
       const prevOverview = queryClient.getQueryData<{
         private: ListSummary[];
@@ -55,7 +58,7 @@ export function EditableListName(props: {
       }>(listsQueryKey);
 
       if (prevDetail)
-        queryClient.setQueryData(listQueryKey(props.listId), {
+        queryClient.setQueryData(listQueryKey(props.shortCode), {
           ...prevDetail,
           name: next,
         });
@@ -72,7 +75,7 @@ export function EditableListName(props: {
     onError: (_e, _next, ctx) => {
       // Rollback both caches to their pre-mutation snapshots.
       if (ctx?.prevDetail !== undefined)
-        queryClient.setQueryData(listQueryKey(props.listId), ctx.prevDetail);
+        queryClient.setQueryData(listQueryKey(props.shortCode), ctx.prevDetail);
       if (ctx?.prevOverview !== undefined)
         queryClient.setQueryData(listsQueryKey, ctx.prevOverview);
       setDraft(name());
@@ -80,7 +83,9 @@ export function EditableListName(props: {
     onSuccess: (res, next) => {
       if (res.name === null) {
         // RLS silently blocked — revert the optimistic patch.
-        queryClient.invalidateQueries({ queryKey: listQueryKey(props.listId) });
+        queryClient.invalidateQueries({
+          queryKey: listQueryKey(props.shortCode),
+        });
         queryClient.invalidateQueries({ queryKey: listsQueryKey });
         setDraft(name());
         return;

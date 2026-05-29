@@ -15,8 +15,16 @@ import {
  * Sits in the PageHeader aside slot (h-6 items-center), so both states
  * share the same 24 px band — no baseline shift between trigger and
  * confirm.
+ *
+ * Takes `itemId` (UUID, what the reset_item_progress RPC needs) AND the
+ * natural-key pair (`type`, `slug`) for the cache invalidation, which is
+ * keyed on the URL-stable identifier.
  */
-export function ResetItemButton(props: { itemId: string }) {
+export function ResetItemButton(props: {
+  itemId: string;
+  type: string;
+  slug: string;
+}) {
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = createSignal(false);
 
@@ -24,7 +32,7 @@ export function ResetItemButton(props: { itemId: string }) {
     mutationFn: () => resetItemProgress(props.itemId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: episodesQueryKey(props.itemId),
+        queryKey: episodesQueryKey(props.type, props.slug),
       });
       setConfirming(false);
     },
