@@ -112,7 +112,7 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 5 — Logbuch + Home Correctness via RPCs
 
 **Adressiert:** A4, A6, B6
-**Status:** ✅ **DONE** (Code) — branch `bundle/5-home-correctness-rpcs`. ⚠️ **Braucht Migration `20260529120000_home_correctness_rpcs.sql` im Supabase-Editor, BEVOR der Code läuft** (sonst Logbuch + Fortsetzen-Badge leer).
+**Status:** ✅ **DONE** — branch `bundle/5-home-correctness-rpcs`, gemerged. Migration `20260529120000_home_correctness_rpcs.sql` ist im Supabase-Projekt angewendet (2026-05-29, User-bestätigt, Dashboard verifiziert).
   - 1904167 — feat(db): home correctness RPCs — new-releases + watch-bundles
   - 242ba62 — refactor(home): consume home RPCs + fix logbuch self-toggle flicker
 
@@ -171,7 +171,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 3. ~~**Bundle 4**~~ — done
 4. ~~**Bundle 6**~~ — done
 5. ~~**Bundle 3**~~ — done
-6. ~~**Bundle 5**~~ — Code done, ⚠️ Migration `20260529120000` muss noch laufen
+6. ~~**Bundle 5**~~ — done (Migration `20260529120000` angewendet)
 7. **Bundle 7** — Phase 8 oder bei Bug-Hit früher
 
 Jeder Bundle ist independent — Reihenfolge umstellen wenn Kontext es verlangt.
