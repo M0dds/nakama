@@ -336,7 +336,13 @@ export function coWatchersOptions(user: User, itemId: string) {
         .select("episode_id, user_id, watched_at, episodes!inner(item_id)")
         .eq("episodes.item_id", itemId)
         .in("user_id", coMemberIds)
-        .order("watched_at", { ascending: false });
+        .order("watched_at", { ascending: false })
+        // Explicit cap — without it PostgREST stops at 1000 rows. A backfill
+        // stamps every synced watch with the SAME watched_at, so a 1000-cut
+        // ordered by watched_at drops an ARBITRARY subset → episodes randomly
+        // missing the Mitseher eye on long shows. 5000 covers any item up to
+        // MAX_EPISODES (2000) × a couple of co-members. (A7-class fix.)
+        .limit(5000);
       if (error) {
         console.error("co-watchers lookup failed", error);
         return {};
