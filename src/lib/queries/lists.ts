@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
+import { embedCount, unique } from "@/lib/format";
 
 /**
  * Lists data layer — typed query options + mutation functions. Components
@@ -126,8 +127,8 @@ function toSummary(
     tracksHome: membership.tracksHome,
     ownerId: row.owner_id,
     createdAt: row.created_at,
-    itemCount: row.list_items?.[0]?.count ?? 0,
-    memberCount: row.list_members?.[0]?.count ?? 0,
+    itemCount: embedCount(row.list_items),
+    memberCount: embedCount(row.list_members),
     isOwner: row.owner_id === user.id,
     pinned: membership.pinned,
     sortOrder: membership.sortOrder,
@@ -284,7 +285,7 @@ export function listsQueryOptions(user: User) {
         if (!type) return [];
         return [{ list_id: r.list_id, item_id: r.item_id, type }];
       });
-      const itemIds = [...new Set(flatPairs.map((p) => p.item_id))];
+      const itemIds = unique(flatPairs.map((p) => p.item_id));
 
       // Episode-window check runs serial-after the pairs because it needs
       // the candidate item set. Two more round-trips inside; see
@@ -393,7 +394,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
       if (error) throw error;
 
       const rawRows = (data as unknown as RawListItemRow[]) ?? [];
-      const itemIds = [...new Set(rawRows.map((r) => r.item_id))];
+      const itemIds = unique(rawRows.map((r) => r.item_id));
       const newItemsSet = await findItemsWithNewEpisodes(user.id, itemIds);
 
       const rows = rawRows.map((r) => ({

@@ -29,6 +29,7 @@ import {
   topOfSection,
   useDragSettling,
 } from "@/lib/sortable";
+import { typeLabel } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -389,25 +390,6 @@ function newEpisodeLabel(entry: ListEntry): string | null {
   if (entry.type === "manga") return "Neues Kapitel";
   if (entry.type === "anime" || entry.type === "series") return "Neue Folge";
   return null;
-}
-
-/** Type-Label fürs Meta-Line. Bewusst hardgecodet — die zukünftigen Werte
- *  (`series`, `movie`, `game`) bekommen ihre eigenen Labels wenn sie landen. */
-function typeLabel(type: string): string {
-  switch (type) {
-    case "manga":
-      return "Manga";
-    case "anime":
-      return "Anime";
-    case "series":
-      return "Serie";
-    case "movie":
-      return "Film";
-    case "game":
-      return "Spiel";
-    default:
-      return type;
-  }
 }
 
 /** Items als Rows in einer Liste. Pattern: -mx-5 ul, hover-bg blutet zu den

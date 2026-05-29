@@ -12,10 +12,20 @@ import {
   type ContinueItem,
   type ListAddEvent,
   type LogbookEvent,
-  type MediaType,
   type UpcomingItem,
   type WatchBundle,
 } from "@/lib/queries/home";
+import {
+  dayOffset,
+  episodeCode,
+  formatDate,
+  newReleaseLabel,
+  nextLabel,
+  rangeLabel,
+  relTime,
+  typeInitial,
+  typeLabel,
+} from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -727,92 +737,3 @@ function TodayLabel() {
   );
 }
 
-function typeLabel(type: MediaType): string {
-  switch (type) {
-    case "manga":
-      return "Manga";
-    case "anime":
-      return "Anime";
-    case "series":
-      return "Serie";
-    case "movie":
-      return "Film";
-    case "game":
-      return "Spiel";
-  }
-}
-
-function typeInitial(type: MediaType): string {
-  switch (type) {
-    case "manga":
-      return "M";
-    case "anime":
-      return "A";
-    case "series":
-      return "S";
-    case "movie":
-      return "F";
-    case "game":
-      return "G";
-  }
-}
-
-function episodeCode(n: number): string {
-  return `E${String(n).padStart(2, "0")}`;
-}
-
-function nextLabel(type: MediaType, n: number): string {
-  return type === "manga" ? `Kap. ${n}` : episodeCode(n);
-}
-
-/** "Neue Folge" / "Neues Kapitel" badge text. Matches the wording on the
- *  /lists row + /lists/:shortCode row badges so the same signal reads the
- *  same way across surfaces. */
-function newReleaseLabel(type: MediaType): string {
-  return type === "manga" ? "Neues Kapitel" : "Neue Folge";
-}
-
-/** Single number → "E07" / "Kap. 12". Range → "E37–E1163" / "Kap. 9–40". */
-function rangeLabel(type: MediaType, min: number, max: number): string {
-  if (min === max) return nextLabel(type, min);
-  if (type === "manga") return `Kap. ${min}–${max}`;
-  return `E${String(min).padStart(2, "0")}–E${String(max).padStart(2, "0")}`;
-}
-
-function dayOffset(iso: string): number {
-  const d = new Date(iso);
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((dDay.getTime() - startToday.getTime()) / 86_400_000);
-}
-
-/** "DI · 02.06." for any date — used by the day-tag on further-out cards. */
-function formatDate(d: Date): string {
-  const wd = d
-    .toLocaleDateString("de-DE", { weekday: "short" })
-    .replace(".", "")
-    .toUpperCase();
-  const dm = d.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-  });
-  return `${wd} · ${dm}`;
-}
-
-/** German relative time for a past timestamp. Mirrors Logbook's relTime. */
-function relTime(iso: string): string {
-  const now = new Date();
-  const diffMin = Math.round((now.getTime() - new Date(iso).getTime()) / 60_000);
-  if (diffMin < 1) return "gerade eben";
-  if (diffMin < 60) return `vor ${diffMin} Min.`;
-  const diffHrs = Math.round(diffMin / 60);
-  if (diffHrs < 24) return `vor ${diffHrs} Std.`;
-  const d = new Date(iso);
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const days = Math.round((startToday.getTime() - dDay.getTime()) / 86_400_000);
-  if (days === 1) return "gestern";
-  if (days >= 2 && days <= 6) return `vor ${days} Tagen`;
-  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
-}

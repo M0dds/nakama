@@ -19,6 +19,7 @@ import {
   type EpisodeRow,
 } from "@/lib/queries/episodes";
 import { useRealtimeInvalidation } from "@/lib/realtime";
+import { dateLabel, dayOffset, typeLabel } from "@/lib/format";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -226,7 +227,7 @@ export default function ItemDetail() {
           >
             {(data) => (
               <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-                {typeLabelCaps(data().type)}
+                {typeLabel(data().type).toUpperCase()}
               </span>
             )}
           </Show>
@@ -432,27 +433,6 @@ function ProgressBar(props: { watched: number; total: number }) {
 // ──────────────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────────────
-
-function typeLabel(type: string): string {
-  switch (type) {
-    case "anime":
-      return "Anime";
-    case "manga":
-      return "Manga";
-    case "series":
-      return "Serie";
-    case "movie":
-      return "Film";
-    case "game":
-      return "Spiel";
-    default:
-      return type;
-  }
-}
-
-function typeLabelCaps(type: string): string {
-  return typeLabel(type).toUpperCase();
-}
 
 function metaString(
   metadata: Record<string, unknown> | null,
@@ -715,23 +695,6 @@ function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
   );
 }
 
-/** Compact 3-letter month abbreviations for the episode-list date column.
- *  de-DE's built-in `month: "short"` returns mixed-length names — "Sept.",
- *  "März", "Juni", "Juli" all break the 3-letter rhythm — so we ship our
- *  own table to guarantee every label is the same width.
- *  Released/unreleased distinction is handled visually via the
- *  Heute/Morgen/Demnächst accent tag; the date itself always renders the
- *  same shape regardless of timing. */
-const MONTH_ABBR_3 = [
-  "Jan", "Feb", "Mär", "Apr", "Mai", "Jun",
-  "Jul", "Aug", "Sep", "Okt", "Nov", "Dez",
-] as const;
-
-function dateLabel(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
-}
-
 /** Fallback for unreleased episodes with no title yet — AniList only fills
  *  streamingEpisodes.title once the episode actually airs, so future rows
  *  almost always have title=null. The em-dash placeholder was honest but
@@ -741,15 +704,4 @@ function unknownTitleLabel(type: string): string {
   return type === "manga"
     ? "Name des Kapitels ist noch nicht bekannt"
     : "Name der Folge ist noch nicht bekannt";
-}
-
-/** Calendar-day offset of `iso` from today (0 = today, 1 = tomorrow, etc).
- *  Uses local midnight on both ends, so an episode airing today at 8am stays
- *  "today" regardless of the current clock time. */
-function dayOffset(iso: string): number {
-  const d = new Date(iso);
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((dDay.getTime() - startToday.getTime()) / 86_400_000);
 }

@@ -13,6 +13,7 @@
 import type { User } from "@supabase/supabase-js";
 import { queryOptions } from "@tanstack/solid-query";
 import { supabase } from "@/lib/supabase";
+import { unique } from "@/lib/format";
 
 export type MediaType = "anime" | "manga" | "series" | "movie" | "game";
 
@@ -434,7 +435,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
   // there are watch rows — list_add events reference the item directly.
   let epMap = new Map<string, { episodeNumber: number; itemId: string }>();
   if (watches.length > 0) {
-    const episodeIds = [...new Set(watches.map((w) => w.episode_id))];
+    const episodeIds = unique(watches.map((w) => w.episode_id));
     const { data: eps, error: eErr } = await supabase
       .from("episodes")
       .select("id, episode_number, item_id")
@@ -453,12 +454,10 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
 
   // Item meta covers BOTH event kinds. Union the item ids the watches
   // resolve to + the items the adds reference directly.
-  const itemIds = [
-    ...new Set([
-      ...[...epMap.values()].map((v) => v.itemId),
-      ...adds.map((a) => a.item_id),
-    ]),
-  ];
+  const itemIds = unique([
+    ...[...epMap.values()].map((v) => v.itemId),
+    ...adds.map((a) => a.item_id),
+  ]);
   const meta = await itemMeta(itemIds);
 
   // Resolve + group watches by (actor, item) for SESSION_GAP_MS bundling.
@@ -485,16 +484,14 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
 
   // Profiles for every non-self actor mentioned (watches OR adds), so the
   // feed reads as "@partner" instead of "Jemand".
-  const coActorIds = [
-    ...new Set([
-      ...[...watchGroups.keys()]
-        .map((k) => k.split("::")[0])
-        .filter((id) => id !== currentUserId),
-      ...adds
-        .map((a) => a.added_by_user_id)
-        .filter((id): id is string => id !== null && id !== currentUserId),
-    ]),
-  ];
+  const coActorIds = unique([
+    ...[...watchGroups.keys()]
+      .map((k) => k.split("::")[0])
+      .filter((id) => id !== currentUserId),
+    ...adds
+      .map((a) => a.added_by_user_id)
+      .filter((id): id is string => id !== null && id !== currentUserId),
+  ]);
   const actorNames = await profileNames(coActorIds);
 
   const events: LogbookEvent[] = [];
@@ -579,7 +576,7 @@ async function trackedItemIds(): Promise<string[]> {
     console.error("list_items query failed", iErr);
     return [];
   }
-  return [...new Set((items ?? []).map((r) => r.item_id as string))];
+  return unique((items ?? []).map((r) => r.item_id as string));
 }
 
 interface ItemMetaRow {
