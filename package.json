@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.106.2",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/solid-query": "^5.100.14",
+    "@thisbeyond/solid-dnd": "^0.7.5",
     "lucide-solid": "^1.17.0",
     "solid-js": "^1.9.12",
     "tailwindcss": "^4.3.0",

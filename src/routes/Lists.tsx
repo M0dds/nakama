@@ -6,10 +6,20 @@ import {
   createQuery,
   useQueryClient,
 } from "@tanstack/solid-query";
+import {
+  closestCenter,
+  createSortable,
+  DragDropProvider,
+  DragDropSensors,
+  SortableProvider,
+  transformStyle,
+  type DragEvent,
+} from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
 import {
   listsQueryKey,
   listsQueryOptions,
+  reorderLists,
   setListPin,
   type ListSummary,
 } from "@/lib/queries/lists";
@@ -19,6 +29,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
 import { PinButton } from "@/components/PinButton";
+import { DragHandle } from "@/components/DragHandle";
 
 /**
  * /lists — overview. Left 2/3: "Deine Listen" (private) + "Geteilte Listen"
@@ -112,67 +123,163 @@ export default function Lists() {
     pinMut.mutate({ list, pinned: targetPinned, sortOrder: minSort - 1 });
   };
 
+  // Drag-reorder. Source of truth = the cached lists array; we slice it
+  // by (visibility, pinned) into 4 sortable sections and let each section
+  // own its own SortableProvider so drag-swap is bounded within section.
+  // On drop, build the new ordered ID list for the affected section, patch
+  // the cache optimistically (sort_order = i+1 in that section), then push
+  // the same payload to the server.
+  const reorderMut = createMutation(() => ({
+    mutationFn: (input: { orderedListIds: string[] }) =>
+      reorderLists({
+        userId: auth.user()!.id,
+        orderedListIds: input.orderedListIds,
+      }),
+    onError: (_err, _input, ctx) => {
+      const prev = (ctx as { prev?: unknown } | undefined)?.prev;
+      if (prev) queryClient.setQueryData(listsQueryKey, prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+    },
+  }));
+
+  const onDragEnd = ({ draggable, droppable }: DragEvent) => {
+    if (!droppable || draggable.id === droppable.id) return;
+    // Refuse cross-section drops (handshake decision: pinned/unpinned stay
+    // separate; pin-state changes go through the pin click, not the drag).
+    const fromSection = (draggable.data as { section: SectionKey }).section;
+    const toSection = (droppable.data as { section: SectionKey }).section;
+    if (fromSection !== toSection) return;
+
+    const data = queryClient.getQueryData<{
+      private: ListSummary[];
+      shared: ListSummary[];
+    }>(listsQueryKey);
+    if (!data) return;
+
+    const { visibility, pinned } = sectionParts(fromSection);
+    const arr = visibility === "private" ? data.private : data.shared;
+    const sectionRows = arr.filter((l) => l.pinned === pinned);
+    const fromIndex = sectionRows.findIndex((l) => l.id === draggable.id);
+    const toIndex = sectionRows.findIndex((l) => l.id === droppable.id);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+    const nextSection = [...sectionRows];
+    const [moved] = nextSection.splice(fromIndex, 1);
+    nextSection.splice(toIndex, 0, moved);
+
+    const sortMap = new Map<string, number>(
+      nextSection.map((l, i) => [l.id, i + 1]),
+    );
+    const orderedListIds = nextSection.map((l) => l.id);
+
+    const patch = (rows: ListSummary[]) =>
+      [...rows]
+        .map((l) =>
+          sortMap.has(l.id) ? { ...l, sortOrder: sortMap.get(l.id)! } : l,
+        )
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return a.sortOrder - b.sortOrder;
+        });
+
+    queryClient.setQueryData(listsQueryKey, {
+      private: visibility === "private" ? patch(data.private) : data.private,
+      shared: visibility === "shared" ? patch(data.shared) : data.shared,
+    });
+
+    reorderMut.mutate({ orderedListIds });
+  };
+
   return (
     <main class="w-full">
       <PageHeader title="Listen" />
 
       <ColumnGuide />
 
-      <div class="flex flex-col md:flex-row md:items-start">
-        {/* Linke Spalte 2/3 — Deine Listen + Geteilte Listen */}
-        <div class="md:w-2/3">
-          <Show
-            when={lists.data}
-            fallback={
-              <BentoModule label="Deine Listen" number="01">
-                <p class="text-body text-text-muted">Lade Listen …</p>
-              </BentoModule>
-            }
-          >
-            {(data) => (
-              <>
-                <BentoModule
-                  label="Deine Listen"
-                  number="01"
-                  class={
-                    data().shared.length > 0
-                      ? "border-b border-rule"
-                      : undefined
-                  }
-                >
-                  <Show
-                    when={data().private.length > 0}
-                    fallback={<PrivateEmpty />}
-                  >
-                    <ListRows
-                      lists={data().private}
-                      onTogglePin={handleTogglePin}
-                    />
-                  </Show>
+      <DragDropProvider
+        onDragEnd={onDragEnd}
+        collisionDetector={closestCenter}
+      >
+        <DragDropSensors />
+        <div class="flex flex-col md:flex-row md:items-start">
+          {/* Linke Spalte 2/3 — Deine Listen + Geteilte Listen */}
+          <div class="md:w-2/3">
+            <Show
+              when={lists.data}
+              fallback={
+                <BentoModule label="Deine Listen" number="01">
+                  <p class="text-body text-text-muted">Lade Listen …</p>
                 </BentoModule>
-
-                <Show when={data().shared.length > 0}>
-                  <BentoModule label="Geteilte Listen" number="02">
-                    <ListRows
-                      lists={data().shared}
-                      onTogglePin={handleTogglePin}
-                    />
+              }
+            >
+              {(data) => (
+                <>
+                  <BentoModule
+                    label="Deine Listen"
+                    number="01"
+                    class={
+                      data().shared.length > 0
+                        ? "border-b border-rule"
+                        : undefined
+                    }
+                  >
+                    <Show
+                      when={data().private.length > 0}
+                      fallback={<PrivateEmpty />}
+                    >
+                      <ListRows
+                        lists={data().private}
+                        visibility="private"
+                        onTogglePin={handleTogglePin}
+                      />
+                    </Show>
                   </BentoModule>
-                </Show>
-              </>
-            )}
-          </Show>
-        </div>
 
-        {/* Rechte Spalte 1/3 — Neue Liste */}
-        <div class="border-t border-rule md:w-1/3 md:border-t-0">
-          <BentoModule label="Neue Liste" number="03">
-            <CreateListForm />
-          </BentoModule>
+                  <Show when={data().shared.length > 0}>
+                    <BentoModule label="Geteilte Listen" number="02">
+                      <ListRows
+                        lists={data().shared}
+                        visibility="shared"
+                        onTogglePin={handleTogglePin}
+                      />
+                    </BentoModule>
+                  </Show>
+                </>
+              )}
+            </Show>
+          </div>
+
+          {/* Rechte Spalte 1/3 — Neue Liste */}
+          <div class="border-t border-rule md:w-1/3 md:border-t-0">
+            <BentoModule label="Neue Liste" number="03">
+              <CreateListForm />
+            </BentoModule>
+          </div>
         </div>
-      </div>
+      </DragDropProvider>
     </main>
   );
+}
+
+// Section keys identify which of the four sortable groups a draggable
+// belongs to (visibility × pin-state). They live in solid-dnd's per-
+// draggable data so onDragEnd can refuse cross-section drops.
+type Visibility = "private" | "shared";
+type SectionKey =
+  | "private-pinned"
+  | "private-unpinned"
+  | "shared-pinned"
+  | "shared-unpinned";
+
+function sectionKey(visibility: Visibility, pinned: boolean): SectionKey {
+  return `${visibility}-${pinned ? "pinned" : "unpinned"}` as SectionKey;
+}
+
+function sectionParts(key: SectionKey): { visibility: Visibility; pinned: boolean } {
+  const [visibility, state] = key.split("-") as [Visibility, "pinned" | "unpinned"];
+  return { visibility, pinned: state === "pinned" };
 }
 
 /** "12 Einträge · privat · Archiv" — count, visibility, optional archive marker. */
@@ -201,38 +308,91 @@ function metaLine(list: ListSummary): string {
  * still feels clickable everywhere because the <A> flex-1's the available
  * width.
  */
-function ListRows(props: { lists: ListSummary[]; onTogglePin: (list: ListSummary) => void }) {
+function ListRows(props: {
+  lists: ListSummary[];
+  visibility: Visibility;
+  onTogglePin: (list: ListSummary) => void;
+}) {
+  // Two sortable groups per visibility — pinned + unpinned. Each section's
+  // ids are derived from the sorted query data, so SortableProvider's swap
+  // preview stays in sync with the current visual order.
+  const pinned = () => props.lists.filter((l) => l.pinned);
+  const unpinned = () => props.lists.filter((l) => !l.pinned);
+  const pinnedIds = () => pinned().map((l) => l.id);
+  const unpinnedIds = () => unpinned().map((l) => l.id);
+
   return (
     <ul class="-mx-5">
-      <For each={props.lists}>
-        {(list) => (
-          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-            <div class="group flex items-center gap-2 px-5 py-3.5 transition-colors hover:bg-surface">
-              <A
-                href={`/lists/${list.shortCode}`}
-                class="block min-w-0 flex-1"
-              >
-                <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-                  {list.name}
-                </h3>
-                <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-                  {metaLine(list)}
-                </p>
-              </A>
-              <PinButton
-                pinned={list.pinned}
-                noun="Liste"
-                onToggle={() => props.onTogglePin(list)}
-              />
-              <ChevronRight
-                class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
-                strokeWidth={1.75}
-              />
-            </div>
-          </li>
-        )}
-      </For>
+      <SortableProvider ids={pinnedIds()}>
+        <For each={pinned()}>
+          {(list) => (
+            <SortableListRow
+              list={list}
+              visibility={props.visibility}
+              onTogglePin={props.onTogglePin}
+            />
+          )}
+        </For>
+      </SortableProvider>
+      <SortableProvider ids={unpinnedIds()}>
+        <For each={unpinned()}>
+          {(list) => (
+            <SortableListRow
+              list={list}
+              visibility={props.visibility}
+              onTogglePin={props.onTogglePin}
+            />
+          )}
+        </For>
+      </SortableProvider>
     </ul>
+  );
+}
+
+function SortableListRow(props: {
+  list: ListSummary;
+  visibility: Visibility;
+  onTogglePin: (list: ListSummary) => void;
+}) {
+  const sortable = createSortable(props.list.id, {
+    section: sectionKey(props.visibility, props.list.pinned),
+  });
+  return (
+    <li
+      ref={sortable}
+      style={transformStyle(sortable.transform)}
+      class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
+      classList={{
+        "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
+      }}
+    >
+      <div class="group flex items-center gap-2 px-5 py-3.5 transition-colors hover:bg-surface">
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.list.name}
+        />
+        <A
+          href={`/lists/${props.list.shortCode}`}
+          class="block min-w-0 flex-1"
+        >
+          <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+            {props.list.name}
+          </h3>
+          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+            {metaLine(props.list)}
+          </p>
+        </A>
+        <PinButton
+          pinned={props.list.pinned}
+          noun="Liste"
+          onToggle={() => props.onTogglePin(props.list)}
+        />
+        <ChevronRight
+          class="size-4 shrink-0 text-text-muted transition-transform duration-200 ease-quart group-hover:translate-x-0.5 group-hover:text-text"
+          strokeWidth={1.75}
+        />
+      </div>
+    </li>
   );
 }
 
