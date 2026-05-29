@@ -52,10 +52,14 @@ export default function Lists() {
 
   // Live updates: a partner creating a list, joining, leaving, or
   // toggling tracks_home anywhere reflects here without a refresh.
+  // The episode tables drive the "Neue Folge" badge — new episodes
+  // appearing OR the caller's ticks invalidate the per-list count.
   useRealtimeInvalidation("lists-overview", [
     { table: "lists", invalidates: [listsQueryKey] },
     { table: "list_members", invalidates: [listsQueryKey] },
     { table: "list_items", invalidates: [listsQueryKey] },
+    { table: "episodes", invalidates: [listsQueryKey] },
+    { table: "episode_watches", invalidates: [listsQueryKey] },
   ]);
 
   // Pin toggle. Optimistic: flip pinned + bump sortOrder to MIN(target
@@ -307,6 +311,22 @@ function sectionParts(key: SectionKey): { visibility: Visibility; pinned: boolea
   return { visibility, pinned: state === "pinned" };
 }
 
+/** Accent label next to the list name when items in it have recent
+ *  released-but-unwatched episodes/chapters. Singular vs plural + type-aware;
+ *  mixed lists fall back to a neutral "N neu". Returns null when there's
+ *  nothing new — caller renders nothing. */
+function newCountLabel(counts: {
+  folgen: number;
+  kapitel: number;
+}): string | null {
+  const { folgen, kapitel } = counts;
+  if (folgen + kapitel === 0) return null;
+  if (folgen > 0 && kapitel > 0) return `${folgen + kapitel} neu`;
+  if (kapitel > 0)
+    return kapitel === 1 ? "Neues Kapitel" : `${kapitel} neue Kapitel`;
+  return folgen === 1 ? "Neue Folge" : `${folgen} neue Folgen`;
+}
+
 /** "12 Einträge · privat · Archiv" — count, visibility, optional archive marker. */
 function metaLine(list: ListSummary): string {
   const count =
@@ -419,9 +439,18 @@ function SortableListRow(props: {
           href={`/lists/${props.list.shortCode}`}
           class="block min-w-0 flex-1"
         >
-          <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-            {props.list.name}
-          </h3>
+          <div class="flex min-w-0 items-start gap-3">
+            <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+              {props.list.name}
+            </h3>
+            <Show when={newCountLabel(props.list.newCounts)}>
+              {(label) => (
+                <span class="shrink-0 font-mono text-mini uppercase text-accent">
+                  {label()}
+                </span>
+              )}
+            </Show>
+          </div>
           <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
             {metaLine(props.list)}
           </p>

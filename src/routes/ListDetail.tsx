@@ -63,8 +63,8 @@ export default function ListDetail() {
   }));
 
   const items = createQuery(() => ({
-    ...listItemsQueryOptions(params.shortCode),
-    enabled: !!params.shortCode,
+    ...listItemsQueryOptions(auth.user()!, params.shortCode),
+    enabled: !!auth.user() && !!params.shortCode,
   }));
 
   // Shared per-list pin toggle. Mirrors the optimistic pattern on /lists,
@@ -208,6 +208,8 @@ export default function ListDetail() {
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
   // overview cache (so /lists sees the new name) and this detail cache.
+  // The episode tables drive the per-row "Neue Folge" badges: new air
+  // dates OR the caller's ticks invalidate the items query.
   useRealtimeInvalidation(`list-${params.shortCode}`, [
     {
       table: "lists",
@@ -223,6 +225,14 @@ export default function ListDetail() {
         listItemsQueryKey(params.shortCode),
         listQueryKey(params.shortCode),
       ],
+    },
+    {
+      table: "episodes",
+      invalidates: [listItemsQueryKey(params.shortCode)],
+    },
+    {
+      table: "episode_watches",
+      invalidates: [listItemsQueryKey(params.shortCode)],
     },
   ]);
 
@@ -385,6 +395,17 @@ function EntriesEmpty() {
   );
 }
 
+/** Per-row "Neue Folge" / "Neues Kapitel" badge label, or null if the
+ *  entry has no recent unwatched release. Type-aware: anime/series get
+ *  "Neue Folge", manga gets "Neues Kapitel"; movies/games get nothing
+ *  (no episode model). */
+function newEpisodeLabel(entry: ListEntry): string | null {
+  if (!entry.hasNewEpisode) return null;
+  if (entry.type === "manga") return "Neues Kapitel";
+  if (entry.type === "anime" || entry.type === "series") return "Neue Folge";
+  return null;
+}
+
 /** Type-Label fürs Meta-Line. Bewusst hardgecodet — die zukünftigen Werte
  *  (`series`, `movie`, `game`) bekommen ihre eigenen Labels wenn sie landen. */
 function typeLabel(type: string): string {
@@ -515,9 +536,18 @@ function SortableEntryRow(props: {
             </Show>
           </div>
           <div class="min-w-0 flex-1">
-            <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-              {props.entry.title}
-            </h3>
+            <div class="flex min-w-0 items-start gap-3">
+              <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+                {props.entry.title}
+              </h3>
+              <Show when={newEpisodeLabel(props.entry)}>
+                {(label) => (
+                  <span class="shrink-0 font-mono text-mini uppercase text-accent">
+                    {label()}
+                  </span>
+                )}
+              </Show>
+            </div>
             <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
               {typeLabel(props.entry.type)}
             </p>

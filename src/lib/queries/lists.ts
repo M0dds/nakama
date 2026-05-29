@@ -52,6 +52,11 @@ export interface ListSummary {
   /** Caller's per-user manual sort_order. Higher pin / lower sort_order =
    *  closer to the top within its pin section. */
   sortOrder: number;
+  /** Counts of items with released-but-unwatched episodes/chapters in the
+   *  last NEW_WINDOW_DAYS — drives the "Neue Folge" / "N neue Folgen" badge
+   *  on /lists rows. Manga have no air-date signal, so the kapitel side
+   *  stays 0 until that source lands (Welle-2). */
+  newCounts: { folgen: number; kapitel: number };
 }
 
 export interface ListEntry {
@@ -67,6 +72,11 @@ export interface ListEntry {
    *  of the list, unlike the per-user list pin above. */
   pinned: boolean;
   sortOrder: number;
+  /** True when at least one episode of this item aired within the last
+   *  NEW_WINDOW_DAYS and the caller hasn't ticked it yet. Drives the
+   *  "Neue Folge" badge in the list-detail row. Per-user — co-members
+   *  evaluate the same item independently against their own watches. */
+  hasNewEpisode: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -106,7 +116,7 @@ function toSummary(
   row: RawListRow,
   user: User,
   membership: { tracksHome: boolean; pinned: boolean; sortOrder: number },
-): ListSummary {
+): Omit<ListSummary, "newCounts"> {
   return {
     id: row.id,
     shortCode: row.short_code,
@@ -124,6 +134,10 @@ function toSummary(
   };
 }
 
+/** Empty new-counts default — used in places where we don't have the
+ *  newItemsMap (single-list query, optimistic createList return). */
+const EMPTY_COUNTS = { folgen: 0, kapitel: 0 } as const;
+
 /** Pinned-first, then by sort_order ASC within each section. Server can't
  *  express "group by (pinned_at IS NULL) then sort by sort_order" without a
  *  generated column or RPC, so we group client-side. With < 100 lists this
@@ -131,6 +145,108 @@ function toSummary(
 function bySectionThenSort(a: ListSummary, b: ListSummary): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
   return a.sortOrder - b.sortOrder;
+}
+
+/** Window matching the Logbuch's "missed" definition — a released episode
+ *  counts as "new" if it aired in the last NEW_WINDOW_DAYS and the user
+ *  hasn't ticked it. Keeps the lists badge and the home modules in sync. */
+const NEW_WINDOW_DAYS = 14;
+
+/**
+ * Per-user map of itemId → type for items that have at least one
+ * released-but-unwatched episode within the new-window. Powers the
+ * "Neue Folge" / "Neues Kapitel" badges on /lists rows + /lists/:shortCode
+ * item rows.
+ *
+ * Four round-trips (items in user's lists → recent episodes for them →
+ * the user's watches over those → item types). No RPC: volumes are tiny
+ * and the JS join is cheap. Direct port of Logbook's getItemsWithNewEpisodes.
+ */
+async function getItemsWithNewEpisodes(
+  userId: string,
+): Promise<Map<string, string>> {
+  // 1. All items the user can see in any list they're a member of.
+  const { data: liRows, error: liErr } = await supabase
+    .from("list_items")
+    .select("item_id");
+  if (liErr) {
+    console.error("list_items query failed", liErr);
+    return new Map();
+  }
+  const itemIds = [
+    ...new Set((liRows ?? []).map((r) => r.item_id as string)),
+  ];
+  if (itemIds.length === 0) return new Map();
+
+  // 2. Episodes that aired in the new-window for those items.
+  const sinceIso = new Date(
+    Date.now() - NEW_WINDOW_DAYS * 86_400_000,
+  ).toISOString();
+  const nowIso = new Date().toISOString();
+  const { data: epRows, error: epErr } = await supabase
+    .from("episodes")
+    .select("id, item_id")
+    .in("item_id", itemIds)
+    .gte("air_date", sinceIso)
+    .lte("air_date", nowIso);
+  if (epErr) {
+    console.error("episodes window query failed", epErr);
+    return new Map();
+  }
+  const eps = (epRows ?? []) as { id: string; item_id: string }[];
+  if (eps.length === 0) return new Map();
+
+  // 3. The caller's watches over those episodes — what's been ticked.
+  const { data: wRows, error: wErr } = await supabase
+    .from("episode_watches")
+    .select("episode_id")
+    .in(
+      "episode_id",
+      eps.map((e) => e.id),
+    )
+    .eq("user_id", userId);
+  if (wErr) {
+    console.error("episode_watches join failed", wErr);
+    return new Map();
+  }
+  const watched = new Set((wRows ?? []).map((w) => w.episode_id as string));
+
+  const withNewIds = new Set<string>();
+  for (const e of eps) if (!watched.has(e.id)) withNewIds.add(e.item_id);
+  if (withNewIds.size === 0) return new Map();
+
+  // 4. Resolve types so the consumer can pick "Folge" vs "Kapitel" wording.
+  const { data: items, error: iErr } = await supabase
+    .from("items")
+    .select("id, type")
+    .in("id", [...withNewIds]);
+  if (iErr) {
+    console.error("items type lookup failed", iErr);
+    return new Map();
+  }
+  const result = new Map<string, string>();
+  for (const it of items ?? [])
+    result.set(it.id as string, it.type as string);
+  return result;
+}
+
+/** Aggregate (list_id, item_id) pairs into per-list (folgen, kapitel)
+ *  counts, driven by the global new-items map. anime/series count as
+ *  Folgen, manga as Kapitel; movies/games are ignored (no episode model). */
+function aggregateNewCounts(
+  pairs: { list_id: string; item_id: string }[],
+  newItemsMap: Map<string, string>,
+): Map<string, { folgen: number; kapitel: number }> {
+  const counts = new Map<string, { folgen: number; kapitel: number }>();
+  for (const p of pairs) {
+    const t = newItemsMap.get(p.item_id);
+    if (!t) continue;
+    const c = counts.get(p.list_id) ?? { folgen: 0, kapitel: 0 };
+    if (t === "manga") c.kapitel++;
+    else if (t === "anime" || t === "series") c.folgen++;
+    counts.set(p.list_id, c);
+  }
+  return counts;
 }
 
 /**
@@ -158,29 +274,49 @@ export function listsQueryOptions(user: User) {
       private: ListSummary[];
       shared: ListSummary[];
     }> => {
-      // Drive from list_members so the per-user pin / sort_order live on
-      // the same row as the membership flag. lists!inner embeds the parent
-      // list (single object, not array — many-to-one FK). RLS scopes both
-      // sides: list_members WHERE user_id=me + lists_select_member on the
-      // embed.
-      const { data, error } = await supabase
-        .from("list_members")
-        .select(
-          `pinned_at, sort_order, tracks_home, lists!inner(${LIST_SELECT})`,
-        )
-        .eq("user_id", user.id);
+      // Three parallel queries: the lists+memberships join, the global
+      // new-items map, and (only if there are new items) the (list_id,
+      // item_id) pairs we need to aggregate counts per list.
+      const [{ data, error }, newItemsMap] = await Promise.all([
+        supabase
+          .from("list_members")
+          .select(
+            `pinned_at, sort_order, tracks_home, lists!inner(${LIST_SELECT})`,
+          )
+          .eq("user_id", user.id),
+        getItemsWithNewEpisodes(user.id),
+      ]);
 
       if (error) throw error;
 
+      let newCountsByList = new Map<
+        string,
+        { folgen: number; kapitel: number }
+      >();
+      if (newItemsMap.size > 0) {
+        const { data: pairs, error: pairsErr } = await supabase
+          .from("list_items")
+          .select("list_id, item_id");
+        if (pairsErr) {
+          console.error("list_items pair lookup failed", pairsErr);
+        } else {
+          newCountsByList = aggregateNewCounts(
+            (pairs ?? []) as { list_id: string; item_id: string }[],
+            newItemsMap,
+          );
+        }
+      }
+
       const rows = (data ?? []) as unknown as RawMembershipJoinRow[];
-      const summaries = rows
-        .map((r) =>
-          toSummary(r.lists, user, {
+      const summaries: ListSummary[] = rows
+        .map((r) => ({
+          ...toSummary(r.lists, user, {
             tracksHome: r.tracks_home,
             pinned: r.pinned_at !== null,
             sortOrder: r.sort_order,
           }),
-        )
+          newCounts: newCountsByList.get(r.lists.id) ?? { ...EMPTY_COUNTS },
+        }))
         .sort(bySectionThenSort);
 
       return {
@@ -218,11 +354,16 @@ export function listQueryOptions(user: User, shortCode: string) {
       const m = membershipRes.data as
         | { tracks_home: boolean; pinned_at: string | null; sort_order: number }
         | null;
-      return toSummary(raw, user, {
-        tracksHome: m?.tracks_home ?? true,
-        pinned: m?.pinned_at != null,
-        sortOrder: m?.sort_order ?? 0,
-      });
+      return {
+        ...toSummary(raw, user, {
+          tracksHome: m?.tracks_home ?? true,
+          pinned: m?.pinned_at != null,
+          sortOrder: m?.sort_order ?? 0,
+        }),
+        // The single-list detail view doesn't render the per-list badge —
+        // it shows per-item badges instead. Skip the new-counts roundtrip.
+        newCounts: { ...EMPTY_COUNTS },
+      };
     },
   };
 }
@@ -245,17 +386,24 @@ interface RawListItemRow {
  *  scoped by the list's short_code. PostgREST `lists!inner(short_code)`
  *  does the FK join + filter in one round-trip; RLS still scopes the rows
  *  to lists the caller can see. Pin grouping happens client-side (see
- *  `bySectionThenSort` rationale on the lists query above). */
-export function listItemsQueryOptions(shortCode: string) {
+ *  `bySectionThenSort` rationale on the lists query above).
+ *
+ *  Each entry gets a per-user `hasNewEpisode` flag derived from the same
+ *  getItemsWithNewEpisodes() helper that powers the overview badge —
+ *  cheap because the helper is bounded by NEW_WINDOW_DAYS. */
+export function listItemsQueryOptions(user: User, shortCode: string) {
   return {
     queryKey: listItemsQueryKey(shortCode),
     queryFn: async (): Promise<ListEntry[]> => {
-      const { data, error } = await supabase
-        .from("list_items")
-        .select(
-          "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
-        )
-        .eq("lists.short_code", shortCode);
+      const [{ data, error }, newItemsMap] = await Promise.all([
+        supabase
+          .from("list_items")
+          .select(
+            "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
+          )
+          .eq("lists.short_code", shortCode),
+        getItemsWithNewEpisodes(user.id),
+      ]);
       if (error) throw error;
       const rows = ((data as unknown as RawListItemRow[]) ?? []).map((r) => ({
         listItemId: r.id,
@@ -267,6 +415,7 @@ export function listItemsQueryOptions(shortCode: string) {
         syncEnabled: r.sync_enabled,
         pinned: r.pinned_at !== null,
         sortOrder: r.sort_order,
+        hasNewEpisode: newItemsMap.has(r.item_id),
       }));
       return rows.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -304,11 +453,15 @@ export async function createList(
   // (MIN(scope)-1 → top of unpinned section). We don't read those back
   // here — the next invalidation refresh picks them up. For the optimistic
   // returnee we use safe defaults.
-  return toSummary(data as unknown as RawListRow, user, {
-    tracksHome: true,
-    pinned: false,
-    sortOrder: 0,
-  });
+  return {
+    ...toSummary(data as unknown as RawListRow, user, {
+      tracksHome: true,
+      pinned: false,
+      sortOrder: 0,
+    }),
+    // A fresh list has no items yet — definitely no new episodes.
+    newCounts: { ...EMPTY_COUNTS },
+  };
 }
 
 /**
