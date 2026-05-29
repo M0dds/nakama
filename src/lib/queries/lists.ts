@@ -448,43 +448,36 @@ export async function setListItemPin(input: {
 }
 
 /**
- * Rewrite sort_order for a slice of the caller's list_members rows. The
- * slice is one pin section (pinned OR unpinned) of `/lists` — drag-reorder
- * never crosses the pin boundary (handshake §session-3 scope decision), so
- * only the moved section needs its sort_order rewritten in one go.
- *
- * Fires N parallel UPDATEs (one per row). Atomicity is best-effort — a
- * partial failure leaves a coherent but possibly stale order; the next
- * refetch reconciles. For >50-list users we'd move to a single-statement
- * RPC `reorder_list_members(_user_id, _ordered_list_ids)`.
+ * Atomic reorder of the caller's list_members rows for one pin section.
+ * Goes through the `reorder_list_members` RPC: a single UPDATE statement
+ * server-side, so every realtime subscriber sees a consistent post-write
+ * state. The previous parallel-UPDATE implementation fired N events at
+ * different times, and a refetch landing between them would read a
+ * partial state — that's the "hover bg flickers 2-3 times after drop"
+ * the user was hitting.
  */
 export async function reorderLists(input: {
   userId: string;
   orderedListIds: string[];
 }): Promise<void> {
-  await Promise.all(
-    input.orderedListIds.map((listId, idx) =>
-      supabase
-        .from("list_members")
-        .update({ sort_order: idx + 1 })
-        .eq("list_id", listId)
-        .eq("user_id", input.userId),
-    ),
-  );
+  const { error } = await supabase.rpc("reorder_list_members", {
+    _user_id: input.userId,
+    _ordered_list_ids: input.orderedListIds,
+  });
+  if (error) throw error;
 }
 
-/** Same idea as reorderLists but for the shared per-list item ordering on
- *  list_items. Sync is server-side per-row UPDATE; partial-failure caveat
- *  identical. */
+/** Atomic reorder of one pin section of a list's list_items, via the
+ *  `reorder_list_items` RPC. Same single-UPDATE rationale as reorderLists.
+ *  `listId` is required so the server-side authorization check (caller
+ *  must be a member of the list) has a target. */
 export async function reorderListItems(input: {
+  listId: string;
   orderedListItemIds: string[];
 }): Promise<void> {
-  await Promise.all(
-    input.orderedListItemIds.map((id, idx) =>
-      supabase
-        .from("list_items")
-        .update({ sort_order: idx + 1 })
-        .eq("id", id),
-    ),
-  );
+  const { error } = await supabase.rpc("reorder_list_items", {
+    _list_id: input.listId,
+    _ordered_list_item_ids: input.orderedListItemIds,
+  });
+  if (error) throw error;
 }

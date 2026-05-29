@@ -125,8 +125,11 @@ export default function ListDetail() {
   // are refused — handshake decision: pin-state changes go through the
   // pin click, not the drag.
   const reorderMut = createMutation(() => ({
-    mutationFn: (input: { orderedListItemIds: string[] }) =>
-      reorderListItems({ orderedListItemIds: input.orderedListItemIds }),
+    mutationFn: (input: { listId: string; orderedListItemIds: string[] }) =>
+      reorderListItems({
+        listId: input.listId,
+        orderedListItemIds: input.orderedListItemIds,
+      }),
     onError: (_err, _input, ctx) => {
       const prev = (ctx as { prev?: unknown } | undefined)?.prev;
       if (prev)
@@ -144,6 +147,9 @@ export default function ListDetail() {
     const fromPinned = (draggable.data as { pinned: boolean }).pinned;
     const toPinned = (droppable.data as { pinned: boolean }).pinned;
     if (fromPinned !== toPinned) return;
+
+    const listId = list.data?.id;
+    if (!listId) return;
 
     const all = queryClient.getQueryData<ListEntry[]>(
       listItemsQueryKey(params.shortCode),
@@ -176,7 +182,7 @@ export default function ListDetail() {
       });
     queryClient.setQueryData(listItemsQueryKey(params.shortCode), next);
 
-    reorderMut.mutate({ orderedListItemIds });
+    reorderMut.mutate({ listId, orderedListItemIds });
   };
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
