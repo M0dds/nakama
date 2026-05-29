@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-6 abgeschlossen. Kalender (`/calendar`) live: Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Jump-to-Date-Picker, Primary-Dot-Sprache (gefüllt = gesehen, hohl-accent = offen, hohl-grau = kommt noch). Home Dashboard mit drei Modulen (Was kommt / Fortsetzen / Logbuch) live, „Neue Folge"-Badges auf allen Listen-Surfaces; Fortsetzen-Rows zeigen den Folgentitel. Drag-Reorder + Pin-to-Top auf `/lists` und `/lists/:shortCode`. RowActions-Cluster (Pin · Reset · Move · Remove) als unified Hover-Affordance. Title-Enrichment via Jikan + MangaDex als Fallback für AniList-Lücken, versioned-backfill. **Phase 7 (Sharing) ist der nächste große Schritt — optional Phase 8 (Polish-Pass) zwischendurch.**
+**Stand:** Phasen 1-7 abgeschlossen. **Phase 7 (Sharing) gelandet:** Mitglieder-Modul (03) auf `/lists/:shortCode` (Roster mit Avatar + @handle, Invite-by-@handle mit inline-Result, Pending-Invites + Revoke, Ownership-Transfer, Liste-verlassen); Einladungs-Posteingang auf `/lists` + Zähl-Badge am Listen-Tab der BottomNav (global + Realtime); per-Item-Sync-Toggle im Details-Modul der Item-Page (via Router-Link-State, nur wenn aus geteilter Liste geöffnet, Backfill beim Einschalten); Auto-Sync-Fan-out für Ticks (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`, beide kontextfrei); Mitseher-Indikator (Auge + Hover-Overlay mit Profilbildern) in Item-Folgenliste + Kalender-Tag-Pane. Kalender (`/calendar`): Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Date-Picker. Home Dashboard (Was kommt / Fortsetzen / Logbuch), „Neue Folge"-Badges auf allen Listen-Surfaces. Drag-Reorder + Pin-to-Top, RowActions-Cluster. Title-Enrichment via Jikan + MangaDex. **Nächster Schritt: Phase 8 (Polish-Pass) — Route-Transitions, Skeleton-States, Cover-Fade-in.**
 
 ---
 
@@ -205,10 +205,15 @@ export function episodesQueryOptions(user, type, slug, limit = 26)
 // fetchable }. Latest `limit` episodes desc. Head-count queries past
 // PostgREST's 1000-row cap.
 
-export async function toggleEpisode({ episodeId, userId, watched })
+export async function toggleEpisode({ itemId, episodeId, watched })
+// Phase 7: routet durch toggle_episode_synced RPC (Auto-Sync) — schreibt
+// eigene Row + fächert über ALLE Sync-ON-Listen mit dem Item auf, KEIN
+// Listen-Kontext nötig. Solo = nur eigene Row. Kein .select() (idempotent,
+// 0-rows mehrdeutig — HEALTH B2).
 export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
-// Long-press cascade: mark_episodes_watched RPC, _list_item_id=null
-// (sync fan-out folgt Phase 7).
+// Phase 7: Long-press cascade durch NEUEN mark_episodes_watched_synced RPC
+// (Auto-Sync-Twin von toggle_episode_synced). Das alte 3-arg
+// mark_episodes_watched bleibt unberührt (Logbook nutzt es weiter).
 export async function resetItemProgress(itemId)
 // reset_item_progress RPC. Set-based delete server-side.
 
@@ -243,6 +248,37 @@ export function recentlyTickedOptions(user)    // Bundled watches + list_add eve
 // air_date > user's letztes watched_at auf diesem Item. UNTERSCHEIDET sich
 // vom List-Row-Badge (14-Tage-Fenster): "while you were away" vs
 // "still has unwatched recent". Chronischer Backlog deliberately silent.
+```
+
+`src/lib/queries/sharing.ts` (Phase 7):
+
+```typescript
+// Membership + invitations + per-item sync + co-watchers. Port von Logbooks
+// src/lib/sharing.ts ins Solid/TanStack-Idiom. Backend-RPCs + RLS liegen schon
+// in der geteilten Supabase-DB (Logbook-Era).
+
+// Reads
+export function listMembersOptions(user, listId)       // Roster: list_members ⋈ profiles (handle + avatarUrl)
+export function myInvitationsOptions(user)             // get_my_invitations RPC — Inbox-Karten + Nav-Badge
+export function listInvitationsOptions(listId)         // get_list_invitations RPC (owner-view)
+export function syncContextOptions(listItemId)         // list_item → list (name, is_shared, memberCount)
+export function coWatchersOptions(user, itemId)        // Record<episodeId, CoWatcher[]> — ein Item
+export function calendarCoWatchersOptions(user)        // dito, fenster-skaliert (air_date-Embed-Filter, kein riesiges IN)
+
+// Mutations
+export async function inviteToList({ listId, username })       // → InviteResult {ok} | {ok:false, error}
+export async function acceptInvitation(id) / declineInvitation(id) / revokeInvitation(id)
+export async function leaveList({ listId, userId })            // delete eigene list_members-Row
+export async function transferOwnership({ listId, newOwnerId })
+export async function setItemSync({ listItemId, enabled })     // update sync_enabled; bei enable backfill_sync_for_list_item
+
+// Query-Keys sind PREFIXE damit Realtime ohne Mount-Zeit-id invalidieren kann:
+//   ["list-members", listId] · ["list-invitations", listId] · ["invitations","mine",userId]
+//   ["sync-context", listItemId] · ["co-watchers", itemId] · ["calendar","co-watchers",userId]
+// → list_invitations/list_members-Events invalidieren die Prefixe ["list-members"] etc.
+
+// CoWatcher = { userId, name (@handle/display/Jemand), avatarUrl, timeLabel }
+// InviteResult = {ok:true} | {ok:false, error: empty|not_found|self|already_member}
 ```
 
 `src/lib/anilist.ts`:
@@ -303,9 +339,11 @@ export async function fetchMangaDexChapterTitles(aniListId, title): Promise<Map<
 **Verwendet in:**
 
 - `/` home → channel `home`, listens to `episode_watches/episodes/list_items/list_members`, invalidates `homeQueryKey`-Prefix
-- `/lists` overview → channel `lists-overview`, listens to `lists/list_members/list_items/episodes/episode_watches`, invalidates `listsQueryKey`
-- `/lists/:shortCode` → channel `list-{shortCode}`, invalidates `listQueryKey(shortCode) + listsQueryKey + listItemsQueryKey(shortCode)`
-- `/item/:type/:slug` → channel `item-{type}-{slug}`, invalidates `episodesQueryKey(type, slug) + listsQueryKey + ["list"]`-Prefix (Cross-Cutting: Partner-Ticks updaten Listen-Badges live)
+- `/lists` overview → channel `lists-overview`, listens to `lists/list_members/list_items/episodes/episode_watches/list_invitations`, invalidates `listsQueryKey` (+ `["invitations","mine"]` für die Inbox-Karten)
+- `/lists/:shortCode` → channel `list-{shortCode}`, invalidates `listQueryKey(shortCode) + listsQueryKey + listItemsQueryKey(shortCode)`; Phase 7: `list_invitations`/`list_members` invalidieren auch die `["list-members"]`/`["list-invitations"]`-Prefixe (Roster + Pending live)
+- `/item/:type/:slug` → channel `item-{type}-{slug}`, invalidates `episodesQueryKey(type, slug) + listsQueryKey + ["list"]`-Prefix + `["co-watchers"]` (Cross-Cutting: Partner-Ticks updaten Listen-Badges + Mitseher live)
+- `/calendar` → channel `calendar`, `episode_watches` invalidiert `calendarQueryKey` + `["calendar","co-watchers"]`, `episodes` nur `calendarQueryKey`
+- **BottomNav (global, mountet einmal)** → channel `global-invitations`, `list_invitations` invalidiert `["invitations","mine"]` → das Listen-Tab-Badge tickt von jeder Route aus live
 
 **Cache-Fan-out für Mutations:** Jede Write die `itemCount` / Title/Watch-Beziehung ändert, MUSS `listsQueryKey` + `["list"]`-Prefix invalidieren. Episode-Mutations zusätzlich `episodesQueryKey`. Pattern in AddSheet, RowActions, ResetItemButton, ItemDetail toggleMut + cascadeMut.
 
@@ -345,7 +383,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe Offene Punkte). Inkl. Jikan + MangaDex Title-Fallback, Heute/Morgen/Demnächst-Tags |
 | **5 · Home Dashboard** | ✓ done — Was kommt / Fortsetzen / Logbuch. „Neue Folge"-Badges auf allen List-Surfaces |
 | **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker. Offen: Mitseher (Phase 7), dynamisches Range-Read |
-| **7 · Sharing** | offen — Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator, Ownership-Transfer |
+| **7 · Sharing** | ✓ done — Invite-by-@handle, Mitglieder-Modul, Einladungs-Inbox + Nav-Badge, Sync-Toggle mit Backfill, Auto-Sync-Fan-out, Mitseher-Indikator, Ownership-Transfer, Leave-List |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Skeleton-States, Route-Transitions |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
 
@@ -355,13 +393,14 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Konkret offen für die nächste Session
 
-1. **Phase 7 — Sharing.** Invite-by-@handle, Members-Modul, Sync-Toggle mit Backfill, Mitseher-Indikator (Auge-Icon — im Kalender bereits ein Slot links vom Watched-Punkt in der Tag-Pane vorgesehen; auch Logbuch-Welle-2), Ownership-Transfer. Backend-RPCs liegen großteils schon (`invite_to_list`, `get_my_invitations`, `accept_list_invitation`, `transfer_list_ownership`, `backfill_sync_for_list_item`). Sync-Fan-out: `mark_episodes_watched` + Toggle auf `toggle_episode_synced` mit echter `list_item.id` statt `null` umstellen (Calendar `cascadeMut`/`toggleMut` + ItemDetail).
+**Phase 7 (Sharing) ist gelandet** (`src/lib/queries/sharing.ts`, `MembersModule`, `InvitationsInbox`, `SyncToggle`, `CoWatcherMark`, `Avatar` + Migration `20260530120000`). Bewusst offen geblieben:
+- **Logbuch-Welle-2** (`missed`- + `ownership_transfer`-Events) — jetzt sinnvoll, da Transfer + geteilte Listen live sind. Logik in Logbook-Repo `src/lib/logbook.ts`.
+- **Dynamisches Kalender-Range-Read** statt fix-breitem Fenster (`calendar.ts` WINDOW_BACK/AHEAD = −2/+4 Monate; die Mitseher-Query in `sharing.ts` spiegelt das Fenster mit −2/+5). Weit-raus-Navigation zeigt leere Tage bis Stale-Refresh.
+- **Sonner/Toast** (siehe unten) — natürlicher Trigger ist jetzt da (Invite akzeptiert während User woanders), aber alles bleibt vorerst inline.
 
-   **Kalender (Phase 6) ist gelandet** — `src/routes/Calendar.tsx` + `src/lib/queries/calendar.ts`. Bewusst offen: Mitseher-Indikator (Phase 7), dynamisches Range-Read statt fix-breitem Fenster (`calendar.ts` WINDOW_BACK/AHEAD = −2/+4 Monate, keyed nur by userId — weit-raus-Navigation zeigt leere Tage bis zum nächsten Stale-Refresh).
+1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
 
-2. **(Optional) Phase 8 — Polish-Pass zwischendurch.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
-
-3. Kleine UX-Polish-Wünsche zwischen-drin atomar abarbeiten — letzte Sessions haben Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge so eingebracht.
+2. Kleine UX-Polish-Wünsche zwischen-drin atomar abarbeiten — letzte Sessions haben Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing so eingebracht.
 
 ### Geplant, aber NICHT akut
 
@@ -369,9 +408,9 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 - **Status-Control für Movies/Games** (`item_history` table). Wartet auf TMDB/IGDB-Source. AniList kennt nur Anime/Manga.
 
-- **Sync-Fan-out für Cascade & Single-Toggle.** Aktuell `mark_episodes_watched` mit `_list_item_id=null` → keine Mit-Member-Updates. Phase 7: UI muss richtige `list_item.id` ermitteln und in beide Tick-Mutations durchreichen. Toggle ebenfalls auf RPC `toggle_episode_synced` umstellen.
+- ~~**Sync-Fan-out für Cascade & Single-Toggle.**~~ **Erledigt (Phase 7e).** Statt `list_item.id` durchzureichen läuft beides über die *Auto-Sync*-RPCs (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`), die Sync aus der Item-Mitgliedschaft ableiten — kein Listen-Kontext nötig.
 
-- **Logbuch-Welle-2:** Aktuell `watch` + `list_add` events. Logbook hat zusätzlich `missed` (released-but-unticked als CTA mit Quick-Tick) + `ownership_transfer`. Brauchen wir mit Sharing live. Logik in Logbook-Repo `src/lib/logbook.ts`.
+- **Logbuch-Welle-2:** Aktuell `watch` + `list_add` events. Logbook hat zusätzlich `missed` (released-but-unticked als CTA mit Quick-Tick) + `ownership_transfer`. Jetzt mit Sharing live relevant. Logik in Logbook-Repo `src/lib/logbook.ts`.
 
 - **Newest-Episode-Title-Lag.** Jikan/MAL + AniList streamingEpisodes hinken 1-3 Wochen hinter Air-Date für neueste Folgen. User sieht „Name der Folge ist noch nicht bekannt"-Fallback. Quellen-Issue, beim nächsten 12 h Stale-Refresh kommt's nach.
 
@@ -383,7 +422,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 - **AddSheet Such-Pill Content-Fade beim Schließen** geht mit 300 ms over ease-out, fadet input + icon während Pill noch morpht. Bei sehr schnellen Aktionen sichtbar.
 - **AddSheet `origin()` wird beim Mount EINMAL gemessen.** Window-Resize während Sheet offen → Close-Morph läuft zur falschen Position. Mobile selten, Desktop nice-to-have.
-- **`/item/:type/:slug` ohne Listen-Kontext.** Deep-Link oder Item in mehreren Listen → kennt „aktuelle Liste" nicht. Back-Button geht via `history.back()`, sonst Fallback `/lists`. Ggf. via location-state vom A-Link mitgeben.
+- **`/item/:type/:slug` ohne Listen-Kontext.** Phase 7 reicht für den Sync-Toggle die `listItemId` via Router-Link-State von der Listen-Row mit (genau dieser Fix). Offen bleibt nur der Back-Button auf Deep-Links (kein State → `history.back()`/Fallback `/lists`) und Home/Kalender/Suche-Einstiege, die bewusst kontextfrei bleiben (kein Sync-Toggle dort).
 - **NotFound-Backlink** verlinkt pauschal `/lists`. `history.back` via PageHeader handlet meistens, aber Deep-Link auf falsche shortCode landet auf Overview statt vorheriger Liste.
 
 ---
@@ -437,7 +476,9 @@ Vollständig in `CLAUDE.md`. Quick reference:
 - **AniList Cover-URL-Naming-Falle:** API-Feld `coverImage.large` liefert `/cover/medium/` URL (~230 px), nicht `/cover/large/` (~430 px). Letzteres im API-Feld `extraLarge`. Search holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time um.
 - **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript narrowed.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
-- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt (Phase-3-5-Catch-up `20260528200000` + Home-RPCs `20260529120000` + Pin-RPCs `20260529130000`). Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas drei Files in Timestamp-Reihenfolge.
+- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt (Phase-3-5-Catch-up `20260528200000` + Home-RPCs `20260529120000` + Pin-RPCs `20260529130000` + Phase-7-Auto-Sync-Cascade `20260530120000`). Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas vier Files in Timestamp-Reihenfolge.
+
+- **Auto-Sync-RPCs statt Listen-Kontext (Phase 7).** Die geteilte Live-DB trägt `toggle_episode_synced(_item_id, _episode_id, _watched)` als *Auto-Sync*-Variante (Logbook `20260528180000`): sie fächert über ALLE Sync-ON-Listen mit dem Item auf, kein `list_item.id` im Call. Der Cascade hatte kein Auto-Sync-Twin — `mark_episodes_watched` fächert nur für ein explizit übergebenes `_list_item_id`. Nakamas Item-Page/Kalender sind kontextfrei, daher Migration `20260530120000`: neuer `mark_episodes_watched_synced(_item_id, _up_to_episode_id)` (Twin) + sicherheitshalber Re-Assert von `toggle_episode_synced` in der Auto-Sync-Form (drop+create, falls die geteilte DB noch die alte Signatur trug). **Falle:** named-param RPC-Calls brechen, wenn die Live-Funktion andere Parameter-NAMEN bei gleichen Typen hat — `create or replace` kann Param-Namen nicht ändern, es braucht `drop function` zuerst.
 
 ---
 

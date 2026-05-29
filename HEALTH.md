@@ -18,7 +18,7 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 - ~~**A4**~~ — `newEpisodeSinceLastWatch` limit-2000 cliff bei Heavy-Watchers → **gefixt 242ba62** (Bundle 5): `home_new_releases` RPC aggregiert beide per-Item-Maxima server-side, ein Round-Trip, kein Cap
 - **A5** — `episodesQueryOptions` 4-5 Round-Trips pro Item-Page-Load
 - ~~**A6**~~ — `WATCH_FETCH=250` zu klein für aktive geteilte Listen → **gefixt 242ba62** (Bundle 5): `home_watch_bundles` RPC bündelt server-side, Cap gilt für Bundles statt Rohzeilen → kein Mid-Session-Truncate
-- **A7** — `listsQueryOptions` pairs-Query (lists.ts:267) ohne explizites `.limit()` → PostgREST 1000-Row-Cap. Heute harmlos, aber Phase 7 Sharing multipliziert `list_items` über alle Member → `newCounts` würden für manche Listen still falsch (kein Error, kein Badge). Gleiche LIMIT-and-hope-Klasse wie A4/A6 + die `GAP_QUERY_LIMIT`-Falle in episodes.ts. Fix: explizites `.limit(5000)` als billige Versicherung.
+- ~~**A7**~~ — `listsQueryOptions` pairs-Query ohne explizites `.limit()` → PostgREST 1000-Row-Cap. Phase 7 Sharing multipliziert `list_items` über alle Member → `newCounts` würden still falsch. → **gefixt 79a5863** (Phase 7e): explizites `.limit(5000)` auf die pairs-Query, mitgenommen als der Trigger real wurde.
 
 ### Correctness / robustness
 
