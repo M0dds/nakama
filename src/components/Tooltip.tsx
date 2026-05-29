@@ -1,4 +1,5 @@
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import type { JSX } from "solid-js";
 
 /**
@@ -13,6 +14,13 @@ import type { JSX } from "solid-js";
  * rows hit this in the old Logbook). We measure the tooltip after mount
  * and clamp its left edge into the viewport. position: fixed escapes
  * any parent overflow-hidden along the way.
+ *
+ * Portal'd to document.body so the tooltip is never a child of an
+ * ancestor with `transform` / `perspective` / `filter` set — those
+ * change the containing block for position:fixed (CSS spec), and the
+ * tooltip would otherwise drift by the ancestor's offset. The sortable
+ * rows on /lists + /lists/:shortCode hit this exactly: each row has a
+ * transform from solid-dnd.
  *
  * The trigger should still carry its own aria-label; the tooltip is the
  * visual affordance:
@@ -88,19 +96,21 @@ export function Tooltip(props: {
     >
       {props.children}
       <Show when={open()}>
-        <span
-          ref={tooltipEl!}
-          role="tooltip"
-          style={{
-            // pos null on the first effect tick (before measurement); park
-            // off-screen so the measurement frame is invisible.
-            left: `${pos()?.left ?? -9999}px`,
-            top: `${pos()?.top ?? -9999}px`,
-          }}
-          class="pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
-        >
-          {props.label}
-        </span>
+        <Portal>
+          <span
+            ref={tooltipEl!}
+            role="tooltip"
+            style={{
+              // pos null on the first effect tick (before measurement); park
+              // off-screen so the measurement frame is invisible.
+              left: `${pos()?.left ?? -9999}px`,
+              top: `${pos()?.top ?? -9999}px`,
+            }}
+            class="pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
+          >
+            {props.label}
+          </span>
+        </Portal>
       </Show>
     </span>
   );
