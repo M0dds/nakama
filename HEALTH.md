@@ -142,7 +142,7 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 7 — AddSheet Origin Re-measure + Pin-Race
 
 **Adressiert:** B1, B5 (+ AddSheet-Preselect-Bug, kein HEALTH-Finding, mitgenommen)
-**Status:** ✅ **DONE** (Code) — branch `bundle/7-addsheet-origin-pin-race`. ⚠️ **Braucht Migration `20260529130000_atomic_pin.sql`** (nur für B1; B5 + Preselect sind client-only und laufen sofort).
+**Status:** ✅ **DONE** — branch `bundle/7-addsheet-origin-pin-race`, gemerged. Migration `20260529130000_atomic_pin.sql` angewendet (2026-05-29, User-bestätigt, Pin + Preselect + Resize verifiziert). Inkl. Follow-up b9d37aa: Hover-bg-Flicker beim Pin-Reflow via `settle()` unterdrückt.
   - b7a2180 — fix(addsheet): preselect current list + re-measure morph origin on resize
   - b22c9f5 — feat(db): atomic pin RPCs — set_list_pin + set_list_item_pin
   - 657102d — refactor(pin): route pin toggles through atomic RPCs
@@ -173,6 +173,9 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 4. ~~**Bundle 6**~~ — done
 5. ~~**Bundle 3**~~ — done
 6. ~~**Bundle 5**~~ — done (Migration `20260529120000` angewendet)
-7. ~~**Bundle 7**~~ — Code done, ⚠️ Migration `20260529130000` (nur B1) muss noch laufen
+7. ~~**Bundle 7**~~ — done (Migration `20260529130000` angewendet)
+
+**Alle 7 Bundles erledigt.** Verbleibend nur die bewusst deferred Findings
+(A5, C8, D1-D3) — siehe „Deferred". Nächster großer Schritt: Phase 6 Kalender.
 
 Jeder Bundle ist independent — Reihenfolge umstellen wenn Kontext es verlangt.
