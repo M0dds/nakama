@@ -34,8 +34,8 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 - ~~**C2**~~ — Pin-Toggle-Handler dupliziert → **gefixt 3ca3fa8** (Bundle 2): `topOfSection`-Helper
 - **C3** — `enrichJikanTitles` und `enrichMangaDexTitles` ~80% identisch (episodes.ts:175 vs :251)
 - **C4** — Inline-Jikan in `storeEpisodes` überlappt mit `enrichJikanTitles` backfill
-- **C5** — `dayOffset`/`formatDate`/`typeLabel`/`typeInitial` parallel in Home + ItemDetail + ListDetail
-- **C6** — PostgREST embed-unwrap (`?.[0]?.count ?? 0`) und `[...new Set(...)]` 6+ Mal repeated
+- ~~**C5**~~ — `dayOffset`/`formatDate`/`typeLabel`/`typeInitial` parallel → **gefixt d70169d** (Bundle 4): canonical in `src/lib/format.ts`
+- ~~**C6**~~ — PostgREST embed-unwrap + `[...new Set(...)]` repeated → **gefixt d70169d** (Bundle 4): `embedCount()` + `unique()` helpers
 - **C7** — `toggleMut` delta-Arithmetik unnötig kompliziert (ItemDetail.tsx:127-128) — reduzierbar auf `ep.watched ? -1 : 1`
 - **C8** — `console.error` an 12+ Stellen ohne Telemetry → defer bis Phase 7 + Hosting steht
 
@@ -97,17 +97,14 @@ Findings bleiben kurz — volle Begründung steht in der Session die sie aufgede
 ### Bundle 4 — Shared format/type helpers
 
 **Adressiert:** C5, C6
-**Status:** TODO
-**Why now:** Phase 6 Kalender braucht Date-Formatting; canonical Helper besser als yet-another inline.
+**Status:** ✅ **DONE** — branch `bundle/4-format-helpers`
+  - b1d7951 — feat(format): extract shared format/type/postgrest helpers
+  - d70169d — refactor: consume format helpers across routes + queries
 
-**Scope:**
-- Neue `src/lib/format.ts`:
-  - Date: `dayOffset`, `formatDate`, `relTime`, `dateLabel`, `MONTH_ABBR_3`
-  - Media-Type: `typeLabel`, `typeInitial`, `episodeCode`, `nextLabel`, `rangeLabel`, `newReleaseLabel`
-  - PostgREST: `embedCount`, `unique`
-- Inline-Duplikate in Home/ItemDetail/ListDetail ersetzen
-
-**Estimated:** ~80 Zeilen Reduktion.
+**Outcome:**
+- Neue `src/lib/format.ts` mit drei Sektionen (Media-Types, Dates, PostgREST)
+- Home.tsx -89, ItemDetail.tsx -49, ListDetail.tsx -19 Zeilen
+- Phase 6 Kalender bekommt dayOffset/formatDate/dateLabel/MONTH_ABBR_3 gratis
 
 ---
 
@@ -174,7 +171,7 @@ Aufschieben bis: bei nächstem Survey re-evaluieren; falls Symptom auftaucht →
 
 1. ~~**Bundle 1**~~ — done
 2. ~~**Bundle 2**~~ — done
-3. **Bundle 4** — klein, gewinnt Lesbarkeit, helpful für Bundle 5
+3. ~~**Bundle 4**~~ — done
 4. **Bundle 6** — low-risk Cleanup, kann zwischendurch
 5. **Bundle 3** — vor Phase 7
 6. **Bundle 5** — vor Phase 7, DB-Migration
