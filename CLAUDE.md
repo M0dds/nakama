@@ -13,7 +13,7 @@
 - Dev: `npm run dev` on port 5173 (kann auf 5174 ausweichen wenn 5173 belegt).
 
 **Next concrete steps** (see handshake §Offene Punkte for full detail):
-1. **Health-Refactoring-Backlog läuft parallel.** `HEALTH.md` listet 7 Bundles (Query-Effizienz, Drag-DRY, Episode-Enrichment-Unify, Format-Helpers, RPC-Migration, Mutation-Correctness, AddSheet-Origin + Pin-Race). User möchte die alle umgesetzt haben (ich code, er reviewt) — kein Bundle in einem Schritt, sondern atomar pro Session. Status pro Bundle wird in HEALTH.md mit Commit-SHA gepflegt.
+1. **Health-Refactoring-Backlog ABGESCHLOSSEN.** Alle 7 Bundles erledigt (siehe `HEALTH.md` mit Commit-SHAs). Es bleiben nur die bewusst deferred Findings (A5 Item-Page-Round-Trips, C8 Telemetry, D1-D3 defensiv). Nakama hat jetzt einen eigenen `supabase/migrations/`-Ordner — drei Files (Phase-3-5-Catch-up + Bundle-5-Home-RPCs + Bundle-7-Pin-RPCs); alle im Supabase-Projekt angewendet. Migrationen weiterhin manuell im SQL-Editor fahren. Offene UX-Kleinigkeit: Dashboard-Row-Padding (Memory `home-dashboard-row-padding`).
 2. **Phase 6: Kalender.** `/calendar` Route existiert noch nicht. Logbook hat eine Wochen-/Monatsansicht mit Tag-Pane + Quick-Tick — Vorlage zum portieren. Datenquellen sind die existierenden `episodes`-Tabellen + RPC `item_progress`.
 3. **(Optional zwischendurch) Phase 8: Polish-Pass.** Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.
 4. Bei kleinen User-Wünschen vor Phase 6: gleich abarbeiten. Atomar committen.
