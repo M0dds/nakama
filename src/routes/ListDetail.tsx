@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -12,7 +12,6 @@ import {
   DragDropSensors,
   SortableProvider,
   transformStyle,
-  useDragDropContext,
   type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -142,7 +141,30 @@ export default function ListDetail() {
     },
   }));
 
+  // Hover-bg suppression during drag + settle. `active.draggable` flips to
+  // null the instant the pointer is released — but the 220ms transform
+  // settle has only just begun, and any row sliding under the cursor in
+  // that window picks up :hover for a frame. Reads as rapid bg flicker.
+  // We hold suppression true from dragStart through the full settle.
+  // SETTLE_MS matches the transform transition duration on the <li>.
+  const SETTLE_MS = 220;
+  const [dragSettling, setDragSettling] = createSignal(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (settleTimer) clearTimeout(settleTimer);
+  });
+
+  const onDragStart = () => {
+    if (settleTimer) clearTimeout(settleTimer);
+    setDragSettling(true);
+  };
+
   const onDragEnd = ({ draggable, droppable }: DragEvent) => {
+    // Schedule settle unconditionally — even early-returns still produce a
+    // visual settle (the dragged row animating back to its origin).
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => setDragSettling(false), SETTLE_MS);
+
     if (!droppable || draggable.id === droppable.id) return;
     const fromPinned = (draggable.data as { pinned: boolean }).pinned;
     const toPinned = (droppable.data as { pinned: boolean }).pinned;
@@ -280,6 +302,7 @@ export default function ListDetail() {
                 fallback={<EntriesEmpty />}
               >
                 <DragDropProvider
+                  onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
                   collisionDetector={closestCenter}
                 >
@@ -287,6 +310,7 @@ export default function ListDetail() {
                   <ListEntries
                     items={items.data!}
                     listShortCode={params.shortCode}
+                    dragSettling={dragSettling}
                     onRequestMove={(entry) => setMovingEntry(entry)}
                     onTogglePin={handleTogglePin}
                   />
@@ -390,6 +414,7 @@ function typeLabel(type: string): string {
 function ListEntries(props: {
   items: ListEntry[];
   listShortCode: string;
+  dragSettling: () => boolean;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
 }) {
@@ -406,6 +431,7 @@ function ListEntries(props: {
             <SortableEntryRow
               entry={entry}
               listShortCode={props.listShortCode}
+              dragSettling={props.dragSettling}
               onRequestMove={props.onRequestMove}
               onTogglePin={props.onTogglePin}
             />
@@ -418,6 +444,7 @@ function ListEntries(props: {
             <SortableEntryRow
               entry={entry}
               listShortCode={props.listShortCode}
+              dragSettling={props.dragSettling}
               onRequestMove={props.onRequestMove}
               onTogglePin={props.onTogglePin}
             />
@@ -431,17 +458,13 @@ function ListEntries(props: {
 function SortableEntryRow(props: {
   entry: ListEntry;
   listShortCode: string;
+  dragSettling: () => boolean;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
 }) {
   const sortable = createSortable(props.entry.listItemId, {
     pinned: props.entry.pinned,
   });
-  const ctx = useDragDropContext();
-  // Suppress hover bg while any drag is in flight — otherwise the moment
-  // of drop reads as a double flicker as bg-surface walks from the source
-  // row to whatever the cursor lands on.
-  const isAnyDragging = () => ctx?.[0].active.draggable != null;
 
   return (
     <li
@@ -463,7 +486,7 @@ function SortableEntryRow(props: {
       <div
         class="group flex items-center gap-2 px-5 py-3"
         classList={{
-          "transition-colors hover:bg-surface": !isAnyDragging(),
+          "transition-colors hover:bg-surface": !props.dragSettling(),
         }}
       >
         <A

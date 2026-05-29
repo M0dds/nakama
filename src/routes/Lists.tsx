@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import {
   createMutation,
@@ -12,7 +12,6 @@ import {
   DragDropSensors,
   SortableProvider,
   transformStyle,
-  useDragDropContext,
   type DragEvent,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -144,7 +143,30 @@ export default function Lists() {
     },
   }));
 
+  // Hover-bg suppression during drag + settle. `active.draggable` flips to
+  // null the instant the pointer is released — but the 220ms transform
+  // settle has only just begun, and any row sliding under the cursor in
+  // that window picks up :hover for a frame. Reads as rapid bg flicker.
+  // We hold suppression true from dragStart through the full settle.
+  // SETTLE_MS matches the transform transition duration on the <li>.
+  const SETTLE_MS = 220;
+  const [dragSettling, setDragSettling] = createSignal(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (settleTimer) clearTimeout(settleTimer);
+  });
+
+  const onDragStart = () => {
+    if (settleTimer) clearTimeout(settleTimer);
+    setDragSettling(true);
+  };
+
   const onDragEnd = ({ draggable, droppable }: DragEvent) => {
+    // Schedule settle unconditionally — even early-returns still produce a
+    // visual settle (the dragged row animating back to its origin).
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => setDragSettling(false), SETTLE_MS);
+
     if (!droppable || draggable.id === droppable.id) return;
     // Refuse cross-section drops (handshake decision: pinned/unpinned stay
     // separate; pin-state changes go through the pin click, not the drag).
@@ -199,6 +221,7 @@ export default function Lists() {
       <ColumnGuide />
 
       <DragDropProvider
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         collisionDetector={closestCenter}
       >
@@ -232,6 +255,7 @@ export default function Lists() {
                       <ListRows
                         lists={data().private}
                         visibility="private"
+                        dragSettling={dragSettling}
                         onTogglePin={handleTogglePin}
                       />
                     </Show>
@@ -242,6 +266,7 @@ export default function Lists() {
                       <ListRows
                         lists={data().shared}
                         visibility="shared"
+                        dragSettling={dragSettling}
                         onTogglePin={handleTogglePin}
                       />
                     </BentoModule>
@@ -315,6 +340,7 @@ function metaLine(list: ListSummary): string {
 function ListRows(props: {
   lists: ListSummary[];
   visibility: Visibility;
+  dragSettling: () => boolean;
   onTogglePin: (list: ListSummary) => void;
 }) {
   // Two sortable groups per visibility — pinned + unpinned. Each section's
@@ -333,6 +359,7 @@ function ListRows(props: {
             <SortableListRow
               list={list}
               visibility={props.visibility}
+              dragSettling={props.dragSettling}
               onTogglePin={props.onTogglePin}
             />
           )}
@@ -344,6 +371,7 @@ function ListRows(props: {
             <SortableListRow
               list={list}
               visibility={props.visibility}
+              dragSettling={props.dragSettling}
               onTogglePin={props.onTogglePin}
             />
           )}
@@ -356,18 +384,12 @@ function ListRows(props: {
 function SortableListRow(props: {
   list: ListSummary;
   visibility: Visibility;
+  dragSettling: () => boolean;
   onTogglePin: (list: ListSummary) => void;
 }) {
   const sortable = createSortable(props.list.id, {
     section: sectionKey(props.visibility, props.list.pinned),
   });
-  const ctx = useDragDropContext();
-  // True for *any* active drag in this provider — used to suppress the
-  // row's hover bg while something is being dragged. Without that, the
-  // moment of drop has two perceived flashes: the source row's bg fades
-  // out as it leaves the cursor, and the row now under the cursor fades
-  // in. Reads as flicker.
-  const isAnyDragging = () => ctx?.[0].active.draggable != null;
 
   return (
     <li
@@ -390,7 +412,7 @@ function SortableListRow(props: {
       <div
         class="group flex items-center gap-2 px-5 py-3.5"
         classList={{
-          "transition-colors hover:bg-surface": !isAnyDragging(),
+          "transition-colors hover:bg-surface": !props.dragSettling(),
         }}
       >
         <A
