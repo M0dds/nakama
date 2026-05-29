@@ -1,57 +1,818 @@
-import { A } from "@solidjs/router";
+import { createSignal, For, onMount, Show } from "solid-js";
+import { A, useNavigate } from "@solidjs/router";
+import { createQuery } from "@tanstack/solid-query";
+import { Check, Eye, EyeOff, ListPlus } from "lucide-solid";
+import { highResCover } from "@/lib/anilist";
+import { useAuth } from "@/lib/auth";
+import {
+  continueWatchingOptions,
+  homeQueryKey,
+  recentlyTickedOptions,
+  upcomingEpisodesOptions,
+  type ContinueItem,
+  type ListAddEvent,
+  type LogbookEvent,
+  type MediaType,
+  type UpcomingItem,
+  type WatchBundle,
+} from "@/lib/queries/home";
+import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
-import { Button } from "@/components/Button";
 import { ColumnGuide } from "@/components/ColumnGuide";
 
 /**
- * Placeholder Home using the real structural primitives — PageHeader sits on
- * top, two BentoModule sections compose the body, Buttons handle the CTAs.
- * When Phase 5 lands (Was kommt / Fortsetzen / Logbuch), the section
- * *contents* swap in but the frame stays as it is.
+ * Home dashboard — three derived modules, layout mirrors Logbook's `/`:
+ *
+ *   01 Was kommt   — accordion timeline of next-release-per-tracked-item
+ *                    (left 2/3)
+ *   02 Fortsetzen  — accordion rows for mid-watch items (left 2/3, stacked)
+ *   03 Logbuch     — bundled-watch feed (right 1/3, full vertical)
+ *
+ * Each module owns its query + empty state. Realtime invalidates the
+ * `["home"]` prefix on any episode_watches / episodes / list_items change,
+ * so all three branches refetch in step.
  */
 export default function Home() {
+  const auth = useAuth();
+
+  const continueQ = createQuery(() => ({
+    ...continueWatchingOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const upcomingQ = createQuery(() => ({
+    ...upcomingEpisodesOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const logbookQ = createQuery(() => ({
+    ...recentlyTickedOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+
+  useRealtimeInvalidation("home", [
+    { table: "episode_watches", invalidates: [homeQueryKey] },
+    { table: "episodes", invalidates: [homeQueryKey] },
+    { table: "list_items", invalidates: [homeQueryKey] },
+    { table: "list_members", invalidates: [homeQueryKey] },
+  ]);
+
   return (
     <main class="w-full">
-        <PageHeader
-          title="Willkommen."
-          aside={
-            <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-              Phase 2 · Auth & Shell
-            </span>
-          }
-        />
+      <PageHeader title="Willkommen." aside={<TodayLabel />} />
 
-        <ColumnGuide />
+      <ColumnGuide />
 
-        <div class="flex flex-col md:flex-row md:items-start">
-          <div class="md:w-2/3">
-            <BentoModule label="Status" number="01">
-              <p class="text-body text-text">
-                Auth + Shell stehen. Discord OAuth, Magic-Link, geschützte
-                Routen und die Floating-Bottom-Nav sind verdrahtet. Echte
-                Listen + Items folgen in Phase 3.
-              </p>
-              <div class="mt-5 flex flex-wrap gap-3">
-                <A href="/styleguide">
-                  <Button variant="primary">Styleguide öffnen</Button>
-                </A>
-                <A href="/profile">
-                  <Button variant="secondary">Profil</Button>
-                </A>
-              </div>
-            </BentoModule>
-          </div>
+      <div class="flex flex-col md:flex-row md:items-start">
+        {/* Linke Spalte 2/3 — Was kommt + Fortsetzen stacked. */}
+        <div class="md:w-2/3">
+          <BentoModule
+            label="Was kommt"
+            number="01"
+            class="border-b border-rule"
+          >
+            <Show when={!upcomingQ.isLoading} fallback={<LoadingLine />}>
+              <Show
+                when={upcomingQ.data && upcomingQ.data.length > 0}
+                fallback={<EmptyUpcoming />}
+              >
+                <WasKommt items={upcomingQ.data!} />
+              </Show>
+            </Show>
+          </BentoModule>
 
-          <div class="border-t border-rule md:w-1/3 md:border-t-0">
-            <BentoModule label="Nächste Phase" number="02">
-              <p class="text-body text-text-muted">
-                Phase 3 — Listen: CRUD, Inline-Rename, Delete, „Auf Home
-                tracken"-Toggle.
-              </p>
-            </BentoModule>
-          </div>
+          <BentoModule label="Fortsetzen" number="02">
+            <Show when={!continueQ.isLoading} fallback={<LoadingLine />}>
+              <Show
+                when={continueQ.data && continueQ.data.length > 0}
+                fallback={<EmptyContinue />}
+              >
+                <Fortsetzen items={continueQ.data!} />
+              </Show>
+            </Show>
+          </BentoModule>
         </div>
+
+        {/* Rechte Spalte 1/3 — Logbuch. */}
+        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+          <BentoModule label="Logbuch" number="03">
+            <Show when={!logbookQ.isLoading} fallback={<LoadingLine />}>
+              <Show
+                when={logbookQ.data && logbookQ.data.length > 0}
+                fallback={<EmptyLogbook />}
+              >
+                <Logbuch events={logbookQ.data!} />
+              </Show>
+            </Show>
+          </BentoModule>
+        </div>
+      </div>
     </main>
   );
+}
+
+// ── 01 · Was kommt ────────────────────────────────────────────────────
+
+/**
+ * Accordion timeline of upcoming releases. Direct port of Logbook's
+ * was-kommt.tsx — same SHOWN=4, hero=2fr-1fr-1fr-1fr grid that animates the
+ * template on hover, mobile vertical stack with each card in active style.
+ * First click activates an inactive card; second click (same card)
+ * navigates to the item.
+ */
+const WAS_KOMMT_SHOWN = 4;
+
+function WasKommt(props: { items: UpcomingItem[] }) {
+  const navigate = useNavigate();
+  const [activeId, setActiveId] = createSignal<string | null>(
+    props.items[0]?.itemId ?? null,
+  );
+
+  const visible = () => props.items.slice(0, WAS_KOMMT_SHOWN);
+  const hiddenCount = () =>
+    Math.max(0, props.items.length - WAS_KOMMT_SHOWN);
+
+  const activeIndex = () => {
+    const idx = visible().findIndex((it) => it.itemId === activeId());
+    return idx >= 0 ? idx : 0;
+  };
+
+  // The grid template animates on activeIndex change — the active column is
+  // 2fr, the others 1fr. With fewer than four items the trailing columns
+  // stay empty (the row deliberately doesn't stretch to fill).
+  const gridCols = () =>
+    Array.from({ length: WAS_KOMMT_SHOWN }, (_, i) =>
+      i === activeIndex() ? "2fr" : "1fr",
+    ).join(" ");
+
+  return (
+    <div>
+      <div
+        class="flex flex-col gap-3 md:grid"
+        style={{
+          "grid-template-columns": gridCols(),
+          transition:
+            "grid-template-columns 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+        }}
+        onMouseLeave={() => {
+          // Snap the highlight back to the first card on hover-capable
+          // devices only — touch's tap-to-activate stays sticky.
+          if (window.matchMedia("(hover: hover)").matches) {
+            setActiveId(props.items[0]?.itemId ?? null);
+          }
+        }}
+      >
+        <For each={visible()}>
+          {(item, i) => {
+            const active = () => item.itemId === activeId();
+            const isHero = () => i() === 0;
+            return (
+              <A
+                href={`/item/${item.type}/${item.slug}`}
+                aria-expanded={active()}
+                aria-label={
+                  active() ? `${item.title} öffnen` : `${item.title} ansehen`
+                }
+                onMouseEnter={() => setActiveId(item.itemId)}
+                onClick={(e) => {
+                  // First click on an inactive card just activates; second
+                  // click (now active) lets the navigation through.
+                  if (item.itemId !== activeId()) {
+                    e.preventDefault();
+                    setActiveId(item.itemId);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (item.itemId === activeId()) {
+                      navigate(`/item/${item.type}/${item.slug}`);
+                    } else {
+                      setActiveId(item.itemId);
+                    }
+                  }
+                }}
+                class="group relative flex w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border transition-all duration-300 [transition-timing-function:var(--ease-quart)] focus:outline-none md:h-80"
+                classList={{
+                  "h-80 border-accent bg-accent": active(),
+                  "h-44 border-border bg-bg": !active(),
+                }}
+              >
+                {/* Cover fills above the caption; bg shows through as the
+                    placeholder for items without a real cover. */}
+                <div class="relative min-h-0 flex-1 overflow-hidden">
+                  <Show
+                    when={item.coverUrl}
+                    fallback={
+                      <div class="flex h-full items-center justify-center">
+                        <span
+                          class="font-mono text-mini font-medium opacity-60"
+                          classList={{
+                            "text-accent-on": active(),
+                            "text-text-muted": !active(),
+                          }}
+                        >
+                          {typeInitial(item.type)}
+                        </span>
+                      </div>
+                    }
+                  >
+                    {/* Was-kommt cards display covers at up to ~250×280 px
+                        (h-80 active), so the stored `/cover/medium/` URL
+                        (~230 px native) pixelates badly on hover-scale.
+                        highResCover swaps in the `/cover/large/` variant
+                        — same URL host, larger image. */}
+                    <img
+                      src={highResCover(item.coverUrl)!}
+                      alt=""
+                      class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
+                    />
+                  </Show>
+                </div>
+
+                {/* Caption */}
+                <div class="shrink-0 p-3">
+                  <DayTag
+                    airDate={item.airDate}
+                    isHero={isHero()}
+                    active={active()}
+                  />
+                  <h3
+                    class="mt-0.5 truncate text-body font-medium"
+                    classList={{
+                      "text-accent-on": active(),
+                      "text-text": !active(),
+                    }}
+                  >
+                    {item.title}
+                  </h3>
+                  <span
+                    class="block font-mono text-mini"
+                    classList={{
+                      "text-accent-on/85": active(),
+                      "text-text-muted": !active(),
+                    }}
+                  >
+                    {episodeCode(item.episodeNumber)}
+                    {active() ? ` · ${typeLabel(item.type)}` : ""}
+                  </span>
+                </div>
+              </A>
+            );
+          }}
+        </For>
+      </div>
+
+      <Show when={hiddenCount() > 0}>
+        <p class="mt-2 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted">
+          +{hiddenCount()} weitere
+        </p>
+      </Show>
+    </div>
+  );
+}
+
+function DayTag(props: {
+  airDate: string;
+  isHero: boolean;
+  active: boolean;
+}) {
+  const offset = () => dayOffset(props.airDate);
+  const dateLabel = () => formatDate(new Date(props.airDate));
+  const keyword = () => {
+    if (offset() === 0) return props.isHero ? "HEUTE" : "AUCH HEUTE";
+    if (offset() === 1) return "MORGEN";
+    return null;
+  };
+
+  return (
+    <Show
+      when={props.active}
+      fallback={
+        <span
+          class="block font-mono text-mini uppercase tracking-wider"
+          classList={{
+            "text-accent": offset() <= 1,
+            "text-text-muted": offset() > 1,
+          }}
+        >
+          {keyword() ?? dateLabel()}
+        </span>
+      }
+    >
+      <span class="block font-mono text-mini uppercase tracking-wider text-accent-on">
+        <Show when={keyword()}>
+          <span>{keyword()} </span>
+        </Show>
+        <span class="opacity-75">{dateLabel()}</span>
+      </span>
+    </Show>
+  );
+}
+
+function EmptyUpcoming() {
+  return (
+    <div class="rounded-sm border border-border px-5 py-6 text-center">
+      <p class="text-body text-text">Diese Woche ruhig.</p>
+      <p class="mt-1 text-body text-text-muted">
+        Nichts steht in den nächsten 14 Tagen an. Stöbere in deiner Watchlist
+        im <span class="font-mono">Listen</span>-Tab.
+      </p>
+    </div>
+  );
+}
+
+// ── 02 · Fortsetzen ───────────────────────────────────────────────────
+
+/**
+ * Accordion rows for mid-watch items. The active row's cover grows (3rem×4rem
+ * → 5.33rem×4rem), and a small "Anime"/"Manga"/etc. category line slides in
+ * above the title. First click activates, second click (same row) opens.
+ * Initially shows 4; the rest reveal via ShowMoreToggle.
+ */
+const FORTSETZEN_VISIBLE = 4;
+
+function Fortsetzen(props: { items: ContinueItem[] }) {
+  const navigate = useNavigate();
+  const [activeId, setActiveId] = createSignal<string | null>(
+    props.items[0]?.itemId ?? null,
+  );
+  const [expanded, setExpanded] = createSignal(false);
+
+  const hasMore = () => props.items.length > FORTSETZEN_VISIBLE;
+  const visible = () =>
+    expanded() || !hasMore()
+      ? props.items
+      : props.items.slice(0, FORTSETZEN_VISIBLE);
+  const overflow = () => Math.max(0, props.items.length - FORTSETZEN_VISIBLE);
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      // Collapsing while the active row would disappear — refocus to the top.
+      if (!next) {
+        const idx = props.items.findIndex((it) => it.itemId === activeId());
+        if (idx >= FORTSETZEN_VISIBLE)
+          setActiveId(props.items[0]?.itemId ?? null);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <ul class="-mx-5 divide-y divide-border border-y border-border">
+        <For each={visible()}>
+          {(item) => {
+            const active = () => item.itemId === activeId();
+            return (
+              <li>
+                <A
+                  href={`/item/${item.type}/${item.slug}`}
+                  aria-expanded={active()}
+                  aria-label={
+                    active() ? `${item.title} öffnen` : `${item.title} ansehen`
+                  }
+                  onMouseEnter={() => setActiveId(item.itemId)}
+                  onClick={(e) => {
+                    if (item.itemId !== activeId()) {
+                      e.preventDefault();
+                      setActiveId(item.itemId);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (item.itemId === activeId()) {
+                        navigate(`/item/${item.type}/${item.slug}`);
+                      } else {
+                        setActiveId(item.itemId);
+                      }
+                    }
+                  }}
+                  class="flex cursor-pointer items-center gap-3 px-5 py-2 transition-colors hover:bg-surface focus:outline-none"
+                >
+                  {/* Cover — grows on active. */}
+                  <div
+                    class="relative shrink-0 overflow-hidden rounded-xs border border-border bg-surface transition-all duration-300 [transition-timing-function:var(--ease-quart)]"
+                    style={{
+                      width: active() ? "4rem" : "2.25rem",
+                      height: active() ? "5.33rem" : "3rem",
+                    }}
+                  >
+                    <Show
+                      when={item.coverUrl}
+                      fallback={
+                        <div class="flex h-full items-center justify-center">
+                          <span class="font-mono text-mini font-medium text-text-muted opacity-50">
+                            {typeInitial(item.type)}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <img
+                        src={item.coverUrl!}
+                        alt=""
+                        class="h-full w-full object-cover"
+                      />
+                    </Show>
+                  </div>
+
+                  <div class="min-w-0 flex-1">
+                    {/* Category line — only meaningful weight on the active
+                        hero, slides in from 0px max-height. */}
+                    <span
+                      class="block overflow-hidden font-mono text-mini uppercase tracking-[0.15em] text-text-muted transition-all duration-300 [transition-timing-function:var(--ease-quart)]"
+                      style={{
+                        "max-height": active() ? "16px" : "0px",
+                        opacity: active() ? 1 : 0,
+                      }}
+                    >
+                      {typeLabel(item.type)}
+                    </span>
+                    <div class="flex items-start gap-3">
+                      <h3 class="min-w-0 truncate text-body font-medium text-text">
+                        {item.title}
+                      </h3>
+                      <Show when={item.hasNewEpisode}>
+                        <span class="shrink-0 font-mono text-mini uppercase text-accent">
+                          {newReleaseLabel(item.type)}
+                        </span>
+                      </Show>
+                    </div>
+                    <p class="font-mono text-mini text-text-muted">
+                      {nextLabel(item.type, item.nextEpisode)}
+                    </p>
+                  </div>
+
+                  <div class="flex shrink-0 flex-col items-end gap-1">
+                    <span class="font-mono text-mini tabular-nums text-text-muted">
+                      {item.watched}/{item.total}
+                    </span>
+                  </div>
+                </A>
+              </li>
+            );
+          }}
+        </For>
+      </ul>
+
+      <Show when={hasMore()}>
+        <ShowMoreToggle
+          expanded={expanded()}
+          remaining={overflow()}
+          onToggle={toggleExpanded}
+        />
+      </Show>
+    </>
+  );
+}
+
+function EmptyContinue() {
+  return (
+    <div class="rounded-sm border border-border px-5 py-6 text-center">
+      <p class="text-body text-text">Alles aufgeholt.</p>
+      <p class="mt-1 text-body text-text-muted">
+        Zeit für etwas Neues — schau in deine Watchlist.
+      </p>
+    </div>
+  );
+}
+
+// ── 03 · Logbuch ──────────────────────────────────────────────────────
+
+/**
+ * Bundled-watch feed. Each event is a (actor, item, session) bundle — so a
+ * cascade of 1100 episodes reads as one line "Du hast E1–E1100 von One Piece
+ * gesehen" instead of 1100 orphan rows that would blow the row cap and
+ * surface only outliers. Initially shows 8 events with a "+ Alle Ereignisse"
+ * reveal; an "Eigene ausblenden" toggle hides self-watches (persisted to
+ * localStorage so the preference survives reloads).
+ */
+const LOGBUCH_VISIBLE = 8;
+const LOGBUCH_SELF_KEY = "nakama:logbuch-self";
+
+function Logbuch(props: { events: LogbookEvent[] }) {
+  const [expanded, setExpanded] = createSignal(false);
+  const [showSelf, setShowSelf] = createSignal(true);
+
+  onMount(() => {
+    if (localStorage.getItem(LOGBUCH_SELF_KEY) === "0") setShowSelf(false);
+  });
+
+  const toggleSelf = () => {
+    setShowSelf((prev) => {
+      const next = !prev;
+      localStorage.setItem(LOGBUCH_SELF_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
+
+  const hasSelf = () => props.events.some((e) => e.isSelf);
+  const filtered = () =>
+    showSelf() ? props.events : props.events.filter((e) => !e.isSelf);
+  const hasMore = () => filtered().length > LOGBUCH_VISIBLE;
+  const shown = () =>
+    expanded() || !hasMore() ? filtered() : filtered().slice(0, LOGBUCH_VISIBLE);
+
+  return (
+    <div>
+      <ul class="-mx-5 divide-y divide-border border-y border-border">
+        <For each={shown()}>
+          {(ev) => (
+            <li>
+              <div class="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface">
+                <EventIcon ev={ev} />
+                <div class="min-w-0 flex-1">
+                  <p
+                    class="text-body"
+                    classList={{
+                      "text-text-muted": ev.isSelf,
+                      "text-text": !ev.isSelf,
+                    }}
+                  >
+                    {ev.kind === "watch" ? (
+                      <WatchSentence ev={ev} />
+                    ) : (
+                      <ListAddSentence ev={ev} />
+                    )}
+                  </p>
+                  <span class="mt-0.5 block font-mono text-mini tabular-nums text-text-muted">
+                    {relTime(ev.ts)}
+                  </span>
+                </div>
+              </div>
+            </li>
+          )}
+        </For>
+        <Show when={shown().length === 0}>
+          <li class="px-5 py-4 text-center text-body text-text-muted">
+            Eigene Aktionen ausgeblendet.
+          </li>
+        </Show>
+      </ul>
+
+      {/* Footer controls — reveal-all + the self-actions toggle. */}
+      <div class="mt-1 flex items-center gap-2">
+        <Show when={hasMore()}>
+          <button
+            type="button"
+            onClick={() => setExpanded((p) => !p)}
+            aria-expanded={expanded()}
+            class="flex flex-1 items-center justify-center whitespace-nowrap rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            {expanded() ? "Weniger anzeigen" : "+ Alle Ereignisse"}
+          </button>
+        </Show>
+        <Show when={hasSelf()}>
+          <button
+            type="button"
+            onClick={toggleSelf}
+            aria-pressed={!showSelf()}
+            class="flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            <Show
+              when={showSelf()}
+              fallback={
+                <>
+                  <Eye class="size-3.5" strokeWidth={2} aria-hidden />
+                  Eigene einblenden
+                </>
+              }
+            >
+              <EyeOff class="size-3.5" strokeWidth={2} aria-hidden />
+              Eigene ausblenden
+            </Show>
+          </button>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+function EmptyLogbook() {
+  return (
+    <div class="rounded-sm border border-border px-5 py-6 text-center">
+      <p class="text-body text-text">Noch nichts passiert.</p>
+      <p class="mt-1 text-body text-text-muted">
+        Sobald du oder Mit-Mitglieder Folgen abhaken oder neue Einträge zu
+        Listen hinzufügen, siehst du es hier.
+      </p>
+    </div>
+  );
+}
+
+/** Per-kind icon. Self-events are slightly dimmed regardless of kind so
+ *  the user's own activity reads as background context next to co-member
+ *  activity. */
+function EventIcon(props: { ev: LogbookEvent }) {
+  return (
+    <Show
+      when={props.ev.kind === "watch"}
+      fallback={
+        <ListPlus
+          class="mt-0.5 size-4 shrink-0 text-text-muted"
+          classList={{ "opacity-60": props.ev.isSelf }}
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      }
+    >
+      <Show
+        when={props.ev.isSelf}
+        fallback={
+          <Eye
+            class="mt-0.5 size-4 shrink-0 text-text-muted"
+            strokeWidth={1.75}
+            aria-hidden
+          />
+        }
+      >
+        <Check
+          class="mt-0.5 size-4 shrink-0 text-text-muted opacity-60"
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      </Show>
+    </Show>
+  );
+}
+
+/** "Du hast Frieren E07 gesehen." / "@aki hat One Piece E37–E1163 gesehen." */
+function WatchSentence(props: { ev: WatchBundle }) {
+  return (
+    <>
+      <span class="font-medium">
+        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
+      </span>{" "}
+      {props.ev.isSelf ? "hast" : "hat"}{" "}
+      <A
+        href={`/item/${props.ev.type}/${props.ev.slug}`}
+        class="font-medium underline-offset-2 hover:underline"
+      >
+        {props.ev.title}
+      </A>{" "}
+      <span class="font-mono text-mini uppercase tracking-wider">
+        {rangeLabel(props.ev.type, props.ev.minEpisode, props.ev.maxEpisode)}
+      </span>{" "}
+      gesehen.
+    </>
+  );
+}
+
+/** "Du hast Frieren zu Lieblings-Anime hinzugefügt." */
+function ListAddSentence(props: { ev: ListAddEvent }) {
+  return (
+    <>
+      <span class="font-medium">
+        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
+      </span>{" "}
+      {props.ev.isSelf ? "hast" : "hat"}{" "}
+      <A
+        href={`/item/${props.ev.type}/${props.ev.slug}`}
+        class="font-medium underline-offset-2 hover:underline"
+      >
+        {props.ev.title}
+      </A>{" "}
+      zu{" "}
+      <A
+        href={`/lists/${props.ev.listShortCode}`}
+        class="underline-offset-2 hover:underline"
+      >
+        {props.ev.listName}
+      </A>{" "}
+      hinzugefügt.
+    </>
+  );
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────
+
+function ShowMoreToggle(props: {
+  expanded: boolean;
+  remaining: number;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onToggle}
+      aria-expanded={props.expanded}
+      class="mt-1 flex w-full items-center justify-center rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+    >
+      {props.expanded ? "Weniger anzeigen" : `+${props.remaining} weitere`}
+    </button>
+  );
+}
+
+function LoadingLine() {
+  return <p class="text-body text-text-muted">Lade …</p>;
+}
+
+/** "MI · 27.05." — mono mini-caps in the PageHeader aside; matches Logbook so
+ *  the rhythm reads identically across the two apps. */
+function TodayLabel() {
+  const d = new Date();
+  const wd = d
+    .toLocaleDateString("de-DE", { weekday: "short" })
+    .replace(".", "")
+    .toUpperCase();
+  const dm = d.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+  return (
+    <span class="font-mono text-mini uppercase tracking-wider tabular-nums text-text-muted">
+      {wd} · {dm}
+    </span>
+  );
+}
+
+function typeLabel(type: MediaType): string {
+  switch (type) {
+    case "manga":
+      return "Manga";
+    case "anime":
+      return "Anime";
+    case "series":
+      return "Serie";
+    case "movie":
+      return "Film";
+    case "game":
+      return "Spiel";
+  }
+}
+
+function typeInitial(type: MediaType): string {
+  switch (type) {
+    case "manga":
+      return "M";
+    case "anime":
+      return "A";
+    case "series":
+      return "S";
+    case "movie":
+      return "F";
+    case "game":
+      return "G";
+  }
+}
+
+function episodeCode(n: number): string {
+  return `E${String(n).padStart(2, "0")}`;
+}
+
+function nextLabel(type: MediaType, n: number): string {
+  return type === "manga" ? `Kap. ${n}` : episodeCode(n);
+}
+
+/** "Neue Folge" / "Neues Kapitel" badge text. Matches the wording on the
+ *  /lists row + /lists/:shortCode row badges so the same signal reads the
+ *  same way across surfaces. */
+function newReleaseLabel(type: MediaType): string {
+  return type === "manga" ? "Neues Kapitel" : "Neue Folge";
+}
+
+/** Single number → "E07" / "Kap. 12". Range → "E37–E1163" / "Kap. 9–40". */
+function rangeLabel(type: MediaType, min: number, max: number): string {
+  if (min === max) return nextLabel(type, min);
+  if (type === "manga") return `Kap. ${min}–${max}`;
+  return `E${String(min).padStart(2, "0")}–E${String(max).padStart(2, "0")}`;
+}
+
+function dayOffset(iso: string): number {
+  const d = new Date(iso);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((dDay.getTime() - startToday.getTime()) / 86_400_000);
+}
+
+/** "DI · 02.06." for any date — used by the day-tag on further-out cards. */
+function formatDate(d: Date): string {
+  const wd = d
+    .toLocaleDateString("de-DE", { weekday: "short" })
+    .replace(".", "")
+    .toUpperCase();
+  const dm = d.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+  return `${wd} · ${dm}`;
+}
+
+/** German relative time for a past timestamp. Mirrors Logbook's relTime. */
+function relTime(iso: string): string {
+  const now = new Date();
+  const diffMin = Math.round((now.getTime() - new Date(iso).getTime()) / 60_000);
+  if (diffMin < 1) return "gerade eben";
+  if (diffMin < 60) return `vor ${diffMin} Min.`;
+  const diffHrs = Math.round(diffMin / 60);
+  if (diffHrs < 24) return `vor ${diffHrs} Std.`;
+  const d = new Date(iso);
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((startToday.getTime() - dDay.getTime()) / 86_400_000);
+  if (days === 1) return "gestern";
+  if (days >= 2 && days <= 6) return `vor ${days} Tagen`;
+  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
 }
