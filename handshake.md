@@ -1,6 +1,6 @@
 # Nakama — Handshake
 
-Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen (außer Status-Control für Movies/Games — wartet auf TMDB/IGDB-Sources). Items + Item-Detail + Episode-Layer + Tick-Pattern + Reset + Pagination alle live. Phase 5 (Home Dashboard) ist als Nächstes dran; davor ein Polish-Pass (URL-Vereinfachung auf source:sourceId + Restricted-Access-UX).
+Master-Kontext. Lies das zuerst. **Stand:** Phase 4 abgeschlossen (außer Status-Control für Movies/Games — wartet auf TMDB/IGDB-Sources). URL-Polish-Pass durch: `/lists/<short_code>` (adj-adj-noun) und `/item/<type>/<slug>` als natural-key Routes, plus NotFound-Surface (Items: „Eintrag nicht gefunden", Listen: „Liste nicht gefunden" ohne Privacy-Erklärung). Phase 5 (Home Dashboard) als Nächstes.
 
 ---
 
@@ -73,8 +73,8 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 | `/styleguide` | public | done (14 Sektionen) |
 | `/` | protected (AppLayout) | Stub (Phase 5 Pending) |
 | `/lists` | protected (AppLayout) | done |
-| `/lists/:id` | protected (AppLayout) | done |
-| `/item/:id` | protected (AppLayout) | done (UUID-Form; Source-Key-Form `/item/anilist:21` als Polish-Step geplant) |
+| `/lists/:shortCode` | protected (AppLayout) | done (DB-generated `adj-adj-noun`, z.B. `/lists/mystic-coral-voyager`) |
+| `/item/:type/:slug` | protected (AppLayout) | done (DB-generated slug aus title, mit `-<source_id>` Suffix nur bei Kollision) |
 | `/profile` | protected (AppLayout) | done |
 | `/calendar` | — | NICHT existiert, Phase 6 |
 | `*` | public | NotFound |
@@ -130,57 +130,62 @@ Public Routes (`/login`, `/auth/callback`, `/styleguide`) sind separate Top-Leve
 `src/lib/queries/lists.ts`:
 
 ```typescript
-// Query keys (exportiert für Mutations + Realtime)
+// Query keys — per-list keys indexed by short_code (URL-stable), not UUID.
+// Mutations still operate on UUIDs (UPDATE/DELETE filter on lists.id).
 export const listsQueryKey = ["lists"] as const;
-export const listQueryKey = (id) => ["list", id] as const;
-export const listItemsQueryKey = (id) => ["list", id, "items"] as const;
+export const listQueryKey = (shortCode) => ["list", shortCode] as const;
+export const listItemsQueryKey = (shortCode) => ["list", shortCode, "items"] as const;
 
 // Query options — Komponenten benutzen via createQuery
-export function listsQueryOptions(user) { ... }
-export function listQueryOptions(user, id) { ... }
-export function listItemsQueryOptions(id) { ... }
+export function listsQueryOptions(user)               // SELECT incl. short_code
+export function listQueryOptions(user, shortCode)     // .eq("short_code", ...)
+export function listItemsQueryOptions(shortCode)      // via lists!inner(short_code) join
 
 // Mutations — Komponenten benutzen via createMutation
-export async function createList(user, input)
-export async function renameList(input)
-export async function deleteList(id)
-export async function setListTracking(user, input)
+export async function createList(user, input)         // returns ListSummary mit shortCode
+export async function renameList({ listId, name })    // UUID-based UPDATE
+export async function deleteList(listId)              // UUID-based DELETE
+export async function setListTracking(user, { listId, enabled })  // UUID
 ```
 
 `src/lib/queries/items.ts`:
 
 ```typescript
-export const itemQueryKey = (id: string) => ["item", id] as const;
-export function itemQueryOptions(id: string)
-// Single item by id. RLS scoped via list membership.
+export const itemQueryKey = (type, slug) => ["item", type, slug] as const;
+export function itemQueryOptions(type, slug)
+// Single item by natural key. Items are effectively public (any logged-in
+// user can see any item). DB trigger items_set_slug_trigger guarantees
+// (type, slug) is unique.
 
 export async function addItemToList(input: { listId: string; source: AniListResult }): Promise<void>
-// Upsert items(source,source_id) → insert list_items. 23505 (unique_violation
-// auf list_items) wird als success behandelt (already in list).
+// Upsert items(source,source_id) → trigger sets slug → insert list_items.
+// 23505 on list_items unique constraint = already in list → success.
 ```
 
 `src/lib/queries/episodes.ts`:
 
 ```typescript
-export const episodesQueryKey = (itemId: string) => ["episodes", itemId] as const;
-// Concrete query keys are [...episodesQueryKey(itemId), limit] — invalidations
-// target the prefix and clear all paginations.
+export const episodesQueryKey = (type, slug) => ["episodes", type, slug] as const;
+// Concrete query keys are [...episodesQueryKey(type, slug), limit] —
+// invalidations target the prefix and clear all paginations at once.
 
-export function episodesQueryOptions(user, itemId, limit = 26)
-// Lazy fetch + 12 h stale gate (items.metadata.episodesFetchedAt). Returns
-// { episodes: EpisodeRow[], total, watched, fetchable }. Latest `limit`
-// episodes, descending (newest on top). Head-count queries for total +
-// watched so counts are exact past PostgREST's 1000-row read cap.
+export function episodesQueryOptions(user, type, slug, limit = 26)
+// Resolves the item via (type, slug), then runs the lazy fetch + 12 h
+// stale gate (items.metadata.episodesFetchedAt). Returns { episodes,
+// total, watched, fetchable }. Latest `limit` episodes, descending
+// (newest on top). Head-count queries past PostgREST's 1000-row cap.
 
 export async function toggleEpisode({ episodeId, userId, watched })
 // Single tap: insert OR delete on episode_watches. Idempotent both ways.
 
 export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
 // Long-press cascade: mark_episodes_watched RPC, _list_item_id=null
-// (sync fan-out follows Phase 7).
+// (sync fan-out follows Phase 7). Takes items.id UUID (resolved client-
+// side from the loaded item.data).
 
 export async function resetItemProgress(itemId)
-// Reset-Item-Aside: reset_item_progress RPC. Set-based delete server-side.
+// Reset-Item-Aside: reset_item_progress RPC. Set-based delete server-
+// side. Takes items.id UUID.
 ```
 
 `src/lib/anilist.ts`:
@@ -234,10 +239,10 @@ export async function fetchMangaDexChapterCount(aniListId, title): Promise<numbe
 Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tabellen:
 
 - `profiles` — user_id, username, display_name, avatar_url
-- `lists` — id, owner_id, name, description, is_shared, created_at
+- `lists` — id, owner_id, name, description, is_shared, created_at, **`short_code`** (TEXT UNIQUE, generiert via DB-Trigger `lists_set_short_code_trigger`, Format `adj-adj-noun`)
 - `list_members` — list_id, user_id, role, tracks_home (per-User), joined_at
 - `list_invitations` — invitee_user_id, status (pending/accepted/declined)
-- `items` — source, source_id (z.B. `anilist:154587`), type, title, cover_url, metadata
+- `items` — source, source_id (z.B. `anilist:154587`), type, **`slug`** (TEXT, UNIQUE per `(type, slug)`, generiert via DB-Trigger `items_set_slug_trigger` aus `slugify(title)` mit `-<source_id>` Suffix bei Kollision), title, cover_url, metadata
 - `list_items` — list_id, item_id, sync_enabled, added_by_user_id
 - `episodes` — item_id, season_number, episode_number, title, air_date
 - `episode_watches` — user_id, episode_id, watched_at
@@ -285,15 +290,13 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ---
 
-## Offene Punkte (Stand: Phase 4 done, vor Phase 5)
+## Offene Punkte (Stand: Phase 4 done + URL-Polish + NotFound durch)
 
 ### Konkret offen für die nächste Session
 
-1. **URL-Polish auf `/item/:source/:sourceId` (oder `/item/:sourceKey`).** Aktuell sind die Routen auf Supabase-UUIDs gemount (z.B. `/item/0bf9a8c1-...`), unlesbar + nicht deep-link-tauglich. `(source, source_id)` ist im items-Schema bereits unique → keine Migration nötig. Plan: Route-Pattern umstellen, `itemQueryOptions` auf `.eq("source", s).eq("source_id", sid)` switchen, `ListEntries`-Row + `/lists/:id`-Listing entsprechend verlinken. Same für `episodesQueryOptions` (via item-Lookup oder direkt mitliefern).
+1. **Kleine Feature-Ergänzungen** (User-Wunsch, kommen vor Phase 5). Konkrete Liste folgt in der Session.
 
-2. **Restricted-Access UX.** RLS macht den hard block schon (jede Item/List-Query gibt `null` für non-members) — kein Datenleak. Aber: aktueller `navigate("/lists", { replace: true })` Bounce ist stumm. Beim URL-Polish gleich eine kleine `NoAccess`-Page bauen (statt silent redirect): PageHeader „Kein Zugriff", Body „Diese Liste/dieses Item gibt es nicht oder gehört nicht zu dir. RLS verrät bewusst nicht welches der beiden." + Back-Link nach /lists. Macht den block sichtbar ohne Info zu leaken.
-
-3. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe handshake): „Was kommt" (kommende Episodes aus tracked-home Listen, nach Air-Date sortiert), „Fortsetzen" (Items mit Progress > 0 und nicht 100%), „Logbuch" (zuletzt ge-tickte Episodes). Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. Continue-Watching RPC ist da (`continue_watching`), `item_progress` ebenfalls. Logbook hat alle drei Module — portierbar.
+2. **Phase 5 — Home Dashboard.** `/` zeigt aktuell nur einen Stub. Drei Module (siehe handshake): „Was kommt" (kommende Episodes aus tracked-home Listen, nach Air-Date sortiert), „Fortsetzen" (Items mit Progress > 0 und nicht 100%), „Logbuch" (zuletzt ge-tickte Episodes). Realtime-Channel `home`, listens to `episode_watches` + `episodes` + `lists`. Continue-Watching RPC ist da (`continue_watching`), `item_progress` ebenfalls. Logbook hat alle drei Module — portierbar.
 
 ### Geplant, aber NICHT akut
 
@@ -311,7 +314,9 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 - **AddSheet: Such-Pill innere Content-Fade beim Schließen** geht mit 300 ms over ease-out, fadet input + icon weg während der Pill noch morpht. Bei sehr schnellen User-Aktionen sichtbar. Nicht akut.
 - **AddSheet: `origin()` wird beim Mount EINMAL gemessen.** Window-Resize während Sheet offen kann den Close-Morph zur falschen Position laufen lassen. Auf Mobile selten, Desktop nice-to-have.
-- **`/item/:id` ohne Listen-Kontext.** Wenn man via Deep-Link ankommt (oder Item ist in mehreren Listen), kennt die Detail-Page die „aktuelle Liste" nicht — Back-Button geht via `history.back()`, sonst Fallback `/lists`. Mit URL-Polish (item-Route hängt nicht mehr an einer Liste) wird das relevanter; ggf. via location-state vom A-Link mitgegeben.
+- **`/item/:type/:slug` ohne Listen-Kontext.** Wenn man via Deep-Link ankommt (oder Item ist in mehreren Listen), kennt die Detail-Page die „aktuelle Liste" nicht — Back-Button geht via `history.back()`, sonst Fallback `/lists`. Ggf. via location-state vom A-Link mitgegeben für saubere Breadcrumbs.
+
+- **NotFound-Backlink: weiß nicht von welcher Liste man kam.** Der NotFound-Surface verlinkt aktuell pauschal `/lists`. Wenn jemand `/lists/<falsche-shortcode>` öffnet und auf „Zurück" klickt, kommt er auf die Übersicht — OK. Aber `/item/<type>/<falscher-slug>` clicked aus einer Liste sollte vielleicht zurück zur ursprünglichen Liste (history.back via PageHeader handlet das schon).
 
 ---
 
