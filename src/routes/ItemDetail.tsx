@@ -1,8 +1,12 @@
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
 import { itemQueryOptions } from "@/lib/queries/items";
+import {
+  episodesQueryOptions,
+  type EpisodeRow,
+} from "@/lib/queries/episodes";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -33,6 +37,11 @@ export default function ItemDetail() {
 
   const item = createQuery(() => ({
     ...itemQueryOptions(params.id),
+    enabled: !!auth.user() && !!params.id,
+  }));
+
+  const episodes = createQuery(() => ({
+    ...episodesQueryOptions(auth.user()!, params.id),
     enabled: !!auth.user() && !!params.id,
   }));
 
@@ -83,11 +92,36 @@ export default function ItemDetail() {
                 <p class="text-body text-text-muted">Lade …</p>
               }
             >
-              {/* Placeholder progress — wires up with episode-layer. */}
-              <ProgressBar watched={0} total={0} />
-              <p class="mt-6 text-body text-text-muted">
-                Episoden folgen — Episode-Layer in Arbeit.
-              </p>
+              {(itemData) => (
+                <>
+                  <ProgressBar
+                    watched={episodes.data?.watched ?? 0}
+                    total={episodes.data?.total ?? 0}
+                  />
+                  <Show
+                    when={!episodes.isLoading}
+                    fallback={
+                      <p class="mt-6 text-body text-text-muted">
+                        Lade Episoden …
+                      </p>
+                    }
+                  >
+                    <Show
+                      when={
+                        episodes.data && episodes.data.episodes.length > 0
+                      }
+                      fallback={
+                        <EpisodesEmpty
+                          fetchable={episodes.data?.fetchable ?? false}
+                          type={itemData().type}
+                        />
+                      }
+                    >
+                      <EpisodeList rows={episodes.data!.episodes} />
+                    </Show>
+                  </Show>
+                </>
+              )}
             </Show>
           </BentoModule>
         </div>
@@ -238,4 +272,112 @@ function metaString(
 ): string | null {
   const v = metadata?.[key];
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Episode list
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Latest 12 episodes/chapters, newest on top. Same row pattern the rest of
+ * the app uses inside a BentoModule: -mx-5 ul, hover bg bleeds to the
+ * column edge, ::after hairlines between rows. Tick-action is deferred to
+ * the next commit — for now the row is read-only and just shows the
+ * watched/unwatched / released/unreleased state visually.
+ */
+function EpisodeList(props: { rows: EpisodeRow[] }) {
+  return (
+    <ul class="-mx-5">
+      <For each={props.rows}>
+        {(ep) => <EpisodeListRow ep={ep} />}
+      </For>
+    </ul>
+  );
+}
+
+function EpisodeListRow(props: { ep: EpisodeRow }) {
+  const released = () =>
+    !props.ep.airDate || new Date(props.ep.airDate) <= new Date();
+  return (
+    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+      <div class="flex items-center gap-3 px-5 py-3">
+        {/* Episode-number — mono, tabular for column alignment */}
+        <span
+          class={`w-8 shrink-0 font-mono text-mini font-medium tabular-nums tracking-wider ${
+            released() ? "text-text" : "text-text-muted"
+          }`}
+        >
+          {String(props.ep.episodeNumber).padStart(2, "0")}
+        </span>
+        {/* Title — falls back to a mono "—" when AniList has no title */}
+        <span
+          class={`min-w-0 flex-1 truncate text-body ${
+            released() ? "text-text" : "text-text-muted"
+          }`}
+        >
+          <Show
+            when={props.ep.title}
+            fallback={
+              <span class="font-mono text-mini text-text-muted">—</span>
+            }
+          >
+            {props.ep.title}
+          </Show>
+        </span>
+        {/* Air-date — short de label; "folgt" suffix for unreleased */}
+        <span class="shrink-0 font-mono text-mini uppercase tracking-wider tabular-nums text-text-muted">
+          <Show when={props.ep.airDate} fallback="—">
+            {airLabel(props.ep.airDate!, released())}
+          </Show>
+        </span>
+        {/* Watched marker — small accent dot for ticked episodes */}
+        <span
+          aria-label={props.ep.watched ? "Gesehen" : undefined}
+          class={`size-1.5 shrink-0 rounded-full ${
+            props.ep.watched ? "bg-accent" : "bg-transparent"
+          }`}
+        />
+      </div>
+    </li>
+  );
+}
+
+function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
+  return (
+    <div class="mt-6 px-4 py-8">
+      <Show
+        when={props.fetchable}
+        fallback={
+          <>
+            <p class="text-body text-text">Episoden noch nicht verfügbar.</p>
+            <p class="mt-1.5 max-w-md text-body text-text-muted">
+              Für{" "}
+              {props.type === "movie"
+                ? "Filme"
+                : props.type === "game"
+                  ? "Spiele"
+                  : "diesen Typ"}{" "}
+              landet die Status-Anzeige in einer der nächsten Iterationen.
+            </p>
+          </>
+        }
+      >
+        <p class="text-body text-text">Noch keine Episoden.</p>
+        <p class="mt-1.5 max-w-md text-body text-text-muted">
+          AniList hat aktuell keine zählbaren Folgen für diesen Eintrag —
+          kann passieren bei sehr neuen oder noch unangekündigten Werken.
+        </p>
+      </Show>
+    </div>
+  );
+}
+
+/** "14. Sep" for released, "14. Sep · folgt" for future — short de-DE month. */
+function airLabel(iso: string, released: boolean): string {
+  const d = new Date(iso);
+  const label = d.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "short",
+  });
+  return released ? label : `${label} · folgt`;
 }
