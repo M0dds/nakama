@@ -420,8 +420,9 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
 
 /** Distinct item_ids the caller has on lists with tracks_home=true. Items
  *  on archived lists (the per-user toggle) deliberately fall out of every
- *  home module — that's the whole point of the toggle. */
-async function trackedItemIds(): Promise<string[]> {
+ *  home module — that's the whole point of the toggle. Exported because the
+ *  calendar shares the exact same "what's on my home scope" definition. */
+export async function trackedItemIds(): Promise<string[]> {
   // Lists this user is tracking on home. RLS already scopes list_members to
   // the caller; the .eq("tracks_home", true) filter is the per-user archive.
   const { data: memberships, error: mErr } = await supabase
@@ -446,7 +447,7 @@ async function trackedItemIds(): Promise<string[]> {
   return unique((items ?? []).map((r) => r.item_id as string));
 }
 
-interface ItemMetaRow {
+export interface ItemMetaRow {
   title: string;
   type: MediaType;
   slug: string;
@@ -454,8 +455,9 @@ interface ItemMetaRow {
 }
 
 /** Batch fetch of item meta keyed by id. Returns an empty map for empty
- *  input so callers don't need a guard. */
-async function itemMeta(ids: string[]): Promise<Map<string, ItemMetaRow>> {
+ *  input so callers don't need a guard. Exported for reuse by the calendar
+ *  query layer. */
+export async function itemMeta(ids: string[]): Promise<Map<string, ItemMetaRow>> {
   const map = new Map<string, ItemMetaRow>();
   if (ids.length === 0) return map;
   const { data, error } = await supabase
