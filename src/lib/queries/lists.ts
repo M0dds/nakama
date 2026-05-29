@@ -46,6 +46,12 @@ export interface ListSummary {
    *  löschen" action (everyone else gets "Liste verlassen" once sharing
    *  lands). */
   isOwner: boolean;
+  /** Caller's per-user pin state. Pinned lists float to the top of the
+   *  caller's /lists view (independent of what other members see). */
+  pinned: boolean;
+  /** Caller's per-user manual sort_order. Higher pin / lower sort_order =
+   *  closer to the top within its pin section. */
+  sortOrder: number;
 }
 
 export interface ListEntry {
@@ -57,6 +63,10 @@ export interface ListEntry {
   title: string;
   coverUrl: string | null;
   syncEnabled: boolean;
+  /** Shared per-list pin state. Pinning an item is visible to every member
+   *  of the list, unlike the per-user list pin above. */
+  pinned: boolean;
+  sortOrder: number;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -95,7 +105,7 @@ const LIST_SELECT =
 function toSummary(
   row: RawListRow,
   user: User,
-  tracksHome: boolean,
+  membership: { tracksHome: boolean; pinned: boolean; sortOrder: number },
 ): ListSummary {
   return {
     id: row.id,
@@ -103,13 +113,24 @@ function toSummary(
     name: row.name,
     description: row.description,
     isShared: row.is_shared,
-    tracksHome,
+    tracksHome: membership.tracksHome,
     ownerId: row.owner_id,
     createdAt: row.created_at,
     itemCount: row.list_items?.[0]?.count ?? 0,
     memberCount: row.list_members?.[0]?.count ?? 0,
     isOwner: row.owner_id === user.id,
+    pinned: membership.pinned,
+    sortOrder: membership.sortOrder,
   };
+}
+
+/** Pinned-first, then by sort_order ASC within each section. Server can't
+ *  express "group by (pinned_at IS NULL) then sort by sort_order" without a
+ *  generated column or RPC, so we group client-side. With < 100 lists this
+ *  is free. */
+function bySectionThenSort(a: ListSummary, b: ListSummary): number {
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+  return a.sortOrder - b.sortOrder;
 }
 
 /**
@@ -123,6 +144,13 @@ function toSummary(
  * "newCounts" for episode badges — deferred until items + episodes land
  * in Phases 4–5.
  */
+interface RawMembershipJoinRow {
+  pinned_at: string | null;
+  sort_order: number;
+  tracks_home: boolean;
+  lists: RawListRow;
+}
+
 export function listsQueryOptions(user: User) {
   return {
     queryKey: listsQueryKey,
@@ -130,31 +158,34 @@ export function listsQueryOptions(user: User) {
       private: ListSummary[];
       shared: ListSummary[];
     }> => {
-      const [listsRes, membershipsRes] = await Promise.all([
-        supabase
-          .from("lists")
-          .select(LIST_SELECT)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("list_members")
-          .select("list_id, tracks_home")
-          .eq("user_id", user.id),
-      ]);
+      // Drive from list_members so the per-user pin / sort_order live on
+      // the same row as the membership flag. lists!inner embeds the parent
+      // list (single object, not array — many-to-one FK). RLS scopes both
+      // sides: list_members WHERE user_id=me + lists_select_member on the
+      // embed.
+      const { data, error } = await supabase
+        .from("list_members")
+        .select(
+          `pinned_at, sort_order, tracks_home, lists!inner(${LIST_SELECT})`,
+        )
+        .eq("user_id", user.id);
 
-      if (listsRes.error) throw listsRes.error;
-      if (membershipsRes.error) throw membershipsRes.error;
+      if (error) throw error;
 
-      const tracksByList = new Map<string, boolean>();
-      for (const m of membershipsRes.data ?? [])
-        tracksByList.set(m.list_id as string, m.tracks_home as boolean);
-
-      const lists = (listsRes.data as unknown as RawListRow[]).map((r) =>
-        toSummary(r, user, tracksByList.get(r.id) ?? true),
-      );
+      const rows = (data ?? []) as unknown as RawMembershipJoinRow[];
+      const summaries = rows
+        .map((r) =>
+          toSummary(r.lists, user, {
+            tracksHome: r.tracks_home,
+            pinned: r.pinned_at !== null,
+            sortOrder: r.sort_order,
+          }),
+        )
+        .sort(bySectionThenSort);
 
       return {
-        private: lists.filter((l) => !l.isShared),
-        shared: lists.filter((l) => l.isShared),
+        private: summaries.filter((l) => !l.isShared),
+        shared: summaries.filter((l) => l.isShared),
       };
     },
   };
@@ -179,13 +210,19 @@ export function listQueryOptions(user: User, shortCode: string) {
       const raw = listRes.data as unknown as RawListRow;
       const membershipRes = await supabase
         .from("list_members")
-        .select("tracks_home")
+        .select("tracks_home, pinned_at, sort_order")
         .eq("list_id", raw.id)
         .eq("user_id", user.id)
         .maybeSingle();
 
-      const tracksHome = membershipRes.data?.tracks_home ?? true;
-      return toSummary(raw, user, tracksHome);
+      const m = membershipRes.data as
+        | { tracks_home: boolean; pinned_at: string | null; sort_order: number }
+        | null;
+      return toSummary(raw, user, {
+        tracksHome: m?.tracks_home ?? true,
+        pinned: m?.pinned_at != null,
+        sortOrder: m?.sort_order ?? 0,
+      });
     },
   };
 }
@@ -194,6 +231,8 @@ interface RawListItemRow {
   id: string;
   sync_enabled: boolean;
   item_id: string;
+  pinned_at: string | null;
+  sort_order: number;
   items: {
     title: string;
     type: string;
@@ -202,9 +241,11 @@ interface RawListItemRow {
   } | null;
 }
 
-/** Items placed in a list (newest first), scoped by the list's short_code.
- *  PostgREST `lists!inner(short_code)` does the FK join + filter in one
- *  round-trip; RLS still scopes the rows to lists the caller can see. */
+/** Items placed in a list, ordered pinned-first then by sort_order ASC,
+ *  scoped by the list's short_code. PostgREST `lists!inner(short_code)`
+ *  does the FK join + filter in one round-trip; RLS still scopes the rows
+ *  to lists the caller can see. Pin grouping happens client-side (see
+ *  `bySectionThenSort` rationale on the lists query above). */
 export function listItemsQueryOptions(shortCode: string) {
   return {
     queryKey: listItemsQueryKey(shortCode),
@@ -212,12 +253,11 @@ export function listItemsQueryOptions(shortCode: string) {
       const { data, error } = await supabase
         .from("list_items")
         .select(
-          "id, sync_enabled, item_id, lists!inner(short_code), items(title, type, slug, cover_url)",
+          "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
         )
-        .eq("lists.short_code", shortCode)
-        .order("added_at", { ascending: false });
+        .eq("lists.short_code", shortCode);
       if (error) throw error;
-      return ((data as unknown as RawListItemRow[]) ?? []).map((r) => ({
+      const rows = ((data as unknown as RawListItemRow[]) ?? []).map((r) => ({
         listItemId: r.id,
         itemId: r.item_id,
         type: r.items?.type ?? "anime",
@@ -225,7 +265,13 @@ export function listItemsQueryOptions(shortCode: string) {
         title: r.items?.title ?? "Unbekannt",
         coverUrl: r.items?.cover_url ?? null,
         syncEnabled: r.sync_enabled,
+        pinned: r.pinned_at !== null,
+        sortOrder: r.sort_order,
       }));
+      return rows.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return a.sortOrder - b.sortOrder;
+      });
     },
   };
 }
@@ -253,8 +299,16 @@ export async function createList(
 
   if (error) throw error;
   // The on_list_created trigger added the owner to list_members with
-  // tracks_home=true automatically, so we can safely assume it.
-  return toSummary(data as unknown as RawListRow, user, true);
+  // tracks_home=true automatically. The new list_members row gets
+  // pinned_at=null and a sort_order assigned by the BEFORE-INSERT trigger
+  // (MIN(scope)-1 → top of unpinned section). We don't read those back
+  // here — the next invalidation refresh picks them up. For the optimistic
+  // returnee we use safe defaults.
+  return toSummary(data as unknown as RawListRow, user, {
+    tracksHome: true,
+    pinned: false,
+    sortOrder: 0,
+  });
 }
 
 /**
@@ -336,4 +390,101 @@ export async function setListTracking(
     tracksHome:
       (data as { tracks_home: boolean } | null)?.tracks_home ?? null,
   };
+}
+
+/**
+ * Toggle the per-user list pin on `list_members`. Also assigns a fresh
+ * sort_order so the pinned (or freshly-unpinned) list lands at the TOP of
+ * its new section — `MIN(section.sort_order) - 1`. The caller computes
+ * `sortOrder` from the current query cache so we don't need an extra
+ * round-trip. Returns the post-write pinned state so the caller can
+ * detect silent RLS blocks (0 rows → null).
+ */
+export async function setListPin(input: {
+  listId: string;
+  userId: string;
+  pinned: boolean;
+  sortOrder: number;
+}): Promise<{ pinned: boolean | null }> {
+  const { data, error } = await supabase
+    .from("list_members")
+    .update({
+      pinned_at: input.pinned ? new Date().toISOString() : null,
+      sort_order: input.sortOrder,
+    })
+    .eq("list_id", input.listId)
+    .eq("user_id", input.userId)
+    .select("pinned_at")
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    pinned: data ? (data as { pinned_at: string | null }).pinned_at !== null : null,
+  };
+}
+
+/**
+ * Toggle the shared per-list pin on `list_items`. Same sortOrder-bump
+ * pattern as setListPin so the pinned/unpinned item floats to the top of
+ * its new section.
+ */
+export async function setListItemPin(input: {
+  listItemId: string;
+  pinned: boolean;
+  sortOrder: number;
+}): Promise<{ pinned: boolean | null }> {
+  const { data, error } = await supabase
+    .from("list_items")
+    .update({
+      pinned_at: input.pinned ? new Date().toISOString() : null,
+      sort_order: input.sortOrder,
+    })
+    .eq("id", input.listItemId)
+    .select("pinned_at")
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    pinned: data ? (data as { pinned_at: string | null }).pinned_at !== null : null,
+  };
+}
+
+/**
+ * Rewrite sort_order for a slice of the caller's list_members rows. The
+ * slice is one pin section (pinned OR unpinned) of `/lists` — drag-reorder
+ * never crosses the pin boundary (handshake §session-3 scope decision), so
+ * only the moved section needs its sort_order rewritten in one go.
+ *
+ * Fires N parallel UPDATEs (one per row). Atomicity is best-effort — a
+ * partial failure leaves a coherent but possibly stale order; the next
+ * refetch reconciles. For >50-list users we'd move to a single-statement
+ * RPC `reorder_list_members(_user_id, _ordered_list_ids)`.
+ */
+export async function reorderLists(input: {
+  userId: string;
+  orderedListIds: string[];
+}): Promise<void> {
+  await Promise.all(
+    input.orderedListIds.map((listId, idx) =>
+      supabase
+        .from("list_members")
+        .update({ sort_order: idx + 1 })
+        .eq("list_id", listId)
+        .eq("user_id", input.userId),
+    ),
+  );
+}
+
+/** Same idea as reorderLists but for the shared per-list item ordering on
+ *  list_items. Sync is server-side per-row UPDATE; partial-failure caveat
+ *  identical. */
+export async function reorderListItems(input: {
+  orderedListItemIds: string[];
+}): Promise<void> {
+  await Promise.all(
+    input.orderedListItemIds.map((id, idx) =>
+      supabase
+        .from("list_items")
+        .update({ sort_order: idx + 1 })
+        .eq("id", id),
+    ),
+  );
 }

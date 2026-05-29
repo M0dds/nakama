@@ -1,6 +1,10 @@
 import { createSignal, For, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
-import { createQuery } from "@tanstack/solid-query";
+import {
+  createMutation,
+  createQuery,
+  useQueryClient,
+} from "@tanstack/solid-query";
 import { useAuth } from "@/lib/auth";
 import {
   listQueryOptions,
@@ -8,6 +12,7 @@ import {
   listQueryKey,
   listItemsQueryKey,
   listsQueryKey,
+  setListItemPin,
   type ListEntry,
 } from "@/lib/queries/lists";
 import { useRealtimeInvalidation } from "@/lib/realtime";
@@ -20,6 +25,7 @@ import { ListEntryActions } from "@/components/ListEntryActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
+import { PinButton } from "@/components/PinButton";
 
 /**
  * /lists/:id — detail view. Layout mirrors the Logbook handshake:
@@ -39,6 +45,7 @@ export default function ListDetail() {
   // guarantees a value at runtime, so the non-null assertion is safe.
   const params = useParams<{ shortCode: string }>();
   const auth = useAuth();
+  const queryClient = useQueryClient();
 
   const list = createQuery(() => ({
     ...listQueryOptions(auth.user()!, params.shortCode),
@@ -49,6 +56,58 @@ export default function ListDetail() {
     ...listItemsQueryOptions(params.shortCode),
     enabled: !!params.shortCode,
   }));
+
+  // Shared per-list pin toggle. Mirrors the optimistic pattern on /lists,
+  // but the data shape here is a flat array.
+  const pinMut = createMutation(() => ({
+    mutationFn: (input: { entry: ListEntry; pinned: boolean; sortOrder: number }) =>
+      setListItemPin({
+        listItemId: input.entry.listItemId,
+        pinned: input.pinned,
+        sortOrder: input.sortOrder,
+      }),
+    onMutate: async (input) => {
+      const key = listItemsQueryKey(params.shortCode);
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<ListEntry[]>(key);
+      if (!prev) return { prev };
+      const next = [...prev]
+        .map((e) =>
+          e.listItemId === input.entry.listItemId
+            ? { ...e, pinned: input.pinned, sortOrder: input.sortOrder }
+            : e,
+        )
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return a.sortOrder - b.sortOrder;
+        });
+      queryClient.setQueryData(key, next);
+      return { prev };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(listItemsQueryKey(params.shortCode), ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: listItemsQueryKey(params.shortCode),
+      });
+    },
+  }));
+
+  const handleTogglePin = (entry: ListEntry) => {
+    const all = items.data;
+    if (!all) return;
+    const targetPinned = !entry.pinned;
+    const targetSection = all.filter(
+      (e) => e.pinned === targetPinned && e.listItemId !== entry.listItemId,
+    );
+    const minSort =
+      targetSection.length > 0
+        ? Math.min(...targetSection.map((e) => e.sortOrder))
+        : 1;
+    pinMut.mutate({ entry, pinned: targetPinned, sortOrder: minSort - 1 });
+  };
 
   // Granular realtime — a rename on the lists table refreshes BOTH the
   // overview cache (so /lists sees the new name) and this detail cache.
@@ -148,6 +207,7 @@ export default function ListDetail() {
                   items={items.data!}
                   listShortCode={params.shortCode}
                   onRequestMove={(entry) => setMovingEntry(entry)}
+                  onTogglePin={handleTogglePin}
                 />
               </Show>
             </Show>
@@ -249,6 +309,7 @@ function ListEntries(props: {
   items: ListEntry[];
   listShortCode: string;
   onRequestMove: (entry: ListEntry) => void;
+  onTogglePin: (entry: ListEntry) => void;
 }) {
   return (
     <ul class="-mx-5">
@@ -286,6 +347,11 @@ function ListEntries(props: {
                   </p>
                 </div>
               </A>
+              <PinButton
+                pinned={entry.pinned}
+                noun="Eintrag"
+                onToggle={() => props.onTogglePin(entry)}
+              />
               <ListEntryActions
                 itemId={entry.itemId}
                 listItemId={entry.listItemId}
