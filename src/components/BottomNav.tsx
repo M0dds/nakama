@@ -5,8 +5,12 @@ import {
   onMount,
 } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
+import { createQuery } from "@tanstack/solid-query";
 import { ArrowLeft, Calendar, House, List, Plus, User } from "lucide-solid";
 import { NavButton } from "@/components/NavButton";
+import { useAuth } from "@/lib/auth";
+import { myInvitationsOptions } from "@/lib/queries/sharing";
+import { useRealtimeInvalidation } from "@/lib/realtime";
 
 /** Back target derived from the route — mirrors each detail page's header
  *  backHref. Null on the top-level tabs, where no back affordance shows. */
@@ -58,8 +62,23 @@ export function BottomNav(props: {
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const auth = useAuth();
   const isActive = (href: string) => location.pathname === href;
   const back = () => backTarget(location.pathname);
+
+  // Pending-invitation count → badge on the "Listen" tab. The query lives here
+  // (BottomNav mounts once via AppShell) and a global realtime sub keeps the
+  // badge live regardless of which route the user is on — an invite arriving
+  // while they're on Home/Kalender still ticks the count.
+  const invitations = createQuery(() => ({
+    ...myInvitationsOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const inviteCount = () => invitations.data?.length ?? 0;
+
+  useRealtimeInvalidation("global-invitations", [
+    { table: "list_invitations", invalidates: [["invitations", "mine"]] },
+  ]);
 
   /** History-aware back: prefer the actual previous entry (so /lists/foo
    *  back-from-/item lands on /lists/foo, not the generic fallback). Fall
@@ -238,6 +257,7 @@ export function BottomNav(props: {
           label="Listen"
           href="/lists"
           isActive={isActive("/lists")}
+          badge={inviteCount()}
         />
         {/* + sits CENTER. Opens the AddSheet (Phase 4). Not a route — sits
             in-between two tabs so it never owns the active tab state. When

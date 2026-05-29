@@ -1,5 +1,5 @@
 import { A } from "@solidjs/router";
-import type { Component } from "solid-js";
+import { Show, type Component } from "solid-js";
 
 /**
  * Single item inside the inverted-color nav pill. The accent FILL is NOT
@@ -17,13 +17,23 @@ interface NavButtonProps {
   label: string;
   href: string;
   isActive: boolean;
+  /** Notification count (e.g. pending invitations). >0 renders an accent
+   *  badge on the icon. Absolutely positioned so it never changes the
+   *  button's offset box — the BottomNav indicator measures `offsetWidth`/
+   *  `offsetLeft` to place the sliding bubble, and a layout-affecting badge
+   *  would shift it. */
+  badge?: number;
 }
 
 export function NavButton(props: NavButtonProps) {
   return (
     <A
       href={props.href}
-      aria-label={props.label}
+      aria-label={
+        props.badge
+          ? `${props.label}, ${props.badge} neue Einladungen`
+          : props.label
+      }
       aria-current={props.isActive ? "page" : undefined}
       // data-accent marks this button as the indicator's target. Direct
       // attribute binding (not spread) — Solid's compiler handles the
@@ -37,6 +47,14 @@ export function NavButton(props: NavButtonProps) {
       }`}
     >
       <props.icon class="size-5" strokeWidth={1.75} />
+      <Show when={(props.badge ?? 0) > 0}>
+        <span
+          aria-hidden
+          class="absolute -right-0.5 -top-0.5 z-20 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-medium leading-none text-accent-on ring-2 ring-nav-bg"
+        >
+          {props.badge! > 9 ? "9+" : props.badge}
+        </span>
+      </Show>
     </A>
   );
 }

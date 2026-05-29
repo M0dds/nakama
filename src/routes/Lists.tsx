@@ -31,6 +31,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
+import { InvitationsInbox } from "@/components/InvitationsInbox";
 import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 
@@ -64,6 +65,12 @@ export default function Lists() {
     { table: "list_items", invalidates: [listsQueryKey] },
     { table: "episodes", invalidates: [listsQueryKey] },
     { table: "episode_watches", invalidates: [listsQueryKey] },
+    // Incoming invites: refresh the inbox cards + the overview (an accepted
+    // invite surfaces a new shared list).
+    {
+      table: "list_invitations",
+      invalidates: [["invitations", "mine"], listsQueryKey],
+    },
   ]);
 
   // Pin toggle. Optimistic: flip pinned + bump sortOrder to MIN(target
@@ -206,6 +213,8 @@ export default function Lists() {
       <PageHeader title="Listen" />
 
       <ColumnGuide />
+
+      <InvitationsInbox />
 
       <DragDropProvider
         onDragStart={onDragStart}
