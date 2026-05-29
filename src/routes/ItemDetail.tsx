@@ -125,8 +125,10 @@ export default function ItemDetail() {
       queryClient.setQueryData<EpisodePayload>(key, (old) => {
         if (!old) return old;
         const target = !ep.watched;
-        const delta =
-          target && !ep.watched ? 1 : !target && ep.watched ? -1 : 0;
+        // Exactly one of the two states flips per click: watched→unwatched
+        // is -1, unwatched→watched is +1. The previous ternary-on-ternary
+        // expanded to the same result through two unreachable branches.
+        const delta = ep.watched ? -1 : 1;
         return {
           ...old,
           episodes: old.episodes.map((e) =>
@@ -154,9 +156,16 @@ export default function ItemDetail() {
     },
   }));
 
-  // Long-press cascade. Optimistic: tick all visible rows ≤ ep.episodeNumber;
-  // the true watched count refreshes via invalidate on settled. RPC needs
-  // the items.id UUID — pulled from item.data, which is guaranteed loaded
+  // Long-press cascade. Optimistic: tick all visible rows ≤ ep.episodeNumber.
+  // Note that "visible rows" is only the latest `limit` window (default 26)
+  // — so cascading from a recent episode UP doesn't optimistically reflect
+  // older episodes outside the window. The server-side RPC marks them all,
+  // and onSettled's invalidation pulls the true watched count back. Brief
+  // visual flash where the watched counter is lower than reality until the
+  // refetch lands; deliberate (estimating the off-window delta from cache
+  // would be wrong anyway because cache doesn't carry older watch state).
+  //
+  // RPC needs the items.id UUID — pulled from item.data, guaranteed loaded
   // by the time an episode row is interactive (EpisodeList only renders
   // when episodes.data is present, which requires the item to resolve).
   const cascadeMut = createMutation(() => ({

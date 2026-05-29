@@ -480,10 +480,22 @@ export async function renameList(input: {
 }
 
 /** Delete a list. RLS (lists_delete_owner) restricts to the creator; the
- *  cascade on list_items / list_members / list_invitations cleans the rest. */
+ *  cascade on list_items / list_members / list_invitations cleans the rest.
+ *
+ *  `.select()` + null-check defends against a UI race where the caller
+ *  loses ownership between render-time and click — e.g. an in-flight
+ *  ownership transfer (Phase 7+). Without the check the optimistic UI
+ *  would happily remove a list that's still on the server. */
 export async function deleteList(listId: string): Promise<void> {
-  const { error } = await supabase.from("lists").delete().eq("id", listId);
+  const { data, error } = await supabase
+    .from("lists")
+    .delete()
+    .eq("id", listId)
+    .select("id")
+    .maybeSingle();
   if (error) throw error;
+  if (data === null)
+    throw new Error("Liste konnte nicht gelöscht werden.");
 }
 
 /** Remove an item from a list (delete the list_items row). The item itself
