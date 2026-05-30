@@ -38,7 +38,6 @@
   --border: rgba(17, 17, 17, 0.06);  /* ultra-light hairline */
   --accent: #dc2626;            /* vermillion red */
   --accent-on: #ffffff;
-  --accent-secondary: #2c2c2c;  /* deep ink for sync/active markers */
 }
 [data-theme="default"].dark,
 .dark:not([data-theme]) {
@@ -49,7 +48,6 @@
   --border: rgba(255, 255, 255, 0.08);
   --accent: #ef4444;            /* slightly brighter red for dark */
   --accent-on: #ffffff;
-  --accent-secondary: #e5e5e5;
 }
 
 /* ─── 2 · TEENAGED — Teenage Engineering (warm beige + orange) ──────────── */
@@ -61,7 +59,6 @@
   --border: rgba(0, 0, 0, 0.12);
   --accent: #fa480f;
   --accent-on: #ffffff;
-  --accent-secondary: #006344;
 }
 [data-theme="teenaged"].dark {
   --bg: #171518;
@@ -71,7 +68,6 @@
   --border: rgba(255, 255, 255, 0.10);
   --accent: #fa480f;
   --accent-on: #ffffff;
-  --accent-secondary: #3a8a5e;
 }
 
 /* ─── 3 · SAKURA — Kirschblüte ──────────────────────────────────────── */
@@ -83,7 +79,6 @@
   --border: rgba(214, 98, 134, 0.18);
   --accent: #e85d8f;
   --accent-on: #ffffff;
-  --accent-secondary: #7c8a5c;
 }
 [data-theme="sakura"].dark {
   --bg: #15090e;
@@ -93,32 +88,9 @@
   --border: rgba(255, 182, 206, 0.16);
   --accent: #f582ad;
   --accent-on: #15090e;
-  --accent-secondary: #9aab85;
 }
 
-/* ─── 4 · BUDAPEST — Grand Budapest Hotel (pastel pink + burgundy) ────── */
-[data-theme="budapest"] {
-  --bg: #efc5cc;
-  --surface: #f8dde2;
-  --text: #2e1418;
-  --text-muted: #8a4d56;
-  --border: rgba(139, 41, 65, 0.16);
-  --accent: #8b2941;
-  --accent-on: #ffffff;
-  --accent-secondary: #c8a85e;
-}
-[data-theme="budapest"].dark {
-  --bg: #2a141a;
-  --surface: #3d1f28;
-  --text: #f5e8eb;
-  --text-muted: #b89aa3;
-  --border: rgba(245, 184, 194, 0.16);
-  --accent: #f0a8b4;
-  --accent-on: #2a141a;
-  --accent-secondary: #d4b46e;
-}
-
-/* ─── 5 · TOTORO — Ghibli pastoral (cream + forest green) ─────────────── */
+/* ─── 4 · TOTORO — Ghibli pastoral (cream + forest green) ─────────────── */
 [data-theme="totoro"] {
   --bg: #d8d1b3;
   --surface: #ece5cc;
@@ -127,7 +99,6 @@
   --border: rgba(74, 77, 42, 0.16);
   --accent: #6b8a5a;
   --accent-on: #ffffff;
-  --accent-secondary: #c84a33;
 }
 [data-theme="totoro"].dark {
   --bg: #1d2620;
@@ -137,32 +108,9 @@
   --border: rgba(232, 224, 200, 0.14);
   --accent: #8da776;
   --accent-on: #1d2620;
-  --accent-secondary: #d4654d;
 }
 
-/* ─── 6 · MEDIEVAL — Pergament + Wachs-Siegel + Manuskript-Gold ─────── */
-[data-theme="medieval"] {
-  --bg: #d8c7a8;
-  --surface: #ebd9b5;
-  --text: #2a1c12;
-  --text-muted: #7a6048;
-  --border: rgba(74, 50, 30, 0.20);
-  --accent: #7a1f2e;
-  --accent-on: #ebd9b5;
-  --accent-secondary: #a8843a;
-}
-[data-theme="medieval"].dark {
-  --bg: #1f1812;
-  --surface: #2e2419;
-  --text: #ebd9b5;
-  --text-muted: #a89074;
-  --border: rgba(232, 217, 181, 0.14);
-  --accent: #c44a5e;
-  --accent-on: #1f1812;
-  --accent-secondary: #d4a85e;
-}
-
-/* ─── 7 · BIOTECH — Lab-aesthetic + terminal accents ────────────────── */
+/* ─── 5 · BIOTECH — Lab-aesthetic + terminal accents ────────────────── */
 [data-theme="biotech"] {
   --bg: #e0e6e1;
   --surface: #f4f7f4;
@@ -171,7 +119,6 @@
   --border: rgba(10, 40, 30, 0.10);
   --accent: #00b87a;
   --accent-on: #ffffff;
-  --accent-secondary: #0095a8;
 }
 [data-theme="biotech"].dark {
   --bg: #0a1410;
@@ -181,10 +128,9 @@
   --border: rgba(0, 232, 153, 0.10);
   --accent: #00ff9e;
   --accent-on: #0a1410;
-  --accent-secondary: #22d4f0;
 }
 
-/* ─── 8 · MARITIME — Navy + Messing ────────────────────────────────── */
+/* ─── 6 · MARITIME — Navy + Messing ────────────────────────────────── */
 [data-theme="maritime"] {
   --bg: #c8d0dc;
   --surface: #e5ebf2;
@@ -193,7 +139,6 @@
   --border: rgba(14, 26, 43, 0.16);
   --accent: #a8842f;
   --accent-on: #ffffff;
-  --accent-secondary: #4a6a8a;
 }
 [data-theme="maritime"].dark {
   --bg: #081320;
@@ -203,7 +148,46 @@
   --border: rgba(255, 255, 255, 0.10);
   --accent: #c9a567;
   --accent-on: #081320;
-  --accent-secondary: #6a8aa8;
+}
+
+/* ─── 7 · ONSEN — Mineral-Teal + Koralle (complementary) ─────────────── */
+[data-theme="onsen"] {
+  --bg: #d9e6e3;                /* mineral aqua-grey */
+  --surface: #eaf2f0;
+  --text: #13302b;               /* deep teal ink */
+  --text-muted: #5d7a74;
+  --border: rgba(19, 48, 43, 0.13);
+  --accent: #f5644a;            /* warm coral — complement to the teal */
+  --accent-on: #ffffff;
+}
+[data-theme="onsen"].dark {
+  --bg: #07211e;                /* deep petrol */
+  --surface: #0e302b;
+  --text: #dbeae6;
+  --text-muted: #7da39c;
+  --border: rgba(219, 234, 230, 0.12);
+  --accent: #ff7559;            /* glowing coral */
+  --accent-on: #07211e;
+}
+
+/* ─── 8 · VESPER — Dusk violet + amber glow (complementary) ──────────── */
+[data-theme="vesper"] {
+  --bg: #e3dcea;                /* soft lilac-grey */
+  --surface: #efeaf5;
+  --text: #241a33;               /* deep violet ink */
+  --text-muted: #6e6285;
+  --border: rgba(36, 26, 51, 0.13);
+  --accent: #cf7a1d;            /* warm amber — complement to the violet */
+  --accent-on: #ffffff;
+}
+[data-theme="vesper"].dark {
+  --bg: #15102a;                /* deep aubergine */
+  --surface: #221a3a;
+  --text: #e9e2f4;
+  --text-muted: #a394bd;
+  --border: rgba(233, 226, 244, 0.12);
+  --accent: #f0a52e;            /* glowing amber-gold */
+  --accent-on: #15102a;
 }
 
 /* =========================================================================
@@ -266,7 +250,6 @@
   --color-rule: var(--rule);
   --color-accent: var(--accent);
   --color-accent-on: var(--accent-on);
-  --color-accent-secondary: var(--accent-secondary);
   --color-nav-bg: var(--nav-bg);
   --color-nav-fg: var(--nav-fg);
 
@@ -309,6 +292,34 @@ body {
   transition:
     background-color 200ms ease,
     color 200ms ease;
+}
+
+/* Theme-switch crossfade. applyTheme() adds `theme-transition` to <html> for
+   the switch window (~--dur-base) so static surfaces (which carry no transition
+   of their own) glide their colours instead of hard-cutting — before, only the
+   body bg/text faded and everything else snapped.
+
+   Declared inside @layer base — BELOW Tailwind's `utilities` layer — on
+   purpose: cascade LAYERS beat specificity, so any element with its own
+   transition utility wins and keeps its animation — the BottomNav/Segmented
+   liquid bubble (`transition-all`), buttons (`transition-colors`), growing
+   covers, etc. This only ADDS a colour fade to the static elements that lacked
+   one. (An UNLAYERED rule here overrides even transition-all regardless of
+   specificity and snaps the bubble mid-switch — that was the regression this
+   replaces.) applyTheme skips the class under prefers-reduced-motion. */
+@layer base {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition:
+      background-color var(--dur-base) var(--ease-quart),
+      color var(--dur-base) var(--ease-quart),
+      border-color var(--dur-base) var(--ease-quart),
+      fill var(--dur-base) var(--ease-quart),
+      stroke var(--dur-base) var(--ease-quart),
+      box-shadow var(--dur-base) var(--ease-quart);
+  }
 }
 
 /* Reduced motion — global dampener. */

@@ -145,7 +145,6 @@ export default function Styleguide() {
           <Swatch token="rule" />
           <Swatch token="accent" />
           <Swatch token="accent-on" />
-          <Swatch token="accent-secondary" />
         </div>
       </Section>
 

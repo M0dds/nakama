@@ -14,11 +14,11 @@ export type ThemeId =
   | "default"
   | "teenaged"
   | "sakura"
-  | "budapest"
   | "totoro"
-  | "medieval"
   | "biotech"
-  | "maritime";
+  | "maritime"
+  | "onsen"
+  | "vesper";
 
 /** The resolved mode actually applied to <html> (.dark or not). */
 export type ThemeMode = "light" | "dark";
@@ -72,16 +72,6 @@ export const THEMES: ThemeMeta[] = [
     },
   },
   {
-    id: "budapest",
-    name: "Budapest",
-    description: "Grand Budapest Hotel — Mendl-Pink + Burgundy",
-    primaryMode: "light",
-    swatch: {
-      light: { bg: "#efc5cc", accent: "#8b2941" },
-      dark: { bg: "#2a141a", accent: "#f0a8b4" },
-    },
-  },
-  {
     id: "totoro",
     name: "Totoro",
     description: "Ghibli — warmes Cream mit Waldgrün",
@@ -89,16 +79,6 @@ export const THEMES: ThemeMeta[] = [
     swatch: {
       light: { bg: "#d8d1b3", accent: "#6b8a5a" },
       dark: { bg: "#1d2620", accent: "#8da776" },
-    },
-  },
-  {
-    id: "medieval",
-    name: "Medieval",
-    description: "Pergament + Wachs-Siegel-Burgundy + Manuskript-Gold",
-    primaryMode: "light",
-    swatch: {
-      light: { bg: "#d8c7a8", accent: "#7a1f2e" },
-      dark: { bg: "#1f1812", accent: "#c44a5e" },
     },
   },
   {
@@ -121,6 +101,26 @@ export const THEMES: ThemeMeta[] = [
       dark: { bg: "#081320", accent: "#c9a567" },
     },
   },
+  {
+    id: "onsen",
+    name: "Onsen",
+    description: "Mineralisches Teal-Wasser mit warmer Koralle — komplementär",
+    primaryMode: "light",
+    swatch: {
+      light: { bg: "#d9e6e3", accent: "#f5644a" },
+      dark: { bg: "#07211e", accent: "#ff7559" },
+    },
+  },
+  {
+    id: "vesper",
+    name: "Vesper",
+    description: "Dämmerungs-Violett mit glühendem Amber — komplementär",
+    primaryMode: "dark",
+    swatch: {
+      light: { bg: "#e3dcea", accent: "#cf7a1d" },
+      dark: { bg: "#15102a", accent: "#f0a52e" },
+    },
+  },
 ];
 
 export const DEFAULT_THEME: ThemeId = "default";
@@ -140,8 +140,32 @@ export function getThemeMeta(id: ThemeId): ThemeMeta {
  * choice survives reloads (the no-FOUC script in index.html re-reads it before
  * Solid mounts). Pass mode='system' to track the OS.
  */
+let themeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function applyTheme(id: ThemeId, modePref: ThemeModePref): void {
   const root = document.documentElement;
+
+  // Crossfade the palette swap instead of hard-cutting. Attach a transition to
+  // all colour-bearing properties for the switch window only (see the
+  // `html.theme-transition` rule in index.css), then strip it so hover/
+  // interaction transitions stay snappy. Skipped under reduced motion. Only
+  // user actions call applyTheme (never the initial mount), so every call is a
+  // deliberate switch worth animating.
+  const crossfade =
+    typeof window !== "undefined" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (crossfade) {
+    root.classList.add("theme-transition");
+    // Force the transition rule to take effect BEFORE the colours change, so
+    // the swap animates from the current palette instead of snapping.
+    void root.offsetHeight;
+    if (themeTransitionTimer) clearTimeout(themeTransitionTimer);
+    themeTransitionTimer = setTimeout(() => {
+      root.classList.remove("theme-transition");
+      themeTransitionTimer = undefined;
+    }, 300);
+  }
+
   root.setAttribute("data-theme", id);
   localStorage.setItem(STORAGE_KEY_THEME, id);
   localStorage.setItem(STORAGE_KEY_MODE, modePref);
