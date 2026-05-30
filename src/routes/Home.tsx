@@ -481,18 +481,10 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                     >
                       {typeLabel(item.type)}
                     </span>
-                    <div class="flex items-start gap-2">
+                    <div class="flex items-start gap-3">
                       <h3 class="min-w-0 truncate text-body font-medium text-text">
                         {item.title}
                       </h3>
-                      {/* Sync-instance marker — the list this shared,
-                          watched-from-0 instance belongs to. */}
-                      <Show when={item.listName}>
-                        <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase text-text-muted">
-                          <RefreshCw class="size-3" strokeWidth={2} aria-hidden />
-                          {item.listName}
-                        </span>
-                      </Show>
                       <Show when={item.hasNewEpisode}>
                         <span class="shrink-0 font-mono text-mini uppercase text-accent">
                           {newReleaseLabel(item.type)}
@@ -510,8 +502,21 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                     </p>
                   </div>
 
-                  <div class="flex shrink-0 flex-col items-end gap-1">
-                    <span class="font-mono text-mini tabular-nums text-text-muted">
+                  <div class="flex shrink-0 items-center gap-1.5 font-mono text-mini text-text-muted">
+                    {/* Sync-instance marker, left of the count and dot-joined:
+                        "⟳ Reisegruppe · 3/23". Absent for global entries. */}
+                    <Show when={item.listName}>
+                      <RefreshCw
+                        class="size-3 shrink-0"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span class="max-w-[8rem] truncate uppercase">
+                        {item.listName}
+                      </span>
+                      <span aria-hidden>·</span>
+                    </Show>
+                    <span class="tabular-nums">
                       {item.watched}/{item.total}
                     </span>
                   </div>
