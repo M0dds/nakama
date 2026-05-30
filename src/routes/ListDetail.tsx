@@ -39,6 +39,7 @@ import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
 import { LeaveListButton } from "@/components/LeaveListButton";
 import { RowActions, type Confirming } from "@/components/RowActions";
+import { Skeleton } from "@/components/Skeleton";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
@@ -272,7 +273,7 @@ export default function ListDetail() {
       <PageHeader
         kicker="LISTEN"
         title={
-          <Show when={list.data} fallback={<span>…</span>}>
+          <Show when={list.data} fallback={<Skeleton class="h-6 w-40" />}>
             {(data) => (
               <EditableListName
                 listId={data().id}
@@ -320,14 +321,7 @@ export default function ListDetail() {
                 {list.data!.description}
               </p>
             </Show>
-            <Show
-              when={!items.isLoading}
-              fallback={
-                <p class="px-4 py-8 text-body text-text-muted">
-                  Lade Einträge …
-                </p>
-              }
-            >
+            <Show when={!items.isLoading} fallback={<ItemRowsSkeleton />}>
               <Show
                 when={items.data && items.data.length > 0}
                 fallback={<EntriesEmpty />}
@@ -354,10 +348,7 @@ export default function ListDetail() {
         {/* Details — right 1/3 */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
           <BentoModule label="Details" number="02">
-            <Show
-              when={list.data}
-              fallback={<p class="text-body text-text-muted">Lade …</p>}
-            >
+            <Show when={list.data} fallback={<DetailsSkeleton />}>
               {(data) => (
                 <>
                   <dl class="space-y-3 text-body">
@@ -415,6 +406,44 @@ export default function ListDetail() {
     />
     </>
     </Show>
+  );
+}
+
+/** Loading placeholder for the item rows — cover thumb + title/meta, matching
+ *  the real row so the entries drop in without a layout shift. */
+function ItemRowsSkeleton() {
+  return (
+    <ul class="-mx-5">
+      <For each={Array.from({ length: 5 })}>
+        {() => (
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <div class="flex items-center gap-3 px-5 py-3">
+              <Skeleton class="size-12 shrink-0" />
+              <div class="min-w-0 flex-1">
+                <Skeleton class="h-4 w-48" />
+                <Skeleton class="mt-2 h-3 w-32" />
+              </div>
+            </div>
+          </li>
+        )}
+      </For>
+    </ul>
+  );
+}
+
+/** Loading placeholder for the Details panel — a few key/value rows. */
+function DetailsSkeleton() {
+  return (
+    <dl class="space-y-3">
+      <For each={Array.from({ length: 4 })}>
+        {() => (
+          <div class="flex items-baseline justify-between gap-3">
+            <Skeleton class="h-3 w-20" />
+            <Skeleton class="h-3 w-16" />
+          </div>
+        )}
+      </For>
+    </dl>
   );
 }
 

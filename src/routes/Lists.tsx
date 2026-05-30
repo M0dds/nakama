@@ -34,6 +34,7 @@ import { CreateListForm } from "@/components/CreateListForm";
 import { InvitationsInbox } from "@/components/InvitationsInbox";
 import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
+import { Skeleton } from "@/components/Skeleton";
 
 /**
  * /lists — overview. Left 2/3: "Deine Listen" (private) + "Geteilte Listen"
@@ -228,7 +229,7 @@ export default function Lists() {
               when={lists.data}
               fallback={
                 <BentoModule label="Deine Listen" number="01">
-                  <p class="text-body text-text-muted">Lade Listen …</p>
+                  <ListRowsSkeleton />
                 </BentoModule>
               }
             >
@@ -449,6 +450,24 @@ function SortableListRow(props: {
         />
       </div>
     </li>
+  );
+}
+
+/** Loading placeholder for the list rows. Mirrors the row layout — title +
+ *  meta line inset at px-5, full-width hairline dividers — so the real rows
+ *  drop in without a layout shift when the query resolves. */
+function ListRowsSkeleton() {
+  return (
+    <ul class="-mx-5">
+      <For each={Array.from({ length: 4 })}>
+        {() => (
+          <li class="relative px-5 py-3.5 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <Skeleton class="h-4 w-44" />
+            <Skeleton class="mt-2 h-3 w-28" />
+          </li>
+        )}
+      </For>
+    </ul>
   );
 }
 

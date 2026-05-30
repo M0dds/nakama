@@ -56,6 +56,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { Segmented } from "@/components/Segmented";
+import { Skeleton } from "@/components/Skeleton";
 
 /**
  * Kalender (Phase 6) — week + month grid (left 2/3) + a day-pane (right 1/3),
@@ -264,7 +265,7 @@ export default function Calendar() {
 
             <Show
               when={!eventsQ.isLoading}
-              fallback={<p class="px-5 py-6 text-body text-text-muted">Lade …</p>}
+              fallback={<CalendarGridSkeleton view={view()} />}
             >
               {view() === "week" ? (
                 <WeekGrid
@@ -503,6 +504,52 @@ function StepButton(props: {
 }
 
 // ── Week grid ─────────────────────────────────────────────────────────
+
+/** Loading placeholder for the grid. Mirrors the week list (7 day rows) or the
+ *  month matrix (weekday header + 6×7 bordered cells) so the real grid replaces
+ *  it without a layout shift. */
+function CalendarGridSkeleton(props: { view: View }) {
+  return props.view === "week" ? (
+    <ul class="-mx-5">
+      <For each={Array.from({ length: 7 })}>
+        {() => (
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <div class="flex items-start gap-3 px-5 py-3">
+              <div class="w-12 shrink-0 space-y-1">
+                <Skeleton class="h-3 w-6" />
+                <Skeleton class="h-4 w-7" />
+              </div>
+              <div class="min-w-0 flex-1 pt-0.5">
+                <Skeleton class="h-4 w-3/4" />
+              </div>
+            </div>
+          </li>
+        )}
+      </For>
+    </ul>
+  ) : (
+    <div>
+      <div class="grid grid-cols-7 border-b border-border pb-2">
+        <For each={Array.from({ length: 7 })}>
+          {() => (
+            <div class="flex justify-center">
+              <Skeleton class="h-3 w-6" />
+            </div>
+          )}
+        </For>
+      </div>
+      <div class="grid grid-cols-7">
+        <For each={Array.from({ length: 42 })}>
+          {() => (
+            <div class="flex min-h-[4.5rem] flex-col gap-1 border-b border-r border-border p-2 [&:nth-child(7n)]:border-r-0">
+              <Skeleton class="h-3 w-5" />
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
 
 function WeekGrid(props: {
   days: Date[];

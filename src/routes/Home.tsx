@@ -42,6 +42,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
+import { Skeleton } from "@/components/Skeleton";
 
 /**
  * Home dashboard — three derived modules, layout mirrors Logbook's `/`:
@@ -93,7 +94,7 @@ export default function Home() {
             number="01"
             class="border-b border-rule"
           >
-            <Show when={!upcomingQ.isLoading} fallback={<LoadingLine />}>
+            <Show when={!upcomingQ.isLoading} fallback={<WasKommtSkeleton />}>
               <Show
                 when={upcomingQ.data && upcomingQ.data.length > 0}
                 fallback={<EmptyUpcoming />}
@@ -104,7 +105,7 @@ export default function Home() {
           </BentoModule>
 
           <BentoModule label="Fortsetzen" number="02">
-            <Show when={!continueQ.isLoading} fallback={<LoadingLine />}>
+            <Show when={!continueQ.isLoading} fallback={<FortsetzenSkeleton />}>
               <Show
                 when={continueQ.data && continueQ.data.length > 0}
                 fallback={<EmptyContinue />}
@@ -118,7 +119,7 @@ export default function Home() {
         {/* Rechte Spalte 1/3 — Logbuch. */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
           <BentoModule label="Logbuch" number="03">
-            <Show when={!logbookQ.isLoading} fallback={<LoadingLine />}>
+            <Show when={!logbookQ.isLoading} fallback={<LogbuchSkeleton />}>
               <Show
                 when={logbookQ.data && logbookQ.data.length > 0}
                 fallback={<EmptyLogbook />}
@@ -880,8 +881,65 @@ function ShowMoreToggle(props: {
   );
 }
 
-function LoadingLine() {
-  return <p class="text-body text-text-muted">Lade …</p>;
+// ── Skeleton placeholders ─────────────────────────────────────────────
+// Each mirrors its module's content shape so the real data drops in without
+// a layout shift — the frame stays, only the fill swaps.
+
+/** Was-kommt: the hero(2fr)+3 card row (vertical stack on mobile). */
+function WasKommtSkeleton() {
+  return (
+    <div
+      class="flex flex-col gap-3 md:grid"
+      style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
+    >
+      <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
+        {() => <Skeleton class="h-44 w-full md:h-80" />}
+      </For>
+    </div>
+  );
+}
+
+/** Fortsetzen: cover + title/meta + count rows. */
+function FortsetzenSkeleton() {
+  return (
+    <ul class="-mx-5">
+      <For each={Array.from({ length: FORTSETZEN_VISIBLE })}>
+        {() => (
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <div class="flex items-center gap-3 px-5 py-2">
+              <Skeleton class="h-12 w-9 shrink-0" />
+              <div class="min-w-0 flex-1">
+                <Skeleton class="h-4 w-40" />
+                <Skeleton class="mt-1.5 h-3 w-24" />
+              </div>
+              <Skeleton class="h-3 w-8 shrink-0" />
+            </div>
+          </li>
+        )}
+      </For>
+    </ul>
+  );
+}
+
+/** Logbuch: glyph + sentence/timestamp feed rows. */
+function LogbuchSkeleton() {
+  return (
+    <ul class="-mx-5">
+      <For each={Array.from({ length: LOGBUCH_VISIBLE })}>
+        {() => (
+          <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+            <div class="flex items-start gap-3 px-5 py-3">
+              <Skeleton class="size-7 shrink-0" />
+              <div class="min-w-0 flex-1">
+                <Skeleton class="h-4 w-full max-w-[11rem]" />
+                <Skeleton class="mt-1.5 h-3 w-14" />
+              </div>
+            </div>
+          </li>
+        )}
+      </For>
+    </ul>
+  );
 }
 
 /** "MI · 27.05." — mono mini-caps in the PageHeader aside; matches Logbook so

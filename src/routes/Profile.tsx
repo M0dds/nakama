@@ -7,6 +7,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Button } from "@/components/Button";
+import { Skeleton } from "@/components/Skeleton";
 
 /**
  * Profile page. Identity block (avatar initial + @handle + email), theme +
@@ -55,7 +56,13 @@ export default function Profile() {
             <Show
               when={auth.user()}
               fallback={
-                <p class="text-body text-text-muted">Lade Session …</p>
+                <div class="flex items-center gap-4">
+                  <Skeleton class="size-16 shrink-0 rounded-full" />
+                  <div class="min-w-0 flex-1">
+                    <Skeleton class="h-5 w-32" />
+                    <Skeleton class="mt-2 h-3 w-40" />
+                  </div>
+                </div>
               }
             >
               {(user) => (
