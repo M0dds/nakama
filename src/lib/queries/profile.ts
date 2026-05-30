@@ -125,3 +125,15 @@ export async function uploadAvatar(input: {
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   return `${data.publicUrl}?v=${Date.now()}`;
 }
+
+/**
+ * Delete the signed-in user's account (delete_account RPC, migration
+ * 20260530160000). Throws `owns_shared_lists` (Postgres errcode P0001) if the
+ * caller still owns a list with other members — the UI blocks this case up
+ * front, but we surface it for the defensive path. On success the auth.users
+ * row is gone; the caller should signOut + redirect.
+ */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.rpc("delete_account");
+  if (error) throw error;
+}

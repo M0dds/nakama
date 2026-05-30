@@ -10,6 +10,7 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { EditableAvatar } from "@/components/EditableAvatar";
 import { EditableDisplayName } from "@/components/EditableDisplayName";
+import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 import { Skeleton } from "@/components/Skeleton";
 
 /**
@@ -104,6 +105,8 @@ export default function Profile() {
                 </div>
               )}
             </Show>
+
+            <DeleteAccountSection />
           </BentoModule>
         </div>
 
