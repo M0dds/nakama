@@ -65,9 +65,13 @@ const STALE_MS = 1000 * 60 * 60 * 12; // 12 h — re-fetch ongoing schedules
  *        capped the SELECT at 1000 rows, so on One Piece (1100+ gaps)
  *        the newest ~100 episodes silently went unfilled even though
  *        Jikan returned their titles
+ *    4 — gap query includes NULL-air-date episodes (was `.lte(air_date,now)`,
+ *        which silently dropped them) — finished/old shows like Naruto carry
+ *        no air dates on AniList, so they found zero gaps and never got Jikan
+ *        titles. Bump re-enriches every item once with the fixed query.
  *  (gap limit also caps storage at 5000 episodes/item — anything past
  *  that is on the same wishlist as anilist.ts MAX_EPISODES) */
-const TITLE_ENRICHMENT_VERSION = 3;
+const TITLE_ENRICHMENT_VERSION = 4;
 /** Cap for the gap-detection SELECT. PostgREST's implicit default is 1000
  *  which silently lopped off the tail of long-running shows on the v2
  *  enrichment — we explicitly request more so the bulk-upsert below sees
@@ -169,7 +173,16 @@ async function selectTitleGaps(
     .select("episode_number")
     .eq("item_id", itemId)
     .is("title", null);
-  if (airedOnly) q = q.lte("air_date", new Date().toISOString());
+  if (airedOnly) {
+    // Fillable = aired OR no-air-date. Finished/old shows (Naruto, Bleach)
+    // carry NULL air dates on AniList, but MAL HAS their titles — so we must
+    // include NULL here and only EXCLUDE known-future episodes. The previous
+    // `.lte("air_date", now)` dropped NULL rows too, so those shows found zero
+    // gaps → never fetched Jikan → titles stayed empty + the version gate
+    // closed. Mirrors the `(air_date is null or air_date <= now())` guard the
+    // mark/backfill RPCs use.
+    q = q.or(`air_date.is.null,air_date.lte.${new Date().toISOString()}`);
+  }
   const { data } = await q.limit(GAP_QUERY_LIMIT);
   return (data ?? []).map((g) => g.episode_number as number);
 }
