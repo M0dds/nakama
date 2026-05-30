@@ -80,7 +80,17 @@ export const routes: RouteDefinition[] = [
         // Natural-key route: `/item/anime/one-piece` instead of an opaque
         // UUID. (type, slug) is unique in items (DB-enforced via the
         // items_set_slug_trigger + UNIQUE(type, slug) constraint).
+        // Context-free GLOBAL progress — opened from Home / Calendar / search.
         path: "/item/:type/:slug",
+        component: lazy(() => import("./ItemDetail")),
+      },
+      {
+        // List-scoped item page (sync-instances model). Reload-stable: the
+        // shortCode in the URL lets ItemDetail recover the list_item context,
+        // so a synced INSTANCE survives a refresh. Shows the instance progress
+        // when sync is on, else the global progress, plus the sync toggle.
+        // Same ItemDetail component — it branches on params.shortCode.
+        path: "/lists/:shortCode/item/:type/:slug",
         component: lazy(() => import("./ItemDetail")),
       },
       {

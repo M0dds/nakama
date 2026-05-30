@@ -11,28 +11,31 @@ import { listsQueryKey } from "@/lib/queries/lists";
 /**
  * Inline-confirm reset for an item's watch progress. Same shape as
  * DeleteListButton: trigger → "Wirklich zurücksetzen? · ✓ / ✗" in place.
- * Reset clears every episode_watch the caller has for this item (server-
- * side via reset_item_progress); doesn't touch other members' progress.
+ * Reset clears the caller's watch progress for this item in the ACTIVE lane
+ * (server-side via reset_progress): the global lane by default, or — when a
+ * synced `listItemId` is passed — just that instance. Doesn't touch other
+ * members' global progress.
  *
  * Sits in the PageHeader aside slot (h-6 items-center), so both states
  * share the same 24 px band — no baseline shift between trigger and
  * confirm.
  *
- * Takes `itemId` (UUID, what the reset_item_progress RPC needs) AND the
- * natural-key pair (`type`, `slug`) for the cache invalidation, which is
- * keyed on the URL-stable identifier.
+ * Takes `itemId` (UUID, what the reset_progress RPC needs), the natural-key
+ * pair (`type`, `slug`) for the cache invalidation (keyed on the URL-stable
+ * identifier), and the optional `listItemId` selecting the lane.
  */
 export function ResetItemButton(props: {
   itemId: string;
   type: string;
   slug: string;
+  listItemId?: string | null;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [confirming, setConfirming] = createSignal(false);
 
   const mutation = createMutation(() => ({
-    mutationFn: () => resetItemProgress(props.itemId),
+    mutationFn: () => resetItemProgress(props.itemId, props.listItemId),
     onSuccess: () => {
       // Reset wipes every watch for this item, which flips the "Neue Folge"
       // badge on every list this item is in (if any of its recent episodes

@@ -21,6 +21,8 @@ import {
 } from "@/lib/queries/episodes";
 import {
   coWatchersOptions,
+  listItemByContextOptions,
+  syncContextOptions,
   type CoWatcher,
 } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
@@ -65,13 +67,58 @@ const PAGE_SIZE = 26;
  * watched count from the server.
  */
 export default function ItemDetail() {
-  const params = useParams<{ type: string; slug: string }>();
+  // shortCode is present only on the list-scoped route
+  // (/lists/:shortCode/item/:type/:slug); absent on the global /item route.
+  const params = useParams<{ type: string; slug: string; shortCode?: string }>();
   const auth = useAuth();
   const queryClient = useQueryClient();
-  // List context carried via router link state when the item was opened from a
-  // list row (see ListDetail). Drives the per-item sync toggle — absent on
-  // deep-links / Home / Kalender entries, which deliberately show no toggle.
-  const location = useLocation<{ listItemId?: string }>();
+  // List context (sync-instances). Two entry points:
+  //   - list-scoped route → resolve the list_item from the shortCode in the
+  //     URL (reload-stable, survives a refresh).
+  //   - global route opened from a list row → router link-state carries the
+  //     listItemId (no shortCode). Both deliberately absent on Home / Kalender
+  //     / search entries → context-free global page (no sync toggle).
+  const location = useLocation<{
+    listItemId?: string;
+    syncEnabled?: boolean;
+  }>();
+
+  // Reload-stable resolve from the URL shortCode (only on the list-scoped
+  // route). Link-state is preferred when present (instant, no round-trip);
+  // this is the fallback that makes a refresh work.
+  const resolvedLI = createQuery(() => ({
+    ...listItemByContextOptions(params.shortCode!, params.type, params.slug),
+    enabled:
+      !!auth.user() && !!params.shortCode && !!params.type && !!params.slug,
+  }));
+  const listItemId = (): string | null =>
+    location.state?.listItemId ?? resolvedLI.data ?? null;
+
+  // Sync context for that list_item — feeds the SyncToggle (shared cache key,
+  // so no duplicate fetch) and, on reload, the sync flag.
+  const syncCtx = createQuery(() => ({
+    ...syncContextOptions(listItemId()!),
+    enabled: !!auth.user() && !!listItemId(),
+  }));
+  // Sync flag for the active list_item: instantly from link-state on
+  // navigation, else from the resolved syncCtx (reload / deep-link).
+  const syncEnabled = (): boolean | undefined =>
+    location.state?.syncEnabled ?? syncCtx.data?.syncEnabled;
+  // The instance-lane id: the list_item id ONLY when sync is actually on, else
+  // null (= global progress). Mirrors the RPCs' lane rule; drives which watch
+  // rows the episode reads count.
+  const instanceLI = (): string | null =>
+    syncEnabled() && listItemId() ? listItemId() : null;
+  // Whether we yet know which lane to read. A page with no list context is
+  // always global → ready. With a list context we must learn the sync flag
+  // first, so we don't briefly render the wrong lane's numbers: ready once
+  // link-state carries it, or the resolve + sync-context queries have settled.
+  const laneReady = (): boolean => {
+    if (!params.shortCode && !location.state?.listItemId) return true;
+    if (location.state?.syncEnabled !== undefined) return true;
+    if (!listItemId()) return resolvedLI.isFetched;
+    return syncCtx.isFetched;
+  };
 
   const item = createQuery(() => ({
     ...itemQueryOptions(params.type, params.slug),
@@ -79,16 +126,31 @@ export default function ItemDetail() {
   }));
 
   // Pagination — limit grows by PAGE_SIZE on each "Weitere laden". Each step
-  // is its own cache entry (queryKey ends in the limit), so flipping the
+  // is its own cache entry (queryKey ends in the limit + lane), so flipping the
   // limit doesn't re-fetch from zero — TanStack keeps the previous payload
   // visible via placeholderData while the next chunk arrives.
   const [limit, setLimit] = createSignal(PAGE_SIZE);
 
   const episodes = createQuery(() => ({
-    ...episodesQueryOptions(auth.user()!, params.type, params.slug, limit()),
-    enabled: !!auth.user() && !!params.type && !!params.slug,
+    ...episodesQueryOptions(
+      auth.user()!,
+      params.type,
+      params.slug,
+      limit(),
+      instanceLI(),
+    ),
+    enabled:
+      !!auth.user() && !!params.type && !!params.slug && laneReady(),
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
+
+  // The exact cache key the episodes query lives under right now (prefix +
+  // limit + lane). The optimistic patches must target THIS, not the bare
+  // prefix — getQueryData/setQueryData need an exact match, and the lane is
+  // part of the key. Invalidations below still use the prefix to clear every
+  // pagination + both lanes at once.
+  const epKey = () =>
+    [...episodesQueryKey(params.type, params.slug), limit(), instanceLI()] as const;
 
   // Mitseher: who among the caller's co-members has watched each episode.
   // Keyed by item id; empty for the solo case. Drives the per-row eye marker.
@@ -142,10 +204,17 @@ export default function ItemDetail() {
     mutationFn: (ep: EpisodeRow) => {
       const itemId = item.data?.id;
       if (!itemId) return Promise.reject(new Error("Item not loaded"));
-      return toggleEpisode({ itemId, episodeId: ep.id, watched: !ep.watched });
+      // Always pass the listItemId (if any) — the RPC decides global vs
+      // instance from the list_item's sync flag.
+      return toggleEpisode({
+        itemId,
+        episodeId: ep.id,
+        watched: !ep.watched,
+        listItemId: listItemId(),
+      });
     },
     onMutate: (ep: EpisodeRow) => {
-      const key = episodesQueryKey(params.type, params.slug);
+      const key = epKey();
       const prev = queryClient.getQueryData<EpisodePayload>(key);
       queryClient.setQueryData<EpisodePayload>(key, (old) => {
         if (!old) return old;
@@ -162,11 +231,10 @@ export default function ItemDetail() {
           watched: Math.max(0, old.watched + delta),
         };
       });
-      return { prev };
+      return { prev, key };
     },
     onError: (_e, _ep, ctx) => {
-      if (ctx?.prev)
-        queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(ctx.key, ctx.prev);
     },
     onSettled: () => {
       // Episode tick + cascade both ripple to: this item's episodes query,
@@ -200,10 +268,11 @@ export default function ItemDetail() {
       return markEpisodesWatchedUpTo({
         itemId,
         upToEpisodeId: ep.id,
+        listItemId: listItemId(),
       });
     },
     onMutate: (ep: EpisodeRow) => {
-      const key = episodesQueryKey(params.type, params.slug);
+      const key = epKey();
       const prev = queryClient.getQueryData<EpisodePayload>(key);
       queryClient.setQueryData<EpisodePayload>(key, (old) => {
         if (!old) return old;
@@ -221,11 +290,10 @@ export default function ItemDetail() {
           watched: old.watched + delta,
         };
       });
-      return { prev };
+      return { prev, key };
     },
     onError: (_e, _ep, ctx) => {
-      if (ctx?.prev)
-        queryClient.setQueryData(episodesQueryKey(params.type, params.slug), ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(ctx.key, ctx.prev);
     },
     onSettled: () => {
       // Episode tick + cascade both ripple to: this item's episodes query,
@@ -271,13 +339,14 @@ export default function ItemDetail() {
             {(data) => <span>{data().title}</span>}
           </Show>
         }
-        backHref="/lists"
+        backHref={params.shortCode ? `/lists/${params.shortCode}` : "/lists"}
         aside={
           <Show when={item.data && (episodes.data?.watched ?? 0) > 0}>
             <ResetItemButton
               itemId={item.data!.id}
               type={params.type}
               slug={params.slug}
+              listItemId={listItemId()}
             />
           </Show>
         }
@@ -302,7 +371,7 @@ export default function ItemDetail() {
                     total={episodes.data?.total ?? 0}
                   />
                   <Show
-                    when={!episodes.isLoading}
+                    when={!episodes.isLoading && laneReady()}
                     fallback={
                       <p class="mt-6 text-body text-text-muted">
                         Lade Episoden …
@@ -382,12 +451,13 @@ export default function ItemDetail() {
                     </div>
                   </dl>
 
-                  {/* Sync toggle — only when opened via a shared list (the
-                      SyncToggle self-gates on isShared && memberCount > 1). */}
-                  <Show when={location.state?.listItemId}>
-                    {(listItemId) => (
+                  {/* Sync toggle — only when opened with a list context
+                      (list-scoped route or link-state). The SyncToggle self-
+                      gates on isShared && memberCount > 1. */}
+                  <Show when={listItemId()}>
+                    {(li) => (
                       <SyncToggle
-                        listItemId={listItemId()}
+                        listItemId={li()}
                         itemId={data().id}
                         type={params.type}
                         slug={params.slug}

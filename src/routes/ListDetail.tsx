@@ -552,8 +552,11 @@ function SortableEntryRow(props: {
         }}
       >
         <A
-          href={`/item/${props.entry.type}/${props.entry.slug}`}
-          state={{ listItemId: props.entry.listItemId }}
+          href={`/lists/${props.listShortCode}/item/${props.entry.type}/${props.entry.slug}`}
+          state={{
+            listItemId: props.entry.listItemId,
+            syncEnabled: props.entry.syncEnabled,
+          }}
           class="flex min-w-0 flex-1 items-center gap-3"
         >
           <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
