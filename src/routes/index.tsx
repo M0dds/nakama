@@ -50,6 +50,11 @@ export const routes: RouteDefinition[] = [
     path: "/styleguide",
     component: lazy(() => import("./Styleguide")),
   },
+  {
+    // Public feature/landing page — shareable, no auth, standalone (no shell).
+    path: "/features",
+    component: lazy(() => import("./Features")),
+  },
 
   // ─ Protected app surfaces (share AppLayout so the shell persists) ─
   {

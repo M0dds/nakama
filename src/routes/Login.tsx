@@ -1,5 +1,5 @@
 import { createSignal, Show, createEffect } from "solid-js";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import {
   signInWithDiscord,
   signInWithMagicLink,
@@ -145,6 +145,16 @@ export default function Login() {
             Beim ersten Login wird automatisch ein Profil angelegt.
           </p>
         </div>
+
+        <p class="mt-6 text-center text-body text-text-muted">
+          Neu hier?{" "}
+          <A
+            href="/features"
+            class="text-text underline-offset-2 hover:underline"
+          >
+            Was ist Nakama?
+          </A>
+        </p>
       </div>
     </main>
   );
