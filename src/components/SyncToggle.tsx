@@ -20,11 +20,13 @@ type SyncValue = "on" | "off";
  * meaningless otherwise. The context (name, shared flag, member count) comes
  * from syncContextOptions(listItemId).
  *
- * Turning sync ON runs backfill_sync_for_list_item server-side, which unions
- * every member's existing watches for this item — so both sides land in
- * lock-step (now AND in the past). That changes the caller's own watched set,
- * so we invalidate the episodes + co-watcher + list-badge caches on success.
- * Turning OFF is non-destructive (no watches are removed).
+ * Sync-instances model: turning sync ON starts a FRESH shared instance at 0
+ * (no backfill) — ticks from here write instance rows shared among the list's
+ * members, while the caller's own global progress stays untouched. Turning OFF
+ * (unsync_item) merges the instance back into every member's global progress
+ * (Auto-Merge) and tears it down. Either flip changes which lane this item's
+ * episode page reads (global ↔ instance), so we invalidate the episodes +
+ * co-watcher + list-badge caches on success in both directions.
  */
 export function SyncToggle(props: {
   listItemId: string;
@@ -64,17 +66,19 @@ export function SyncToggle(props: {
       if (c?.prev !== undefined)
         qc.setQueryData(syncContextKey(props.listItemId), c.prev);
     },
-    onSuccess: (_void, next) => {
+    onSuccess: () => {
+      // Both directions move watch state: enable switches this item's episode
+      // page from the global lane to a fresh empty instance; disable merges the
+      // instance back into everyone's global progress. Refresh everything that
+      // reads this item's watches either way (the episodes query keys on the
+      // lane, so the prefix invalidation clears global + instance entries).
       void qc.invalidateQueries({ queryKey: syncContextKey(props.listItemId) });
-      if (next) {
-        // Backfill merged watches in — refresh everything that reads them.
-        void qc.invalidateQueries({
-          queryKey: episodesQueryKey(props.type, props.slug),
-        });
-        void qc.invalidateQueries({ queryKey: coWatchersKey(props.itemId) });
-        void qc.invalidateQueries({ queryKey: listsQueryKey });
-        void qc.invalidateQueries({ queryKey: ["list"] });
-      }
+      void qc.invalidateQueries({
+        queryKey: episodesQueryKey(props.type, props.slug),
+      });
+      void qc.invalidateQueries({ queryKey: coWatchersKey(props.itemId) });
+      void qc.invalidateQueries({ queryKey: listsQueryKey });
+      void qc.invalidateQueries({ queryKey: ["list"] });
     },
   }));
 
@@ -95,9 +99,10 @@ export function SyncToggle(props: {
           ]}
         />
         <p class="mt-2 text-mini text-text-muted">
-          An: euer Fortschritt bleibt im Gleichschritt — Häkchen, die du oder
-          Mitglieder setzen, gelten für alle. Beim Einschalten wird bestehender
-          Fortschritt zusammengeführt.
+          An: ihr seht diesen Titel von vorne gemeinsam — eine frische,
+          geteilte Spur ab null. Häkchen gelten dann für alle Mitglieder; dein
+          eigener Stand bleibt davon unberührt. Beim Ausschalten fließt der
+          gemeinsame Fortschritt in den Einzelstand jedes Mitglieds zurück.
         </p>
       </div>
     </Show>

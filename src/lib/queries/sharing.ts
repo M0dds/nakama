@@ -252,6 +252,39 @@ export function listInvitationsOptions(listId: string) {
   };
 }
 
+export const listItemByContextKey = (
+  shortCode: string,
+  type: string,
+  slug: string,
+) => ["list-item-by-context", shortCode, type, slug] as const;
+
+/** Resolve a (list shortCode, item type, item slug) triple → the list_item id.
+ *  The list-scoped item page (`/lists/:shortCode/item/:type/:slug`) uses this to
+ *  recover its list context on a cold load / reload, where there's no router
+ *  link-state to carry the id. Null when the item isn't in that list or the
+ *  list/item isn't visible (RLS). */
+export function listItemByContextOptions(
+  shortCode: string,
+  type: string,
+  slug: string,
+) {
+  return {
+    queryKey: listItemByContextKey(shortCode, type, slug),
+    staleTime: 60_000,
+    queryFn: async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from("list_items")
+        .select("id, lists!inner(short_code), items!inner(type, slug)")
+        .eq("lists.short_code", shortCode)
+        .eq("items.type", type)
+        .eq("items.slug", slug)
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.id as string | undefined) ?? null;
+    },
+  };
+}
+
 /** Resolve a list_item → its list (name, shared flag, member count) so the item
  *  page can show the sync toggle. Null when the list_item isn't visible (RLS). */
 export function syncContextOptions(listItemId: string) {
@@ -346,12 +379,16 @@ export function coWatchersOptions(user: User, itemId: string) {
         .select("episode_id, user_id, watched_at, episodes!inner(item_id)")
         .eq("episodes.item_id", itemId)
         .in("user_id", coMemberIds)
+        // GLOBAL lane only: the Mitseher eye reflects co-members' global
+        // progress (the "who's how far" signal), unchanged by the sync-
+        // instances model. Without this filter a co-member's instance rows in
+        // some synced list would leak in as a phantom global watch here.
+        .is("list_item_id", null)
         .order("watched_at", { ascending: false })
-        // Explicit cap — without it PostgREST stops at 1000 rows. A backfill
-        // stamps every synced watch with the SAME watched_at, so a 1000-cut
-        // ordered by watched_at drops an ARBITRARY subset → episodes randomly
-        // missing the Mitseher eye on long shows. 5000 covers any item up to
-        // MAX_EPISODES (2000) × a couple of co-members. (A7-class fix.)
+        // Explicit cap — without it PostgREST stops at 1000 rows. A 1000-cut
+        // ordered by watched_at could drop an arbitrary subset → episodes
+        // randomly missing the Mitseher eye on long shows. 5000 covers any item
+        // up to MAX_EPISODES (2000) × a couple of co-members. (A7-class fix.)
         .limit(5000);
       if (error) {
         console.error("co-watchers lookup failed", error);
@@ -392,6 +429,9 @@ export function calendarCoWatchersOptions(user: User, anchorIso: string) {
         .from("episode_watches")
         .select("episode_id, user_id, watched_at, episodes!inner(air_date)")
         .in("user_id", coMemberIds)
+        // Global lane only — see coWatchersOptions: the calendar Mitseher eye
+        // is the global "who's how far" signal, not instance-scoped.
+        .is("list_item_id", null)
         .gte("episodes.air_date", from)
         .lte("episodes.air_date", to)
         .order("watched_at", { ascending: false })
@@ -492,32 +532,38 @@ export async function transferOwnership(input: {
 }
 
 /**
- * Toggle a list_item's per-item sync flag. On enable, retroactively unions all
- * members' existing watches via backfill_sync_for_list_item so both sides land
- * in lock-step (now AND in the past). On disable we leave watches untouched —
- * the flip-off path is deliberately non-destructive.
+ * Toggle a list_item's per-item sync flag (sync-instances model).
  *
- * `.select()` detects a silent RLS block (0 rows, no error).
+ *   enable  → just flip sync_enabled=true. The instance starts EMPTY (0) — no
+ *             backfill of existing watches (this replaces the old union via
+ *             backfill_sync_for_list_item). From here, ticks write instance
+ *             rows that fan out to the list's members: a fresh shared watch-
+ *             through. Late joiners inherit the current instance state.
+ *   disable → unsync_item RPC: unions the instance rows back into every
+ *             member's GLOBAL progress (Auto-Merge — never loses progress) and
+ *             tears the instance down. Can't be a plain UPDATE since it writes
+ *             co-members' rows, so it goes through the SECURITY DEFINER RPC.
+ *
+ * On enable the `.select()` detects a silent RLS block (0 rows, no error).
  */
 export async function setItemSync(input: {
   listItemId: string;
   enabled: boolean;
 }): Promise<void> {
-  const { data, error } = await supabase
-    .from("list_items")
-    .update({ sync_enabled: input.enabled })
-    .eq("id", input.listItemId)
-    .select("id")
-    .maybeSingle();
-  if (error) throw error;
-  if (data === null)
-    throw new Error("Synchronisierung konnte nicht geändert werden.");
-
   if (input.enabled) {
-    const { error: bfErr } = await supabase.rpc(
-      "backfill_sync_for_list_item",
-      { _list_item_id: input.listItemId },
-    );
-    if (bfErr) throw bfErr;
+    const { data, error } = await supabase
+      .from("list_items")
+      .update({ sync_enabled: true })
+      .eq("id", input.listItemId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    if (data === null)
+      throw new Error("Synchronisierung konnte nicht geändert werden.");
+  } else {
+    const { error } = await supabase.rpc("unsync_item", {
+      _list_item_id: input.listItemId,
+    });
+    if (error) throw error;
   }
 }
