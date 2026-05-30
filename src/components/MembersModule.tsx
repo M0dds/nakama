@@ -1,12 +1,10 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { createSignal, For, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, X } from "lucide-solid";
+import { Check, Crown, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
   inviteToList,
-  leaveList,
   listInvitationsKey,
   listInvitationsOptions,
   listMembersKey,
@@ -16,20 +14,22 @@ import {
 } from "@/lib/queries/sharing";
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/Button";
-import { SelectMenu } from "@/components/SelectMenu";
 
 /**
  * Mitglieder-Modul (03) on the list-detail page. The sharing surface:
- *   - roster (every member, owner first; "du" marks self, "Ersteller" the owner)
+ *   - roster (every member, owner first; "du" marks self, "Ersteller" the owner).
+ *     The owner sees a crown icon-button on every co-member's row to hand over
+ *     ownership (inline-confirm right in the row).
  *   - invite-by-@handle (owner only) with inline result feedback
  *   - pending invitations (owner only) with revoke
- *   - ownership transfer (owner, when ≥1 co-member exists)
- *   - leave-list (non-owner)
+ *
+ * "Liste verlassen" is NOT here — it lives in the PageHeader aside (member's
+ * counterpart to the owner's "Liste löschen"); see LeaveListButton.
  *
  * Mutations fan out to the cross-cutting list caches: the single-list query
- * (`["list"]` prefix — covers every open shortCode) carries is_shared +
- * member-count embeds, and the overview (`listsQueryKey`) splits private vs
- * shared, so an invite/accept/leave must refresh both.
+ * (`["list"]` prefix) carries is_shared + member-count + owner_id, and the
+ * overview (`listsQueryKey`) splits private vs shared, so an invite/transfer
+ * must refresh both.
  */
 const dtClass = "font-mono text-mini uppercase tracking-wider text-text-muted";
 const sectionClass = "mt-5 border-t border-border pt-5";
@@ -57,7 +57,6 @@ export function MembersModule(props: {
   isOwner: boolean;
 }) {
   const auth = useAuth();
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const members = createQuery(() => ({
@@ -69,8 +68,6 @@ export function MembersModule(props: {
     ...listInvitationsOptions(props.listId),
     enabled: props.isOwner && !!props.listId,
   }));
-
-  const otherMembers = () => (members.data ?? []).filter((m) => !m.isMe);
 
   // Cross-cutting refresh after any membership/invitation write.
   const refreshShared = () => {
@@ -120,36 +117,19 @@ export function MembersModule(props: {
     onSuccess: refreshShared,
   }));
 
-  // ── Ownership transfer ─────────────────────────────────────────────────
-  const [transferTarget, setTransferTarget] = createSignal("");
-  const [transferConfirming, setTransferConfirming] = createSignal(false);
-  // Default the picker to the first co-member once the roster loads.
-  createEffect(() => {
-    const others = otherMembers();
-    if (others.length > 0 && !others.some((m) => m.userId === transferTarget()))
-      setTransferTarget(others[0].userId);
-  });
-  const transferTargetHandle = () =>
-    otherMembers().find((m) => m.userId === transferTarget())?.handle ?? "";
-
+  // ── Ownership transfer (per-row crown, inline-confirm) ─────────────────
+  // Holds the user_id of the member whose row is currently in confirm state.
+  const [transferConfirmId, setTransferConfirmId] = createSignal<string | null>(
+    null,
+  );
   const transferMut = createMutation(() => ({
     mutationFn: (newOwnerId: string) =>
       transferOwnership({ listId: props.listId, newOwnerId }),
     onSuccess: () => {
-      setTransferConfirming(false);
+      setTransferConfirmId(null);
       refreshShared();
     },
-  }));
-
-  // ── Leave ────────────────────────────────────────────────────────────
-  const [leaveConfirming, setLeaveConfirming] = createSignal(false);
-  const leaveMut = createMutation(() => ({
-    mutationFn: () =>
-      leaveList({ listId: props.listId, userId: auth.user()!.id }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: listsQueryKey });
-      navigate("/lists", { replace: true });
-    },
+    onError: () => setTransferConfirmId(null),
   }));
 
   return (
@@ -172,8 +152,52 @@ export function MembersModule(props: {
                     </Show>
                   </p>
                 </div>
+
                 <Show when={m.role === "owner"}>
                   <span class={`${dtClass} shrink-0`}>Ersteller</span>
+                </Show>
+
+                {/* Hand over ownership — owner only, on co-members' rows. */}
+                <Show when={props.isOwner && !m.isMe && m.role !== "owner"}>
+                  <Show
+                    when={transferConfirmId() === m.userId}
+                    fallback={
+                      <button
+                        type="button"
+                        aria-label={`${m.handle} zum Ersteller machen`}
+                        title="Eigentum übergeben"
+                        disabled={transferMut.isPending}
+                        onClick={() => setTransferConfirmId(m.userId)}
+                        class="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent disabled:opacity-50"
+                      >
+                        <Crown class="size-3.5" strokeWidth={1.75} />
+                      </button>
+                    }
+                  >
+                    <span class="flex shrink-0 items-center gap-2">
+                      <span class="text-mini text-text-muted">Übergeben?</span>
+                      <button
+                        type="button"
+                        aria-label="Ja, übergeben"
+                        disabled={transferMut.isPending}
+                        onClick={() => transferMut.mutate(m.userId)}
+                        class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        <Check class="size-3.5" strokeWidth={2.5} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Abbrechen"
+                        onClick={(e) => {
+                          e.currentTarget.blur();
+                          setTransferConfirmId(null);
+                        }}
+                        class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
+                      >
+                        <X class="size-3.5" strokeWidth={2} />
+                      </button>
+                    </span>
+                  </Show>
                 </Show>
               </li>
             )}
@@ -247,107 +271,6 @@ export function MembersModule(props: {
               )}
             </For>
           </ul>
-        </div>
-      </Show>
-
-      {/* Ownership transfer — owner, when a co-member exists */}
-      <Show when={props.isOwner && otherMembers().length > 0}>
-        <div class={sectionClass}>
-          <p class={dtClass}>Eigentum übergeben</p>
-          <Show
-            when={!transferConfirming()}
-            fallback={
-              <span class="mt-2 flex items-center gap-2">
-                <span class="flex-1 text-mini text-text-muted">
-                  An {transferTargetHandle()} übergeben?
-                </span>
-                <button
-                  type="button"
-                  aria-label="Ja, übergeben"
-                  disabled={transferMut.isPending}
-                  onClick={() => transferMut.mutate(transferTarget())}
-                  class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  <Check class="size-3.5" strokeWidth={2.5} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Abbrechen"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    setTransferConfirming(false);
-                  }}
-                  class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-                >
-                  <X class="size-3.5" strokeWidth={2} />
-                </button>
-              </span>
-            }
-          >
-            <div class="mt-2 flex items-center gap-2">
-              <div class="min-w-0 flex-1">
-                <SelectMenu
-                  ariaLabel="Mitglied auswählen"
-                  value={transferTarget()}
-                  onChange={setTransferTarget}
-                  options={otherMembers().map((m) => ({
-                    id: m.userId,
-                    label: m.handle,
-                  }))}
-                />
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => setTransferConfirming(true)}
-              >
-                Übergeben
-              </Button>
-            </div>
-          </Show>
-        </div>
-      </Show>
-
-      {/* Leave — non-owner */}
-      <Show when={!props.isOwner && members.data}>
-        <div class={sectionClass}>
-          <Show
-            when={!leaveConfirming()}
-            fallback={
-              <span class="flex items-center gap-2">
-                <span class="flex-1 text-mini text-text-muted">
-                  Liste wirklich verlassen?
-                </span>
-                <button
-                  type="button"
-                  aria-label="Ja, verlassen"
-                  disabled={leaveMut.isPending}
-                  onClick={() => leaveMut.mutate()}
-                  class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  <Check class="size-3.5" strokeWidth={2.5} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Abbrechen"
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    setLeaveConfirming(false);
-                  }}
-                  class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-                >
-                  <X class="size-3.5" strokeWidth={2} />
-                </button>
-              </span>
-            }
-          >
-            <button
-              type="button"
-              onClick={() => setLeaveConfirming(true)}
-              class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-            >
-              Liste verlassen
-            </button>
-          </Show>
         </div>
       </Show>
     </div>
