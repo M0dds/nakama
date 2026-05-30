@@ -731,7 +731,7 @@ export async function itemMeta(ids: string[]): Promise<Map<string, ItemMetaRow>>
 
 /** Display label + avatar for one co-member actor. */
 interface ActorProfile {
-  /** "@username" preferred, then display_name, else null (→ UI falls back
+  /** display_name preferred, then "@username", else null (→ UI falls back
    *  to "Jemand"). */
   name: string | null;
   avatarUrl: string | null;
@@ -757,7 +757,8 @@ async function actorProfiles(
     const username = p.username as string | null;
     const displayName = p.display_name as string | null;
     map.set(p.user_id as string, {
-      name: username ? `@${username}` : displayName ?? null,
+      // Display name preferred app-wide; @handle is the fallback.
+      name: displayName ?? (username ? `@${username}` : null),
       avatarUrl: (p.avatar_url as string | null) ?? null,
     });
   }

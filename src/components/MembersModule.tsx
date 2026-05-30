@@ -136,7 +136,7 @@ export function MembersModule(props: {
     onSuccess: (_d, newOwnerId) => {
       const m = members.data?.find((x) => x.userId === newOwnerId);
       setTransferConfirmId(null);
-      toast(m ? `${m.handle} ist jetzt Ersteller.` : "Eigentum übergeben.", {
+      toast(m ? `${m.name} ist jetzt Ersteller.` : "Eigentum übergeben.", {
         icon: Crown,
       });
       refreshShared();
@@ -155,14 +155,28 @@ export function MembersModule(props: {
           <For each={members.data}>
             {(m) => (
               <li class="flex items-center gap-3 py-2">
-                <Avatar handle={m.handle} avatarUrl={m.avatarUrl} size={32} />
+                <Avatar handle={m.name} avatarUrl={m.avatarUrl} size={32} />
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-body text-text">
-                    {m.handle}
+                    {m.name}
                     <Show when={m.isMe}>
                       <span class="text-text-muted"> · du</span>
                     </Show>
                   </p>
+                  {/* @handle as a secondary id, unless it's just the @-prefixed
+                      display name (magic-link users, where both derive from the
+                      email — no point showing "maria" then "@maria"). */}
+                  <Show
+                    when={
+                      m.handle &&
+                      m.handle !== m.name &&
+                      m.handle !== `@${m.name}`
+                    }
+                  >
+                    <p class="truncate font-mono text-mini text-text-muted">
+                      {m.handle}
+                    </p>
+                  </Show>
                 </div>
 
                 <Show when={m.role === "owner"}>
@@ -176,7 +190,7 @@ export function MembersModule(props: {
                     fallback={
                       <button
                         type="button"
-                        aria-label={`${m.handle} zum Ersteller machen`}
+                        aria-label={`${m.name} zum Ersteller machen`}
                         title="Eigentum übergeben"
                         disabled={transferMut.isPending}
                         onClick={() => setTransferConfirmId(m.userId)}

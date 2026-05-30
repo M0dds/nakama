@@ -28,8 +28,11 @@ import { unique } from "@/lib/format";
 
 export interface ListMember {
   userId: string;
-  /** "@alice" when a username exists, else the display name, else "Unbekannt". */
-  handle: string;
+  /** Display label: display_name preferred, else @handle, else "Unbekannt". */
+  name: string;
+  /** "@username" when one exists, else null — the roster's secondary line
+   *  (the invite/identify key, kept visible alongside the display name). */
+  handle: string | null;
   avatarUrl: string | null;
   role: "owner" | "member";
   isMe: boolean;
@@ -69,7 +72,7 @@ export interface SyncContext {
 /** Who, among the caller's co-members, has watched a given episode. */
 export interface CoWatcher {
   userId: string;
-  /** "@handle" / display name / "Jemand". */
+  /** Display name preferred, else @handle, else "Jemand". */
   name: string;
   avatarUrl: string | null;
   /** Pre-formatted relative time ("gestern", "vor 2 Std.", "12.05."). */
@@ -105,7 +108,10 @@ export const coWatchersKey = (itemId: string) =>
 // ──────────────────────────────────────────────────────────────────────────
 
 interface ProfileBits {
-  handle: string;
+  /** Display label: display_name preferred, else @handle, else null. */
+  name: string | null;
+  /** "@username" if a username exists, else null. */
+  handle: string | null;
   avatarUrl: string | null;
 }
 
@@ -125,8 +131,11 @@ async function profilesById(
   for (const p of data ?? []) {
     const username = p.username as string | null;
     const displayName = p.display_name as string | null;
+    const atHandle = username ? `@${username}` : null;
     map.set(p.user_id as string, {
-      handle: username ? `@${username}` : displayName ?? "Unbekannt",
+      // Display name preferred app-wide; @handle is the fallback + roster id.
+      name: displayName ?? atHandle,
+      handle: atHandle,
       avatarUrl: (p.avatar_url as string | null) ?? null,
     });
   }
@@ -177,7 +186,8 @@ export function listMembersOptions(user: User, listId: string) {
           const p = profs.get(id);
           return {
             userId: id,
-            handle: p?.handle ?? "Unbekannt",
+            name: p?.name ?? "Unbekannt",
+            handle: p?.handle ?? null,
             avatarUrl: p?.avatarUrl ?? null,
             role: m.role as "owner" | "member",
             isMe: id === user.id,
@@ -309,7 +319,7 @@ async function buildCoWatcherMap(
     const p = profs.get(r.user_id);
     (map[r.episode_id] ??= []).push({
       userId: r.user_id,
-      name: p?.handle ?? "Jemand",
+      name: p?.name ?? "Jemand",
       avatarUrl: p?.avatarUrl ?? null,
       timeLabel: relTime(r.watched_at),
     });
