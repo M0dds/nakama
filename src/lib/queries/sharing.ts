@@ -325,12 +325,23 @@ export function syncContextOptions(listItemId: string) {
   };
 }
 
-/** Everyone sharing a list with the caller, minus the caller. RLS scopes
- *  list_members to the caller's own lists, so this is privacy-safe. */
-async function coMemberIdsOf(userId: string): Promise<string[]> {
-  const { data } = await supabase.from("list_members").select("user_id");
+/** Members of ONE list, minus the caller. The Mitseher eye is a per-list
+ *  signal: it must reflect "how far the members of THIS shared list are",
+ *  never every co-member across all the caller's lists — otherwise a co-member
+ *  from some other shared list would leak their progress onto an item the
+ *  caller is viewing through a private (or different) list. RLS scopes
+ *  list_members to the caller's own lists, so this only resolves for lists the
+ *  caller belongs to. */
+async function listMemberIdsOf(
+  listId: string,
+  selfId: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from("list_members")
+    .select("user_id")
+    .eq("list_id", listId);
   return unique(
-    (data ?? []).map((m) => m.user_id as string).filter((id) => id !== userId),
+    (data ?? []).map((m) => m.user_id as string).filter((id) => id !== selfId),
   );
 }
 
@@ -341,7 +352,7 @@ interface CoWatchRow {
 }
 
 /** Resolve raw co-watch rows → an episode_id-keyed CoWatcher map, batching the
- *  profile (handle + avatar) lookup. Shared by the per-item + calendar queries. */
+ *  profile (handle + avatar) lookup for the per-item co-watcher query. */
 async function buildCoWatcherMap(
   rows: CoWatchRow[],
 ): Promise<Record<string, CoWatcher[]>> {
@@ -361,35 +372,40 @@ async function buildCoWatcherMap(
 }
 
 /**
- * Co-watchers per episode for ONE item: who, among the people the caller
- * actually shares a list with, has watched each episode and when. Keyed by
- * episode id so the item episode list can look up a row's watchers. Empty map
- * for the solo case — short-circuits before touching watches.
+ * Co-watchers per episode for ONE item, scoped to ONE shared list: who among
+ * THAT list's members (besides the caller) has watched each episode and when.
+ * Keyed by episode id so the item episode list can look up a row's watchers.
  *
- * Lane-matched to the item page (`instanceListItemId`): the GLOBAL item page
- * shows co-members' global progress (the "who's how far" eye); a synced
- * INSTANCE page shows who's watched WITHIN that instance. Crucially the
- * instance page must NOT show the global lane — otherwise a co-member's
- * separate global progress (e.g. they're at ep 19 privately) would leak onto a
- * fresh shared instance that's supposed to start at 0.
+ * The eye is a SHARED-LIST-ONLY signal: callers must only mount this when the
+ * item is opened through a shared list (the item page gates on isShared), and
+ * it reads only that list's members — never every co-member across all lists.
+ * That keeps a private (or different) list from revealing anyone else's
+ * progress.
+ *
+ * Lane-matched to the item page (`instanceListItemId`): a non-synced shared
+ * list reads co-members' GLOBAL progress (the "who's how far" eye); a synced
+ * INSTANCE reads who's watched WITHIN that instance. The instance must NOT read
+ * the global lane — otherwise a member's separate global progress would leak
+ * onto a fresh shared instance that's supposed to start at 0.
  */
 export function coWatchersOptions(
   user: User,
   itemId: string,
+  listId: string,
   instanceListItemId: string | null = null,
 ) {
   return {
-    queryKey: [...coWatchersKey(itemId), instanceListItemId] as const,
+    queryKey: [...coWatchersKey(itemId), listId, instanceListItemId] as const,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
-      const coMemberIds = await coMemberIdsOf(user.id);
-      if (coMemberIds.length === 0) return {};
+      const memberIds = await listMemberIdsOf(listId, user.id);
+      if (memberIds.length === 0) return {};
 
       const base = supabase
         .from("episode_watches")
         .select("episode_id, user_id, watched_at, episodes!inner(item_id)")
         .eq("episodes.item_id", itemId)
-        .in("user_id", coMemberIds);
+        .in("user_id", memberIds);
       const scoped = instanceListItemId
         ? base.eq("list_item_id", instanceListItemId)
         : base.is("list_item_id", null);
@@ -402,52 +418,6 @@ export function coWatchersOptions(
         .limit(5000);
       if (error) {
         console.error("co-watchers lookup failed", error);
-        return {};
-      }
-      return buildCoWatcherMap((data as unknown as CoWatchRow[]) ?? []);
-    },
-  };
-}
-
-export const calendarCoWatchersKey = (userId: string) =>
-  ["calendar", "co-watchers", userId] as const;
-
-/**
- * Co-watchers across the calendar window, in one query (the day-pane shows many
- * items, so a per-item fetch would be N round-trips). Filters on the embedded
- * episodes.air_date over a window around the calendar's ANCHOR month (passed in,
- * −2/+4 to cover the events window) — avoids an enormous episode-id IN list.
- * Keyed by episode id like the per-item variant, plus the anchor so it follows
- * the events query when the calendar recenters.
- */
-export function calendarCoWatchersOptions(user: User, anchorIso: string) {
-  return {
-    queryKey: [...calendarCoWatchersKey(user.id), anchorIso] as const,
-    staleTime: 30_000,
-    placeholderData: (prev: Record<string, CoWatcher[]> | undefined) => prev,
-    queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
-      const coMemberIds = await coMemberIdsOf(user.id);
-      if (coMemberIds.length === 0) return {};
-
-      // anchorIso is "YYYY-MM-DD" (first of the viewed month). Parse the parts
-      // directly to dodge new Date(iso)'s UTC-midnight shift.
-      const [y, mo] = anchorIso.split("-").map(Number);
-      const from = new Date(y, mo - 1 - 2, 1).toISOString();
-      const to = new Date(y, mo - 1 + 5, 0).toISOString();
-
-      const { data, error } = await supabase
-        .from("episode_watches")
-        .select("episode_id, user_id, watched_at, episodes!inner(air_date)")
-        .in("user_id", coMemberIds)
-        // Global lane only — see coWatchersOptions: the calendar Mitseher eye
-        // is the global "who's how far" signal, not instance-scoped.
-        .is("list_item_id", null)
-        .gte("episodes.air_date", from)
-        .lte("episodes.air_date", to)
-        .order("watched_at", { ascending: false })
-        .limit(5000);
-      if (error) {
-        console.error("calendar co-watchers lookup failed", error);
         return {};
       }
       return buildCoWatcherMap((data as unknown as CoWatchRow[]) ?? []);

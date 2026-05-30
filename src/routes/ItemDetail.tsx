@@ -156,13 +156,24 @@ export default function ItemDetail() {
   const epKey = () =>
     [...episodesQueryKey(params.type, params.slug), limit(), instanceLI()] as const;
 
-  // Mitseher: who among the caller's co-members has watched each episode, in
-  // the SAME lane the page reads (global vs this synced instance) so the eye
-  // can't show a co-member's global progress on a fresh instance. Empty for the
-  // solo case. Gated on laneReady so it doesn't briefly query the wrong lane.
+  // Mitseher eye — ONLY when the item is opened through a SHARED list, and only
+  // for THAT list's members. A private list / the global item page / a
+  // non-shared list show no eye at all (a private tracker must never reveal
+  // others' progress). Lane-matched (global vs this synced instance) and gated
+  // on laneReady so it never queries the wrong lane.
   const coWatchers = createQuery(() => ({
-    ...coWatchersOptions(auth.user()!, item.data?.id ?? "", instanceLI()),
-    enabled: !!auth.user() && !!item.data?.id && laneReady(),
+    ...coWatchersOptions(
+      auth.user()!,
+      item.data?.id ?? "",
+      syncCtx.data?.listId ?? "",
+      instanceLI(),
+    ),
+    enabled:
+      !!auth.user() &&
+      !!item.data?.id &&
+      laneReady() &&
+      !!syncCtx.data?.isShared &&
+      !!syncCtx.data?.listId,
   }));
 
   // Item resolved-but-null → render the NotFound surface inline (items are
