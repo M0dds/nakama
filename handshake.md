@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-8 durch, alles in `main`. Build grün (`tsc -b && vite build`), Tree clean, keine offenen Branches, alle 7 Migrationen angewendet (inkl. Avatar-Storage `20260530150000` + delete_account `20260530160000`). **Nichts nach `origin` gepusht — alles lokal; vor Deploy Push-Strategie klären.** Nächster Schritt: Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
+**Stand:** Phasen 1-8 durch, alles in `main`. Build grün (`tsc -b && vite build`), Tree clean, keine offenen Branches. 7 Migrationen angewendet; **Migration `20260530170000` (Einladungs-RPCs auf display_name-bevorzugt) liegt vor und muss noch gefahren werden.** **Nichts nach `origin` gepusht — alles lokal; vor Deploy Push-Strategie klären.** Nächster Schritt: Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
 
 ---
 
@@ -76,7 +76,7 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 | `/lists` | protected (AppLayout) | done |
 | `/lists/:shortCode` | protected (AppLayout) | done — DB-generated `adj-adj-noun` (`/lists/mystic-coral-voyager`) |
 | `/item/:type/:slug` | protected (AppLayout) | done — DB-generated slug mit `-<source_id>` Suffix bei Kollision |
-| `/profile` | protected (AppLayout) | done — Identität (echter Avatar + Inline-Display-Name-Edit + @handle/E-Mail), Theme-Switcher, Account-Löschen (Danger-Zone). `src/lib/queries/profile.ts` + `EditableAvatar`/`EditableDisplayName`/`DeleteAccountSection` |
+| `/profile` | protected (AppLayout) | done — Identität (Avatar-Upload mit circular Crop-Dialog + Inline-Display-Name-Edit + @handle/E-Mail), Theme-Switcher, Account-Löschen (Danger-Zone). `src/lib/queries/profile.ts` + `EditableAvatar`/`AvatarCropDialog`/`EditableDisplayName`/`DeleteAccountSection`. Anzeigename ist app-weit das primäre Label (§Data-Layer) |
 | `/calendar` | protected (AppLayout) | done — Wochen-/Monats-Grid + Tag-Pane Quick-Tick + Date-Picker |
 | `*` | public | NotFound |
 
@@ -251,9 +251,10 @@ export function recentlyTickedOptions(user)    // watch + list_add + missed + ow
 //                                Listen-zentriert (kein Item). Aus list_ownership_transfers.
 // Typen-Split: BaseLogbookEvent (eventId, ts, actorUserId, actorName, actorAvatarUrl, isSelf)
 //   + ItemLogbookEvent (+ itemId, title, type, slug, coverUrl) für die 3 Item-Kinds.
-// actorName: "@username" preferred, dann display_name, dann null → UI fällt auf "Jemand"
-//   zurück. Self-events: actorName null, UI rendert "Du". actorAvatarUrl: Co-Member-Gesicht
-//   im Feed-Slot (EventGlyph), null für self + missed. actorProfiles() liefert {name, avatarUrl}.
+// actorName: display_name preferred, dann "@username", dann null → UI fällt auf "Jemand"
+//   zurück (app-weite Regel: Anzeigename vor @handle). Self-events: actorName null, UI
+//   rendert "Du". actorAvatarUrl: Co-Member-Gesicht im Feed-Slot (EventGlyph), null für
+//   self + missed. actorProfiles() liefert {name, avatarUrl}.
 
 // ContinueItem.hasNewEpisode: per-Item flag, true wenn LETZTES released
 // air_date > user's letztes watched_at auf diesem Item. UNTERSCHEIDET sich
@@ -288,7 +289,9 @@ export async function setItemSync({ listItemId, enabled })     // update sync_en
 //   ["sync-context", listItemId] · ["co-watchers", itemId] · ["calendar","co-watchers",userId]
 // → list_invitations/list_members-Events invalidieren die Prefixe ["list-members"] etc.
 
-// CoWatcher = { userId, name (@handle/display/Jemand), avatarUrl, timeLabel }
+// CoWatcher = { userId, name (display/@handle/Jemand), avatarUrl, timeLabel }
+// profilesById liefert { name (display ?? @handle), handle (@username|null), avatarUrl } —
+//   ListMember zeigt name primär + handle als Sekundärzeile im Roster.
 // InviteResult = {ok:true} | {ok:false, error: empty|not_found|self|already_member}
 ```
 
@@ -464,7 +467,7 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **AniList Cover-URL-Naming-Falle:** API-Feld `coverImage.large` liefert `/cover/medium/` URL (~230 px), nicht `/cover/large/` (~430 px). Letzteres im API-Feld `extraLarge`. Search holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time um.
 - **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript narrowed.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
-- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000` (public `avatars`-Bucket + Storage-RLS), delete_account `20260530160000` (SECURITY DEFINER, blockt bei eigenen geteilten Listen) = 7 Files, alle angewendet. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas sieben Files in Timestamp-Reihenfolge.
+- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000` (public `avatars`-Bucket + Storage-RLS), delete_account `20260530160000` (SECURITY DEFINER, blockt bei eigenen geteilten Listen), invitation_names_prefer_display `20260530170000` (**noch nicht gefahren**) = 8 Files. Erste 7 angewendet. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas sieben Files in Timestamp-Reihenfolge.
 
 - **Auto-Sync-RPCs statt Listen-Kontext (Phase 7).** Die geteilte Live-DB trägt `toggle_episode_synced(_item_id, _episode_id, _watched)` als *Auto-Sync*-Variante (Logbook `20260528180000`): sie fächert über ALLE Sync-ON-Listen mit dem Item auf, kein `list_item.id` im Call. Der Cascade hatte kein Auto-Sync-Twin — `mark_episodes_watched` fächert nur für ein explizit übergebenes `_list_item_id`. Nakamas Item-Page/Kalender sind kontextfrei, daher Migration `20260530120000`: neuer `mark_episodes_watched_synced(_item_id, _up_to_episode_id)` (Twin) + sicherheitshalber Re-Assert von `toggle_episode_synced` in der Auto-Sync-Form (drop+create, falls die geteilte DB noch die alte Signatur trug). **Falle:** named-param RPC-Calls brechen, wenn die Live-Funktion andere Parameter-NAMEN bei gleichen Typen hat — `create or replace` kann Param-Namen nicht ändern, es braucht `drop function` zuerst.
 
