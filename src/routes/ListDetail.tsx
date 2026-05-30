@@ -36,6 +36,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
+import { LeaveListButton } from "@/components/LeaveListButton";
 import { RowActions, type Confirming } from "@/components/RowActions";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { MembersModule } from "@/components/MembersModule";
@@ -282,11 +283,20 @@ export default function ListDetail() {
         }
         backHref="/lists"
         aside={
-          <Show when={list.data?.isOwner}>
-            <DeleteListButton
-              listId={list.data!.id}
-              listName={list.data!.name}
-            />
+          <Show when={list.data}>
+            {/* Owner → "Liste löschen"; any other member → "Liste verlassen".
+                Same aside slot, symmetric inline-confirm. After an ownership
+                transfer the ex-owner flips to "verlassen", the new owner to
+                "löschen" (driven by list.data.isOwner via realtime). */}
+            <Show
+              when={list.data!.isOwner}
+              fallback={<LeaveListButton listId={list.data!.id} />}
+            >
+              <DeleteListButton
+                listId={list.data!.id}
+                listName={list.data!.name}
+              />
+            </Show>
           </Show>
         }
       />
