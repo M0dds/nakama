@@ -23,7 +23,13 @@ import {
   type CoWatcher,
 } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
-import { dateLabel, dayOffset, typeLabel } from "@/lib/format";
+import {
+  dateLabel,
+  dayOffset,
+  hasAirTime,
+  timeLabel,
+  typeLabel,
+} from "@/lib/format";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -536,11 +542,19 @@ function EpisodeListRow(props: {
   // today = "Heute" even if it already aired this morning; tomorrow = "Morgen";
   // further out = "Demnächst". Past dates get no tag. Independent of the
   // released() check above which still drives the text-muted dimming.
+  //
+  // Heute/Morgen also carry the air time ("Heute · 17:00") — the imminent rows
+  // where knowing WHEN it drops matters; Demnächst stays date-only (the date
+  // column already says enough). Time omitted for date-only entries.
   const tagLabel = () => {
     if (!props.ep.airDate) return null;
     const offset = dayOffset(props.ep.airDate);
-    if (offset === 0) return "Heute";
-    if (offset === 1) return "Morgen";
+    if (offset === 0 || offset === 1) {
+      const base = offset === 0 ? "Heute" : "Morgen";
+      return hasAirTime(props.ep.airDate)
+        ? `${base} · ${timeLabel(props.ep.airDate)}`
+        : base;
+    }
     if (offset > 1) return "Demnächst";
     return null;
   };
