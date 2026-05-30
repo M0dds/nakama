@@ -6,9 +6,10 @@ import {
 } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
-import { ArrowLeft, Calendar, House, List, Plus, User } from "lucide-solid";
+import { ArrowLeft, Calendar, House, List, Mail, Plus, User } from "lucide-solid";
 import { NavButton } from "@/components/NavButton";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { myInvitationsOptions } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 
@@ -79,6 +80,35 @@ export function BottomNav(props: {
   useRealtimeInvalidation("global-invitations", [
     { table: "list_invitations", invalidates: [["invitations", "mine"]] },
   ]);
+
+  // Toast a NEWLY arrived invitation — the canonical async case: someone
+  // invites you while you're on another page, and the global sub above ticks
+  // the inbox in the background. We seed the known-set silently on first load
+  // (and on account switch), so only genuinely new ids fire a toast; existing
+  // and removed invites stay quiet. The refs are plain `let` — they must not
+  // be reactive, or the effect would loop.
+  const toast = useToast();
+  let knownInviteIds = new Set<string>();
+  let knownFor: string | null = null;
+  createEffect(() => {
+    const uid = auth.user()?.id;
+    const data = invitations.data;
+    if (!uid || !data) return;
+    const ids = new Set(data.map((i) => i.invitationId));
+    if (knownFor !== uid) {
+      knownFor = uid;
+      knownInviteIds = ids;
+      return;
+    }
+    const fresh = data.filter((i) => !knownInviteIds.has(i.invitationId));
+    knownInviteIds = ids;
+    for (const inv of fresh) {
+      toast(`${inv.inviterName} hat dich zu „${inv.listName}“ eingeladen.`, {
+        icon: Mail,
+        action: { label: "Ansehen", onClick: () => navigate("/lists") },
+      });
+    }
+  });
 
   /** History-aware back: prefer the actual previous entry (so /lists/foo
    *  back-from-/item lands on /lists/foo, not the generic fallback). Fall

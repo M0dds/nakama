@@ -1,6 +1,8 @@
 import { For, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
+import { Check } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
   acceptInvitation,
@@ -25,6 +27,7 @@ import { Button } from "@/components/Button";
 export function InvitationsInbox() {
   const auth = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const invitations = createQuery(() => ({
     ...myInvitationsOptions(auth.user()!),
@@ -45,6 +48,15 @@ export function InvitationsInbox() {
     onMutate: dropCard,
     onError: (_e, _id, ctx) => {
       if (ctx) qc.setQueryData(ctx.key, ctx.prev);
+    },
+    onSuccess: (_d, id, ctx) => {
+      // The card already dropped optimistically; a toast confirms what happened
+      // (which list you just joined). List name comes from the pre-drop snapshot.
+      const inv = ctx?.prev?.find((i) => i.invitationId === id);
+      toast(
+        inv ? `Du bist „${inv.listName}“ beigetreten.` : "Einladung angenommen.",
+        { icon: Check },
+      );
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: myInvitationsKey(auth.user()!.id) });
