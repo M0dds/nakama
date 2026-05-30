@@ -10,25 +10,18 @@ import {
   Show,
 } from "solid-js";
 import { A } from "@solidjs/router";
-import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
+import { createQuery } from "@tanstack/solid-query";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
 import {
-  calendarEventsKey,
   calendarEventsOptions,
   calendarQueryKey,
   WINDOW_AHEAD,
   WINDOW_BACK,
   type CalendarEvent,
 } from "@/lib/queries/calendar";
-import { homeQueryKey } from "@/lib/queries/home";
-import { listsQueryKey } from "@/lib/queries/lists";
-import {
-  markEpisodesWatchedUpTo,
-  toggleEpisode,
-} from "@/lib/queries/episodes";
 import {
   calendarCoWatchersOptions,
   type CoWatcher,
@@ -70,7 +63,6 @@ import { Skeleton } from "@/components/Skeleton";
  */
 
 type View = "week" | "month";
-const LONG_PRESS_MS = 500;
 
 /** Selected row/cell highlight — accent-tinted bg. Today is signalled by the
  *  date number alone (accent-coloured), no background. */
@@ -78,7 +70,6 @@ const SELECTED_TINT = "color-mix(in srgb, var(--accent) 12%, transparent)";
 
 export default function Calendar() {
   const auth = useAuth();
-  const queryClient = useQueryClient();
 
   const todayIso = isoDay(new Date());
   const [refDate, setRefDate] = createSignal(new Date());
@@ -172,74 +163,12 @@ export default function Calendar() {
   const periodLabel = () =>
     view() === "month" ? formatMonth(refDate()) : formatWeekRange(refDate());
 
-  // ── Quick-tick mutations ────────────────────────────────────────────
-  //
-  // Both patch the calendar cache optimistically, roll back on error, and
-  // invalidate the cross-cutting keys on settle so list badges + the home
-  // modules + the item page reflect the new watch state (handshake's
-  // cross-cutting cache-fan-out rule).
-  // Includes the active anchor — the data lives under the anchored key, so the
-  // optimistic patch must target the same one (a bare userId key would miss).
-  const cacheKey = () => [...calendarEventsKey(auth.user()!.id), anchorIso()];
-  const patch = (pred: (e: CalendarEvent) => boolean, watched: boolean) =>
-    queryClient.setQueryData<CalendarEvent[]>(cacheKey(), (old) =>
-      old?.map((e) => (pred(e) ? { ...e, watched } : e)),
-    );
-  const fanOut = () => {
-    void queryClient.invalidateQueries({ queryKey: calendarQueryKey });
-    void queryClient.invalidateQueries({ queryKey: homeQueryKey });
-    void queryClient.invalidateQueries({ queryKey: listsQueryKey });
-    void queryClient.invalidateQueries({ queryKey: ["list"] });
-    void queryClient.invalidateQueries({ queryKey: ["episodes"] });
-  };
-
-  const toggleMut = createMutation(() => ({
-    mutationFn: (ev: CalendarEvent) =>
-      toggleEpisode({
-        itemId: ev.itemId,
-        episodeId: ev.episodeId,
-        watched: !ev.watched,
-      }),
-    onMutate: (ev: CalendarEvent) => {
-      const prev = queryClient.getQueryData<CalendarEvent[]>(cacheKey());
-      patch((e) => e.episodeId === ev.episodeId, !ev.watched);
-      return { prev };
-    },
-    onError: (_err, _ev, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(cacheKey(), ctx.prev);
-    },
-    onSettled: fanOut,
-  }));
-
-  const cascadeMut = createMutation(() => ({
-    mutationFn: (ev: CalendarEvent) =>
-      markEpisodesWatchedUpTo({
-        itemId: ev.itemId,
-        upToEpisodeId: ev.episodeId,
-      }),
-    onMutate: (ev: CalendarEvent) => {
-      const prev = queryClient.getQueryData<CalendarEvent[]>(cacheKey());
-      // Optimistically mark every released episode of this item up to and
-      // including the pressed one. Off-window episodes aren't in the cache,
-      // so the onSettled refetch reconciles the true count (same caveat the
-      // item-detail cascade carries).
-      patch(
-        (e) =>
-          e.itemId === ev.itemId &&
-          e.released &&
-          e.episodeNumber <= ev.episodeNumber,
-        true,
-      );
-      return { prev };
-    },
-    onError: (_err, _ev, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(cacheKey(), ctx.prev);
-    },
-    onSettled: fanOut,
-  }));
-
-  const onTap = (ev: CalendarEvent) => toggleMut.mutate(ev);
-  const onCascade = (ev: CalendarEvent) => cascadeMut.mutate(ev);
+  // The calendar is a read-only information surface (like "Was kommt"):
+  // progress is shown — own watched dot + the co-member Mitseher eye — but NOT
+  // ticked here. Ticking lives on the item page only, where the global-vs-
+  // instance lane is unambiguous (sync-instances model). A tick made there
+  // flows back into the calendar via the episode_watches realtime channel
+  // below, so the dots still update live.
 
   return (
     <main class="w-full">
@@ -297,8 +226,6 @@ export default function Calendar() {
               events={dayEvents(selectedIso())}
               todayIso={todayIso}
               coWatchers={coWatchersQ.data ?? {}}
-              onTap={onTap}
-              onCascade={onCascade}
             />
           </BentoModule>
         </div>
@@ -757,8 +684,6 @@ function DayPane(props: {
   events: CalendarEvent[];
   todayIso: string;
   coWatchers: Record<string, CoWatcher[]>;
-  onTap: (ev: CalendarEvent) => void;
-  onCascade: (ev: CalendarEvent) => void;
 }) {
   const date = () => fromIsoDay(props.iso);
   const isToday = () => props.iso === props.todayIso;
@@ -795,20 +720,17 @@ function DayPane(props: {
           </p>
         }
       >
-        {/* Index, not For: ticking replaces the event's object identity (the
-            optimistic patch + the settle-refetch each build fresh objects). A
-            reference-keyed For would dispose + remount the row on every update,
-            and the freshly-inserted DOM node loses its :hover for a frame —
-            the double flicker. Index keys by position, so the row stays
-            mounted and just its reactive props.ev updates. */}
+        {/* Index, not For: a realtime refetch (a tick made on the item page)
+            replaces each event's object identity. A reference-keyed For would
+            dispose + remount the row on every refetch, and the freshly-inserted
+            DOM node loses its :hover for a frame. Index keys by position, so the
+            row stays mounted and just its reactive props.ev updates. */}
         <ul class="-mx-5">
           <Index each={props.events}>
             {(ev) => (
               <DayPaneRow
                 ev={ev()}
                 watchers={props.coWatchers[ev().episodeId] ?? []}
-                onTap={() => props.onTap(ev())}
-                onCascade={() => props.onCascade(ev())}
               />
             )}
           </Index>
@@ -819,66 +741,13 @@ function DayPane(props: {
 }
 
 /**
- * One episode in the day-pane. Released episodes are a tappable quick-tick
- * (tap = this one, long-press / right-click = cascade up to here); future
- * episodes render as a static, dimmed preview. The cover thumbnail is an
- * <A> sibling (not nested in the button — invalid HTML), so it stays a
- * navigation escape-hatch to the item page.
- *
- * Long-press machinery is ported verbatim from the item-detail episode list:
- * pointer events for a unified mouse+touch stream, a `fired` flag so the
- * trailing click no-ops after a long-press, and onContextMenu for the
- * desktop right-click shortcut.
+ * One episode in the day-pane — a READ-ONLY information row (handshake #1: the
+ * calendar shows progress but isn't a tick surface; ticking happens on the item
+ * page). The whole row links to the item page; on the right it carries the
+ * co-member Mitseher eye + the caller's own watched dot. Released vs upcoming
+ * only changes the text colour + meta line.
  */
-function DayPaneRow(props: {
-  ev: CalendarEvent;
-  watchers: CoWatcher[];
-  onTap: () => void;
-  onCascade: () => void;
-}) {
-  let timer: number | null = null;
-  let fired = false;
-  const [pressing, setPressing] = createSignal(false);
-
-  const cancelTimer = () => {
-    if (timer !== null) {
-      window.clearTimeout(timer);
-      timer = null;
-    }
-  };
-  const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    fired = false;
-    setPressing(true);
-    cancelTimer();
-    timer = window.setTimeout(() => {
-      fired = true;
-      timer = null;
-      setPressing(false);
-      props.onCascade();
-    }, LONG_PRESS_MS);
-  };
-  const stopPress = () => {
-    cancelTimer();
-    setPressing(false);
-  };
-  const onClick = (e: MouseEvent) => {
-    if (fired) {
-      e.preventDefault();
-      fired = false;
-      return;
-    }
-    props.onTap();
-  };
-  const onContextMenu = (e: MouseEvent) => {
-    e.preventDefault();
-    cancelTimer();
-    setPressing(false);
-    fired = true;
-    props.onCascade();
-  };
-  onCleanup(cancelTimer);
-
+function DayPaneRow(props: { ev: CalendarEvent; watchers: CoWatcher[] }) {
   const cover = () => highResCover(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
   // Meta line under the title: the air TIME instead of the episode title — in
@@ -891,22 +760,18 @@ function DayPaneRow(props: {
       : props.ev.released
         ? epLabel()
         : `${epLabel()} · noch nicht erschienen`;
+  const textClass = () => (props.ev.released ? "text-text" : "text-text-muted");
 
   return (
     <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-      {/* Hover bg fills the full row (bleeds via the ul's -mx-5) — same shape
-          as the subpage list rows. Press-feedback shares the bg so the whole
-          row reacts to a long-press, not just the button. */}
-      <div
+      {/* Whole row → item page. Hover bg bleeds to the column edges via the
+          ul's -mx-5, same shape as the subpage list rows. */}
+      <A
+        href={`/item/${props.ev.type}/${props.ev.slug}`}
         class="flex items-center gap-3 px-5 transition-colors hover:bg-surface"
-        classList={{ "bg-surface": pressing() }}
+        aria-label={`${props.ev.title} ${epLabel()} öffnen`}
       >
-        {/* Cover → item page (sibling link, not nested in the button). */}
-        <A
-          href={`/item/${props.ev.type}/${props.ev.slug}`}
-          class="my-2.5 block h-[5.33rem] w-16 shrink-0 overflow-hidden rounded-xs border border-border bg-surface"
-          aria-label={`${props.ev.title} öffnen`}
-        >
+        <div class="my-2.5 block h-[5.33rem] w-16 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
           <Show
             when={cover()}
             fallback={
@@ -922,65 +787,35 @@ function DayPaneRow(props: {
               class="h-full w-full object-cover"
             />
           </Show>
-        </A>
+        </div>
 
-        <Show
-          when={props.ev.released}
-          fallback={
-            // Future episode — informational, not tickable.
-            <div class="flex min-w-0 flex-1 items-center gap-3 py-2.5">
-              <div class="min-w-0 flex-1">
-                <span class="block font-mono text-mini uppercase tracking-[0.15em] text-text-muted">
-                  {typeLabel(props.ev.type)}
-                </span>
-                <p class="truncate text-body text-text-muted">{props.ev.title}</p>
-                <p class="font-mono text-mini text-text-muted">{metaLine()}</p>
-              </div>
-            </div>
-          }
-        >
-          <button
-            type="button"
-            onPointerDown={onPointerDown}
-            onPointerUp={stopPress}
-            onPointerLeave={stopPress}
-            onPointerCancel={stopPress}
-            onClick={onClick}
-            onContextMenu={onContextMenu}
-            aria-label={
-              props.ev.watched
-                ? `${props.ev.title} ${epLabel()}, gesehen. Tippen zum Entfernen, lang halten für „bis hier alles"`
-                : `${props.ev.title} ${epLabel()}. Tippen zum Markieren, lang halten für „bis hier alles"`
-            }
-            class="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left"
-          >
-            <div class="min-w-0 flex-1">
-              <span class="block font-mono text-mini uppercase tracking-[0.15em] text-text-muted">
-                {typeLabel(props.ev.type)}
-              </span>
-              <p class="truncate text-body text-text">{props.ev.title}</p>
-              <p class="truncate font-mono text-mini text-text-muted">
-                {metaLine()}
-              </p>
-            </div>
+        <div class="flex min-w-0 flex-1 items-center gap-3 py-2.5">
+          <div class="min-w-0 flex-1">
+            <span class="block font-mono text-mini uppercase tracking-[0.15em] text-text-muted">
+              {typeLabel(props.ev.type)}
+            </span>
+            <p class={`truncate text-body ${textClass()}`}>{props.ev.title}</p>
+            <p class="truncate font-mono text-mini text-text-muted">
+              {metaLine()}
+            </p>
+          </div>
 
-            {/* Right cluster — Mitseher eye (left) + the watched dot. The dot
-                mirrors the item-detail episode list: filled accent = watched,
-                hollow ring = not yet. */}
-            <div class="flex shrink-0 items-center gap-2">
-              <CoWatcherMark watchers={props.watchers} />
-              <span
-                aria-hidden
-                class={`size-2 shrink-0 rounded-full transition-colors ${
-                  props.ev.watched
-                    ? "bg-accent"
-                    : "bg-transparent ring-1 ring-border"
-                }`}
-              />
-            </div>
-          </button>
-        </Show>
-      </div>
+          {/* Right cluster — Mitseher eye (left) + the watched dot. The dot
+              mirrors the item-detail episode list: filled accent = watched,
+              hollow ring = not yet. Read-only indicators only. */}
+          <div class="flex shrink-0 items-center gap-2">
+            <CoWatcherMark watchers={props.watchers} />
+            <span
+              aria-hidden
+              class={`size-2 shrink-0 rounded-full transition-colors ${
+                props.ev.watched
+                  ? "bg-accent"
+                  : "bg-transparent ring-1 ring-border"
+              }`}
+            />
+          </div>
+        </div>
+      </A>
     </li>
   );
 }
