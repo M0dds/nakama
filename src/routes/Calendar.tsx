@@ -713,26 +713,29 @@ function DayPane(props: {
   onCascade: (ev: CalendarEvent) => void;
 }) {
   const date = () => fromIsoDay(props.iso);
+  const isToday = () => props.iso === props.todayIso;
   const weekdayLong = () =>
     date().toLocaleDateString("de-DE", { weekday: "long" });
   const dateText = () =>
     `${String(date().getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[date().getMonth()]}`;
+  // Right-aligned mono date; today gains a "HEUTE · " prefix and the accent.
+  // uppercase makes the month caps → "HEUTE · 30. MAI".
+  const dateLine = () => (isToday() ? `Heute · ${dateText()}` : dateText());
 
   return (
     <div>
-      {/* Day header. "Today" is signalled by accenting the date — the same
-          quiet language the grid uses (accent date number, no badge) — instead
-          of a loud "HEUTE" caps chip that read as out of place here. */}
-      <div class="mb-3 flex items-baseline gap-2">
+      {/* Day header: weekday left, date right-aligned. Today is the accent
+          "HEUTE · 30. MAI" line; other days the muted date. */}
+      <div class="mb-3 flex items-baseline justify-between gap-2">
         <h3 class="text-body-lg font-medium text-text">{weekdayLong()}</h3>
         <span
-          class="font-mono text-label tabular-nums"
+          class="shrink-0 font-mono text-label uppercase tabular-nums"
           classList={{
-            "text-accent": props.iso === props.todayIso,
-            "text-text-muted": props.iso !== props.todayIso,
+            "text-accent": isToday(),
+            "text-text-muted": !isToday(),
           }}
         >
-          {dateText()}
+          {dateLine()}
         </span>
       </div>
 
