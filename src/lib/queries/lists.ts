@@ -153,23 +153,41 @@ function bySectionThenSort(a: ListSummary, b: ListSummary): number {
  *  hasn't ticked it. Keeps the lists badge and the home modules in sync. */
 const NEW_WINDOW_DAYS = 14;
 
+/** One list_item candidate for the new-episode check — carries its item plus
+ *  the lane selector (sync-instances model). */
+interface NewEpisodeEntry {
+  itemId: string;
+  listItemId: string;
+  /** Synced → read this list_item's INSTANCE rows; else the caller's GLOBAL
+   *  rows. */
+  syncEnabled: boolean;
+}
+
+/** Shared empty set for synced entries that have no instance rows yet — never
+ *  mutated, so it's safe to alias. */
+const EMPTY_EPISODE_SET: ReadonlySet<string> = new Set();
+
 /**
- * Filters `itemIds` down to the subset that have at least one released-
- * but-unwatched episode inside the new-window. Two round-trips: episodes
- * in window, then the caller's watches over them.
+ * Returns the subset of LIST_ITEM ids that have at least one released-but-
+ * unwatched episode inside the new-window, reading EACH entry against its
+ * correct progress lane (sync-instances model):
+ *   - non-synced entry → the caller's GLOBAL watches (`list_item_id IS NULL`)
+ *   - synced entry      → that list_item's INSTANCE watches (`list_item_id = LI`)
+ * Keyed on listItemId (not itemId) because the same item can appear as both a
+ * global and a synced entry across different lists, with different badges.
  *
- * The candidate item set is passed in so the caller can scope it — e.g.
- * `listItemsQueryOptions` only cares about items in ONE list and no longer
- * needs to scan the user's full catalogue. Item-type resolution lives
- * with the caller (who already has it from their main fetch), saving the
- * previous fourth round-trip to `items`.
+ * Round-trips: episodes-in-window, the caller's global watches over them, and
+ * — only when some entry is synced — the instance watches in one bulk query.
+ * The candidate set is passed in scoped (one list, or all visible lists), so we
+ * never scan the user's full catalogue.
  */
 async function findItemsWithNewEpisodes(
   userId: string,
-  itemIds: string[],
+  entries: NewEpisodeEntry[],
 ): Promise<Set<string>> {
-  if (itemIds.length === 0) return new Set();
+  if (entries.length === 0) return new Set();
 
+  const itemIds = unique(entries.map((e) => e.itemId));
   const sinceIso = new Date(
     Date.now() - NEW_WINDOW_DAYS * 86_400_000,
   ).toISOString();
@@ -186,37 +204,78 @@ async function findItemsWithNewEpisodes(
   }
   const eps = (epRows ?? []) as { id: string; item_id: string }[];
   if (eps.length === 0) return new Set();
+  const epIds = eps.map((e) => e.id);
 
-  const { data: wRows, error: wErr } = await supabase
+  // Recent-episode ids grouped by item, so each entry tests its own item.
+  const epsByItem = new Map<string, string[]>();
+  for (const e of eps) {
+    const arr = epsByItem.get(e.item_id);
+    if (arr) arr.push(e.id);
+    else epsByItem.set(e.item_id, [e.id]);
+  }
+
+  // Global watched set (list_item_id IS NULL) — covers every non-synced entry.
+  const { data: gRows, error: gErr } = await supabase
     .from("episode_watches")
     .select("episode_id")
-    .in(
-      "episode_id",
-      eps.map((e) => e.id),
-    )
-    .eq("user_id", userId);
-  if (wErr) {
-    console.error("episode_watches join failed", wErr);
+    .eq("user_id", userId)
+    .is("list_item_id", null)
+    .in("episode_id", epIds);
+  if (gErr) {
+    console.error("episode_watches global join failed", gErr);
     return new Set();
   }
-  const watched = new Set((wRows ?? []).map((w) => w.episode_id as string));
+  const globalWatched = new Set((gRows ?? []).map((w) => w.episode_id as string));
+
+  // Instance watched sets, grouped by list_item_id — one bulk query over all
+  // synced list_items, fetched only when at least one entry is synced.
+  const syncedIds = unique(
+    entries.filter((e) => e.syncEnabled).map((e) => e.listItemId),
+  );
+  const instanceWatched = new Map<string, Set<string>>();
+  if (syncedIds.length > 0) {
+    const { data: iRows, error: iErr } = await supabase
+      .from("episode_watches")
+      .select("episode_id, list_item_id")
+      .eq("user_id", userId)
+      .in("list_item_id", syncedIds)
+      .in("episode_id", epIds);
+    if (iErr) {
+      console.error("episode_watches instance join failed", iErr);
+    } else {
+      for (const r of iRows ?? []) {
+        const li = r.list_item_id as string;
+        let set = instanceWatched.get(li);
+        if (!set) instanceWatched.set(li, (set = new Set()));
+        set.add(r.episode_id as string);
+      }
+    }
+  }
 
   const result = new Set<string>();
-  for (const e of eps) if (!watched.has(e.id)) result.add(e.item_id);
+  for (const entry of entries) {
+    const itemEps = epsByItem.get(entry.itemId);
+    if (!itemEps) continue;
+    const watched = entry.syncEnabled
+      ? instanceWatched.get(entry.listItemId) ?? EMPTY_EPISODE_SET
+      : globalWatched;
+    if (itemEps.some((id) => !watched.has(id))) result.add(entry.listItemId);
+  }
   return result;
 }
 
-/** Aggregate (list_id, item_id, type) pairs into per-list (folgen, kapitel)
- *  counts, filtered to the items that qualified as new. anime/series count
- *  as Folgen, manga as Kapitel; movies/games are ignored (no episode model).
- *  Type travels alongside the pair so we don't need a separate items lookup. */
+/** Aggregate (list_id, listItemId, type) entries into per-list (folgen,
+ *  kapitel) counts, filtered to the list_items that qualified as new.
+ *  anime/series count as Folgen, manga as Kapitel; movies/games are ignored
+ *  (no episode model). Type + listItemId travel alongside so we don't need a
+ *  separate items lookup, and the filter keys on listItemId (sync-aware). */
 function aggregateNewCounts(
-  pairs: { list_id: string; item_id: string; type: string }[],
-  newItemsSet: Set<string>,
+  pairs: { list_id: string; listItemId: string; type: string }[],
+  newListItemsSet: Set<string>,
 ): Map<string, { folgen: number; kapitel: number }> {
   const counts = new Map<string, { folgen: number; kapitel: number }>();
   for (const p of pairs) {
-    if (!newItemsSet.has(p.item_id)) continue;
+    if (!newListItemsSet.has(p.listItemId)) continue;
     const c = counts.get(p.list_id) ?? { folgen: 0, kapitel: 0 };
     if (p.type === "manga") c.kapitel++;
     else if (p.type === "anime" || p.type === "series") c.folgen++;
@@ -265,7 +324,7 @@ export function listsQueryOptions(user: User) {
           .eq("user_id", user.id),
         supabase
           .from("list_items")
-          .select("list_id, item_id, items!inner(type)")
+          .select("id, sync_enabled, list_id, item_id, items!inner(type)")
           // A7: explicit cap — without it PostgREST stops at 1000 rows. Sharing
           // multiplies list_items across all members' shared lists, so the
           // newCounts aggregation would silently under-count past 1000 (no
@@ -281,6 +340,8 @@ export function listsQueryOptions(user: User) {
       // where the items embed came back null (RLS edge-case — shouldn't
       // happen since lists+items share caller-visible scope, but defensive).
       const rawPairs = (pairsRes.data ?? []) as unknown as Array<{
+        id: string;
+        sync_enabled: boolean;
         list_id: string;
         item_id: string;
         items: { type: string } | null;
@@ -288,15 +349,30 @@ export function listsQueryOptions(user: User) {
       const flatPairs = rawPairs.flatMap((r) => {
         const type = r.items?.type;
         if (!type) return [];
-        return [{ list_id: r.list_id, item_id: r.item_id, type }];
+        return [
+          {
+            list_id: r.list_id,
+            listItemId: r.id,
+            item_id: r.item_id,
+            type,
+            syncEnabled: r.sync_enabled,
+          },
+        ];
       });
-      const itemIds = unique(flatPairs.map((p) => p.item_id));
 
-      // Episode-window check runs serial-after the pairs because it needs
-      // the candidate item set. Two more round-trips inside; see
+      // Episode-window check runs serial-after the pairs because it needs the
+      // candidate set. Per-list_item (sync-aware) so a synced instance and a
+      // global entry of the same item get independent badges; see
       // findItemsWithNewEpisodes.
-      const newItemsSet = await findItemsWithNewEpisodes(user.id, itemIds);
-      const newCountsByList = aggregateNewCounts(flatPairs, newItemsSet);
+      const newListItemsSet = await findItemsWithNewEpisodes(
+        user.id,
+        flatPairs.map((p) => ({
+          itemId: p.item_id,
+          listItemId: p.listItemId,
+          syncEnabled: p.syncEnabled,
+        })),
+      );
+      const newCountsByList = aggregateNewCounts(flatPairs, newListItemsSet);
 
       const rows = (membershipRes.data ?? []) as unknown as RawMembershipJoinRow[];
       const summaries: ListSummary[] = rows
@@ -399,8 +475,14 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
       if (error) throw error;
 
       const rawRows = (data as unknown as RawListItemRow[]) ?? [];
-      const itemIds = unique(rawRows.map((r) => r.item_id));
-      const newItemsSet = await findItemsWithNewEpisodes(user.id, itemIds);
+      const newListItemsSet = await findItemsWithNewEpisodes(
+        user.id,
+        rawRows.map((r) => ({
+          itemId: r.item_id,
+          listItemId: r.id,
+          syncEnabled: r.sync_enabled,
+        })),
+      );
 
       const rows = rawRows.map((r) => ({
         listItemId: r.id,
@@ -412,7 +494,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
         syncEnabled: r.sync_enabled,
         pinned: r.pinned_at !== null,
         sortOrder: r.sort_order,
-        hasNewEpisode: newItemsSet.has(r.item_id),
+        hasNewEpisode: newListItemsSet.has(r.id),
       }));
       return rows.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
