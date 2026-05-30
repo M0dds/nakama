@@ -1,6 +1,7 @@
 import { createSignal, Show, type ParentProps } from "solid-js";
 import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
+import { ToastProvider } from "@/lib/toast";
 
 /**
  * Layout wrapper for every authed app surface (Home, Listen, Detailseiten,
@@ -50,7 +51,7 @@ export function AppShell(props: ParentProps) {
   };
 
   return (
-    <>
+    <ToastProvider>
       {/* Add space at the bottom equal to nav height (44 px) + bottom offset
           (26 px) + breathing (24 px). The pill is `position: fixed` so it
           doesn't reserve flow space on its own. */}
@@ -59,6 +60,6 @@ export function AppShell(props: ParentProps) {
       <Show when={addMounted()}>
         <AddSheet visible={addVisible()} onClose={closeAdd} />
       </Show>
-    </>
+    </ToastProvider>
   );
 }
