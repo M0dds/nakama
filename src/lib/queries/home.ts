@@ -377,9 +377,10 @@ interface MissedCandidate {
   airDate: string;
 }
 
-/** The latest released-but-unticked episode per tracked item, within the
- *  missed window. Two round-trips: the released episodes in the window, then
- *  the caller's own watches among them.
+/** The latest released-but-unticked episode per tracked item that the caller
+ *  has ALREADY STARTED, within the missed window. Three round-trips: the
+ *  released episodes in the window, the caller's own watches among them, then
+ *  a started-check.
  *
  *  episode_watches RLS spans own + co-member rows, so we filter to the caller
  *  explicitly — a co-member's tick must NOT clear the caller's own nudge. */
@@ -438,7 +439,37 @@ async function fetchMissedCandidates(
       airDate: e.air_date,
     });
   }
-  return [...byItem.values()];
+  const candidateItemIds = [...byItem.keys()];
+  if (candidateItemIds.length === 0) return [];
+
+  // Keep only items the caller has actually STARTED (≥1 watch on any episode).
+  // A freshly-added, never-watched show would otherwise surface its latest
+  // episode as "missed" — and the Abhaken quick-tick would cascade-tick its
+  // whole back-catalogue. "missed" is a catch-up nudge for shows you're behind
+  // on, not a start-watching prompt. Scoped to the (few) candidate items, so
+  // the row count stays small.
+  const { data: startedRows, error: sErr } = await supabase
+    .from("episode_watches")
+    .select("episodes!inner(item_id)")
+    .eq("user_id", currentUserId)
+    .in("episodes.item_id", candidateItemIds)
+    .limit(5000);
+  if (sErr) {
+    console.error("missed started-check query failed", sErr);
+    return [];
+  }
+  const startedSet = new Set<string>();
+  for (const row of startedRows ?? []) {
+    const emb = (row as {
+      episodes: { item_id: string } | { item_id: string }[] | null;
+    }).episodes;
+    const itemId = Array.isArray(emb) ? emb[0]?.item_id : emb?.item_id;
+    if (itemId) startedSet.add(itemId);
+  }
+
+  return candidateItemIds
+    .filter((id) => startedSet.has(id))
+    .map((id) => byItem.get(id)!);
 }
 
 /** Logbuch — recent activity across visible lists, newest first. RLS does

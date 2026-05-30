@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-7 abgeschlossen. **Phase 7 (Sharing) gelandet:** Mitglieder-Modul (03) auf `/lists/:shortCode` (Roster mit Avatar + @handle, Invite-by-@handle mit inline-Result, Pending-Invites + Revoke, Ownership-Transfer, Liste-verlassen); Einladungs-Posteingang auf `/lists` + Zähl-Badge am Listen-Tab der BottomNav (global + Realtime); per-Item-Sync-Toggle im Details-Modul der Item-Page (via Router-Link-State, nur wenn aus geteilter Liste geöffnet, Backfill beim Einschalten); Auto-Sync-Fan-out für Ticks (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`, beide kontextfrei); Mitseher-Indikator (Auge + Hover-Overlay mit Profilbildern) in Item-Folgenliste + Kalender-Tag-Pane. Kalender (`/calendar`): Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Date-Picker. Home Dashboard (Was kommt / Fortsetzen / Logbuch), „Neue Folge"-Badges auf allen Listen-Surfaces. Drag-Reorder + Pin-to-Top, RowActions-Cluster. Title-Enrichment via Jikan + MangaDex. **Phase 7-Reste gelandet** (Branch `phase/7-reste`): Logbuch-Welle-2 (`missed` mit „Abhaken"-Quick-Tick + `ownership_transfer`), Co-Member-Avatare im Feed (`EventGlyph`), dependency-free Toast-System (`toast.tsx` + `Toaster`, Trigger: Einladung empfangen + Accept-Bestätigung). **Nächster Schritt: `phase/7-reste` → `main` mergen, dann Phase 8 (Polish-Pass) — Route-Transitions, Skeleton-States, Cover-Fade-in.**
+**Stand:** Phasen 1-7 abgeschlossen. **Phase 7 (Sharing) gelandet:** Mitglieder-Modul (03) auf `/lists/:shortCode` (Roster mit Avatar + @handle, Invite-by-@handle mit inline-Result, Pending-Invites + Revoke, Ownership-Transfer, Liste-verlassen); Einladungs-Posteingang auf `/lists` + Zähl-Badge am Listen-Tab der BottomNav (global + Realtime); per-Item-Sync-Toggle im Details-Modul der Item-Page (via Router-Link-State, nur wenn aus geteilter Liste geöffnet, Backfill beim Einschalten); Auto-Sync-Fan-out für Ticks (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`, beide kontextfrei); Mitseher-Indikator (Auge + Hover-Overlay mit Profilbildern) in Item-Folgenliste + Kalender-Tag-Pane. Kalender (`/calendar`): Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Date-Picker. Home Dashboard (Was kommt / Fortsetzen / Logbuch), „Neue Folge"-Badges auf allen Listen-Surfaces. Drag-Reorder + Pin-to-Top, RowActions-Cluster. Title-Enrichment via Jikan + MangaDex. **Phase 7-Reste nach `main` gemerged:** Logbuch-Welle-2 (`missed` — nur begonnene Items — mit „Abhaken"-Quick-Tick + `ownership_transfer`), Co-Member-Avatare im Feed (`EventGlyph`), dependency-free Toast-System (`toast.tsx` + `Toaster`, top-right + Fortschrittsbalken, Trigger auf Einladung/Liste/Transfer-Aktionen), ErrorBoundary (`App.tsx`), `MovePointerSensor` (eigener move-only Drag-Sensor). **Nächster Schritt: Phase 8 (Polish-Pass) — Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.**
 
 ---
 
@@ -243,9 +243,10 @@ export function recentlyTickedOptions(user)    // watch + list_add + missed + ow
 //   kind: "list_add"           → listId, listShortCode, listName
 //   kind: "missed"             → episodeId (Quick-Tick-Ziel), episodeNumber; ts = air_date.
 //                                Neueste released-aber-ungetickte Folge pro getracktem Item
-//                                (MISSED_DAYS = 14). isSelf immer false. Caller-eigener
-//                                Watch-State explizit gefiltert (episode_watches RLS spannt
-//                                Co-Member). UI: „Abhaken"-Button → markEpisodesWatchedUpTo.
+//                                (MISSED_DAYS = 14), NUR für Items mit ≥1 Watch (begonnen).
+//                                isSelf immer false. Caller-eigener Watch-State explizit
+//                                gefiltert (episode_watches RLS spannt Co-Member). UI:
+//                                „Abhaken"-Button → markEpisodesWatchedUpTo (Catch-up).
 //   kind: "ownership_transfer" → listId, listShortCode, listName, recipientName, recipientIsMe.
 //                                Listen-zentriert (kein Item). Aus list_ownership_transfers.
 // Typen-Split: BaseLogbookEvent (eventId, ts, actorUserId, actorName, actorAvatarUrl, isSelf)
@@ -394,7 +395,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **5 · Home Dashboard** | ✓ done — Was kommt / Fortsetzen / Logbuch. „Neue Folge"-Badges auf allen List-Surfaces |
 | **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker. Offen: Mitseher (Phase 7), dynamisches Range-Read |
 | **7 · Sharing** | ✓ done — Invite-by-@handle, Mitglieder-Modul, Einladungs-Inbox + Nav-Badge, Sync-Toggle mit Backfill, Auto-Sync-Fan-out, Mitseher-Indikator, Ownership-Transfer, Leave-List |
-| **7-Reste** | ✓ done (Branch `phase/7-reste`) — Logbuch-Welle-2 (`missed` + `ownership_transfer`), Co-Member-Avatare im Feed, Toast-System (`toast.tsx` + `Toaster`) + erste Trigger |
+| **7-Reste** | ✓ done (in `main`) — Logbuch-Welle-2 (`missed`, nur begonnene Items, + `ownership_transfer`), Co-Member-Avatare im Feed, Toast-System (`toast.tsx` + `Toaster`) + Trigger, ErrorBoundary, `MovePointerSensor` |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Skeleton-States, Route-Transitions |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
 
@@ -405,7 +406,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 ### Konkret offen für die nächste Session
 
 **Phase 7 (Sharing) ist gelandet** (`src/lib/queries/sharing.ts`, `MembersModule`, `InvitationsInbox`, `SyncToggle`, `CoWatcherMark`, `Avatar` + Migration `20260530120000`), nach `main` gemerged. **Phase 7-Reste ebenfalls gelandet** (Branch `phase/7-reste`, noch nicht gemerged):
-- ~~**Logbuch-Welle-2**~~ **erledigt** — `missed`-Events (neueste released-aber-ungetickte Folge pro getracktem Item, 14-Tage-Fenster, inline „Abhaken"-Quick-Tick via `mark_episodes_watched_synced`) + `ownership_transfer`-Events (aus `list_ownership_transfers`, RLS-scoped). `LogbookEvent`-Typen zu `BaseLogbookEvent`/`ItemLogbookEvent` gesplittet; Home-Realtime hört jetzt auch auf `list_ownership_transfers`. **Offene Design-Frage:** missed zeigt auch nie gestartete Items (dort cascadet „Abhaken" alle Folgen) — faithful zu Logbook, ggf. einschränken.
+- ~~**Logbuch-Welle-2**~~ **erledigt** — `missed`-Events (neueste released-aber-ungetickte Folge pro getracktem Item, 14-Tage-Fenster, inline „Abhaken"-Quick-Tick via `mark_episodes_watched_synced`) + `ownership_transfer`-Events (aus `list_ownership_transfers`, RLS-scoped). `LogbookEvent`-Typen zu `BaseLogbookEvent`/`ItemLogbookEvent` gesplittet; Home-Realtime hört jetzt auch auf `list_ownership_transfers`. **missed ist auf BEGONNENE Items eingeschränkt** (≥1 Watch, started-check in `fetchMissedCandidates`) — sonst würde „Abhaken" einen nie gestarteten Long-Runner komplett durchticken.
 - ~~**Co-Member-Avatare im Logbuch-Feed**~~ **erledigt** — `profileNames` → `actorProfiles` (liefert `avatar_url`), `EventGlyph` zeigt für Co-Member das Gesicht + Kind-Badge, eigene/missed bleiben Icon.
 - ~~**Sonner/Toast**~~ **erledigt** — dependency-free `src/lib/toast.tsx` (`ToastProvider` + `useToast`) + `Toaster` (liquid rise/fall, z-30, in AppShell). Trigger: Einladung empfangen (global in BottomNav, von jeder Route) + Accept-Bestätigung in `InvitationsInbox`.
 - **Dynamisches Kalender-Range-Read** (noch offen) statt fix-breitem Fenster (`calendar.ts` WINDOW_BACK/AHEAD = −2/+4 Monate; die Mitseher-Query in `sharing.ts` spiegelt das Fenster mit −2/+5). Weit-raus-Navigation zeigt leere Tage bis Stale-Refresh.
