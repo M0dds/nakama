@@ -365,25 +365,35 @@ async function buildCoWatcherMap(
  * actually shares a list with, has watched each episode and when. Keyed by
  * episode id so the item episode list can look up a row's watchers. Empty map
  * for the solo case — short-circuits before touching watches.
+ *
+ * Lane-matched to the item page (`instanceListItemId`): the GLOBAL item page
+ * shows co-members' global progress (the "who's how far" eye); a synced
+ * INSTANCE page shows who's watched WITHIN that instance. Crucially the
+ * instance page must NOT show the global lane — otherwise a co-member's
+ * separate global progress (e.g. they're at ep 19 privately) would leak onto a
+ * fresh shared instance that's supposed to start at 0.
  */
-export function coWatchersOptions(user: User, itemId: string) {
+export function coWatchersOptions(
+  user: User,
+  itemId: string,
+  instanceListItemId: string | null = null,
+) {
   return {
-    queryKey: coWatchersKey(itemId),
+    queryKey: [...coWatchersKey(itemId), instanceListItemId] as const,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
       const coMemberIds = await coMemberIdsOf(user.id);
       if (coMemberIds.length === 0) return {};
 
-      const { data, error } = await supabase
+      const base = supabase
         .from("episode_watches")
         .select("episode_id, user_id, watched_at, episodes!inner(item_id)")
         .eq("episodes.item_id", itemId)
-        .in("user_id", coMemberIds)
-        // GLOBAL lane only: the Mitseher eye reflects co-members' global
-        // progress (the "who's how far" signal), unchanged by the sync-
-        // instances model. Without this filter a co-member's instance rows in
-        // some synced list would leak in as a phantom global watch here.
-        .is("list_item_id", null)
+        .in("user_id", coMemberIds);
+      const scoped = instanceListItemId
+        ? base.eq("list_item_id", instanceListItemId)
+        : base.is("list_item_id", null);
+      const { data, error } = await scoped
         .order("watched_at", { ascending: false })
         // Explicit cap — without it PostgREST stops at 1000 rows. A 1000-cut
         // ordered by watched_at could drop an arbitrary subset → episodes

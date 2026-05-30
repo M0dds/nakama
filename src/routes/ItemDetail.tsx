@@ -156,11 +156,13 @@ export default function ItemDetail() {
   const epKey = () =>
     [...episodesQueryKey(params.type, params.slug), limit(), instanceLI()] as const;
 
-  // Mitseher: who among the caller's co-members has watched each episode.
-  // Keyed by item id; empty for the solo case. Drives the per-row eye marker.
+  // Mitseher: who among the caller's co-members has watched each episode, in
+  // the SAME lane the page reads (global vs this synced instance) so the eye
+  // can't show a co-member's global progress on a fresh instance. Empty for the
+  // solo case. Gated on laneReady so it doesn't briefly query the wrong lane.
   const coWatchers = createQuery(() => ({
-    ...coWatchersOptions(auth.user()!, item.data?.id ?? ""),
-    enabled: !!auth.user() && !!item.data?.id,
+    ...coWatchersOptions(auth.user()!, item.data?.id ?? "", instanceLI()),
+    enabled: !!auth.user() && !!item.data?.id && laneReady(),
   }));
 
   // Item resolved-but-null → render the NotFound surface inline (items are
