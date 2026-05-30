@@ -1,7 +1,7 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
-import { createQuery } from "@tanstack/solid-query";
-import { Check, Eye, EyeOff, ListPlus } from "lucide-solid";
+import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
+import { Check, Clock, Crown, Eye, EyeOff, ListPlus } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { useAuth } from "@/lib/auth";
 import {
@@ -12,9 +12,16 @@ import {
   type ContinueItem,
   type ListAddEvent,
   type LogbookEvent,
+  type MissedEvent,
+  type TransferEvent,
   type UpcomingItem,
   type WatchBundle,
 } from "@/lib/queries/home";
+import {
+  episodesQueryKey,
+  markEpisodesWatchedUpTo,
+} from "@/lib/queries/episodes";
+import { listsQueryKey } from "@/lib/queries/lists";
 import {
   dayOffset,
   episodeCode,
@@ -64,6 +71,7 @@ export default function Home() {
     { table: "episodes", invalidates: [homeQueryKey] },
     { table: "list_items", invalidates: [homeQueryKey] },
     { table: "list_members", invalidates: [homeQueryKey] },
+    { table: "list_ownership_transfers", invalidates: [homeQueryKey] },
   ]);
 
   return (
@@ -524,6 +532,24 @@ function Logbuch(props: { events: LogbookEvent[] }) {
     });
   };
 
+  // Quick-tick for `missed` events: a cascade-catch-up to the latest released
+  // episode (auto-sync RPC fans out to co-members). On success we invalidate
+  // the cross-cutting keys (HEALTH cache pattern) — the missed row then drops
+  // out on the home refetch since the episode is now watched.
+  const queryClient = useQueryClient();
+  const tickMut = createMutation(() => ({
+    mutationFn: (ev: MissedEvent) =>
+      markEpisodesWatchedUpTo({ itemId: ev.itemId, upToEpisodeId: ev.episodeId }),
+    onSuccess: (_data, ev) => {
+      void queryClient.invalidateQueries({ queryKey: homeQueryKey });
+      void queryClient.invalidateQueries({
+        queryKey: episodesQueryKey(ev.type, ev.slug),
+      });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
+    },
+  }));
+
   const hasSelf = () => props.events.some((e) => e.isSelf);
   const filtered = () =>
     showSelf() ? props.events : props.events.filter((e) => !e.isSelf);
@@ -549,13 +575,35 @@ function Logbuch(props: { events: LogbookEvent[] }) {
                   >
                     {ev.kind === "watch" ? (
                       <WatchSentence ev={ev} />
-                    ) : (
+                    ) : ev.kind === "list_add" ? (
                       <ListAddSentence ev={ev} />
+                    ) : ev.kind === "missed" ? (
+                      <MissedSentence ev={ev} />
+                    ) : (
+                      <TransferSentence ev={ev} />
                     )}
                   </p>
-                  <span class="mt-0.5 block font-mono text-mini tabular-nums text-text-muted">
-                    {relTime(ev.ts)}
-                  </span>
+                  <div class="mt-0.5 flex items-center gap-2">
+                    <span class="font-mono text-mini tabular-nums text-text-muted">
+                      {relTime(ev.ts)}
+                    </span>
+                    <Show when={ev.kind === "missed"}>
+                      <button
+                        type="button"
+                        disabled={tickMut.isPending}
+                        onClick={() =>
+                          ev.kind === "missed" && tickMut.mutate(ev)
+                        }
+                        class="inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 font-mono text-mini uppercase tracking-wider text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
+                      >
+                        <Check class="size-3" strokeWidth={2.5} aria-hidden />
+                        {tickMut.isPending &&
+                        tickMut.variables?.eventId === ev.eventId
+                          ? "…"
+                          : "Abhaken"}
+                      </button>
+                    </Show>
+                  </div>
                 </div>
               </div>
             </li>
@@ -620,37 +668,41 @@ function EmptyLogbook() {
 
 /** Per-kind icon. Self-events are slightly dimmed regardless of kind so
  *  the user's own activity reads as background context next to co-member
- *  activity. */
+ *  activity. Missed carries the accent (it wants the eye — it's actionable). */
 function EventIcon(props: { ev: LogbookEvent }) {
+  const base = "mt-0.5 size-4 shrink-0";
   return (
-    <Show
-      when={props.ev.kind === "watch"}
-      fallback={
-        <ListPlus
-          class="mt-0.5 size-4 shrink-0 text-text-muted"
+    <Switch>
+      <Match when={props.ev.kind === "missed"}>
+        <Clock class={`${base} text-accent`} strokeWidth={1.75} aria-hidden />
+      </Match>
+      <Match when={props.ev.kind === "ownership_transfer"}>
+        <Crown
+          class={`${base} text-text-muted`}
           classList={{ "opacity-60": props.ev.isSelf }}
           strokeWidth={1.75}
           aria-hidden
         />
-      }
-    >
-      <Show
-        when={props.ev.isSelf}
-        fallback={
-          <Eye
-            class="mt-0.5 size-4 shrink-0 text-text-muted"
-            strokeWidth={1.75}
-            aria-hidden
-          />
-        }
-      >
-        <Check
-          class="mt-0.5 size-4 shrink-0 text-text-muted opacity-60"
+      </Match>
+      <Match when={props.ev.kind === "list_add"}>
+        <ListPlus
+          class={`${base} text-text-muted`}
+          classList={{ "opacity-60": props.ev.isSelf }}
           strokeWidth={1.75}
           aria-hidden
         />
-      </Show>
-    </Show>
+      </Match>
+      <Match when={props.ev.kind === "watch" && props.ev.isSelf}>
+        <Check
+          class={`${base} text-text-muted opacity-60`}
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      </Match>
+      <Match when={props.ev.kind === "watch"}>
+        <Eye class={`${base} text-text-muted`} strokeWidth={1.75} aria-hidden />
+      </Match>
+    </Switch>
   );
 }
 
@@ -698,6 +750,50 @@ function ListAddSentence(props: { ev: ListAddEvent }) {
         {props.ev.listName}
       </A>{" "}
       hinzugefügt.
+    </>
+  );
+}
+
+/** "Frieren E08 ist erschienen." — paired with the inline Abhaken quick-tick
+ *  in the meta line below it. Always co-styled (never dimmed) since it's an
+ *  actionable nudge, not the user's own logged action. */
+function MissedSentence(props: { ev: MissedEvent }) {
+  return (
+    <>
+      <A
+        href={`/item/${props.ev.type}/${props.ev.slug}`}
+        class="font-medium underline-offset-2 hover:underline"
+      >
+        {props.ev.title}
+      </A>{" "}
+      <span class="font-mono text-mini uppercase tracking-wider">
+        {nextLabel(props.ev.type, props.ev.episodeNumber)}
+      </span>{" "}
+      ist erschienen.
+    </>
+  );
+}
+
+/** "Du hast <Liste> an @aki übergeben." / "@aki hat <Liste> an dich
+ *  übergeben." / "@aki hat <Liste> an @lisa übergeben." */
+function TransferSentence(props: { ev: TransferEvent }) {
+  return (
+    <>
+      <span class="font-medium">
+        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
+      </span>{" "}
+      {props.ev.isSelf ? "hast" : "hat"}{" "}
+      <A
+        href={`/lists/${props.ev.listShortCode}`}
+        class="font-medium underline-offset-2 hover:underline"
+      >
+        {props.ev.listName}
+      </A>{" "}
+      an{" "}
+      <span class="font-medium">
+        {props.ev.recipientIsMe ? "dich" : props.ev.recipientName ?? "Jemand"}
+      </span>{" "}
+      übergeben.
     </>
   );
 }

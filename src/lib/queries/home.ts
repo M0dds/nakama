@@ -65,44 +65,80 @@ export interface UpcomingItem {
   airDate: string; // ISO
 }
 
-/** Logbuch — a discriminated union of factual events. Two kinds today:
+/** Logbuch — a discriminated union of factual events. Four kinds:
  *
- *  - watch     : a bundled watch session ("Du hast E37–E1163 gesehen"),
- *                clustered by SESSION_GAP_MS so cascades collapse to one row
- *  - list_add  : someone (you or a co-member) put an item into a list. For
- *                shared lists co-members see each other's adds; for private
- *                lists RLS scopes it down to the caller's own adds.
+ *  - watch              : a bundled watch session ("Du hast E37–E1163 gesehen"),
+ *                         clustered by SESSION_GAP_MS so cascades collapse to one row
+ *  - list_add           : someone (you or a co-member) put an item into a list. For
+ *                         shared lists co-members see each other's adds; for private
+ *                         lists RLS scopes it down to the caller's own adds.
+ *  - missed             : the latest released-but-unticked episode of a tracked item
+ *                         (within MISSED_DAYS) — an actionable "you're behind" nudge
+ *                         carrying a quick-tick (cascade-catch-up) target.
+ *  - ownership_transfer : a logged list ownership handover on a list you're in.
  *
  *  The display label for `actor` uses "@username" first, then display_name,
  *  then null (component falls back to "Jemand"). For self-events actorName
  *  is null — the UI substitutes "Du". */
-export type LogbookEvent = WatchBundle | ListAddEvent;
+export type LogbookEvent =
+  | WatchBundle
+  | ListAddEvent
+  | MissedEvent
+  | TransferEvent;
 
+/** Common to every event — the sort key + actor attribution. */
 interface BaseLogbookEvent {
-  eventId: string; // stable React key
+  eventId: string; // stable key
   ts: string; // ISO — sort key
-  itemId: string;
-  title: string;
-  type: MediaType;
-  slug: string;
-  coverUrl: string | null;
   actorUserId: string;
   actorName: string | null;
   isSelf: boolean;
 }
 
-export interface WatchBundle extends BaseLogbookEvent {
+/** The item-centric events (everything but ownership_transfer) carry the item
+ *  identity for the inline link + cover. */
+interface ItemLogbookEvent extends BaseLogbookEvent {
+  itemId: string;
+  title: string;
+  type: MediaType;
+  slug: string;
+  coverUrl: string | null;
+}
+
+export interface WatchBundle extends ItemLogbookEvent {
   kind: "watch";
   minEpisode: number;
   maxEpisode: number;
   episodeCount: number;
 }
 
-export interface ListAddEvent extends BaseLogbookEvent {
+export interface ListAddEvent extends ItemLogbookEvent {
   kind: "list_add";
   listId: string;
   listShortCode: string;
   listName: string;
+}
+
+/** missed — the most recent released episode of a tracked item the caller
+ *  hasn't ticked. `episodeId` is the quick-tick (cascade-catch-up) target,
+ *  `ts` its air_date. Never a self-action — isSelf is always false so the
+ *  "Eigene ausblenden" toggle leaves it visible. */
+export interface MissedEvent extends ItemLogbookEvent {
+  kind: "missed";
+  episodeId: string;
+  episodeNumber: number;
+}
+
+/** ownership_transfer — a list handover, list-centric (no item). `isSelf` is
+ *  true when the caller initiated it; `recipientIsMe` flips the sentence to
+ *  "… an dich übergeben". */
+export interface TransferEvent extends BaseLogbookEvent {
+  kind: "ownership_transfer";
+  listId: string;
+  listShortCode: string;
+  listName: string;
+  recipientName: string | null;
+  recipientIsMe: boolean;
 }
 
 // ── Tunables ────────────────────────────────────────────────────────────
@@ -112,6 +148,9 @@ const CONTINUE_LIMIT = 50;
 const UPCOMING_DAYS = 14;
 /** How far back the Logbuch reaches. */
 const LOGBOOK_DAYS = 30;
+/** Tighter window for the "you're behind" missed nudge — an episode that aired
+ *  longer ago than this stops being a fresh prompt. */
+const MISSED_DAYS = 14;
 /** Hard cap on the final bundled feed — applied per source (watch bundles,
  *  list adds) server-side and again after the merge. */
 const LOGBOOK_LIMIT = 30;
@@ -316,19 +355,107 @@ interface AddRow {
   lists: { name: string; short_code: string } | null;
 }
 
-/** Logbuch — recent activity across visible lists, newest first. RLS does
- *  the heavy lifting: episode_watches and list_items both scope to lists
- *  the caller is a member of, so co-member ticks AND co-member adds in
- *  shared lists land automatically. Private lists return only the
- *  caller's own rows because they're the only member.
+interface TransferRow {
+  id: string;
+  list_id: string;
+  from_user_id: string | null;
+  to_user_id: string | null;
+  transferred_at: string;
+  lists: { name: string; short_code: string } | null;
+}
+
+/** One candidate for a `missed` event — a released episode of a tracked item,
+ *  before the watched-state filter narrows it to the actually-unticked ones. */
+interface MissedCandidate {
+  episodeId: string;
+  itemId: string;
+  episodeNumber: number;
+  airDate: string;
+}
+
+/** The latest released-but-unticked episode per tracked item, within the
+ *  missed window. Two round-trips: the released episodes in the window, then
+ *  the caller's own watches among them.
  *
- *  Two kinds today: bundled-watch sessions (SESSION_GAP_MS clustered) and
- *  list_add ("X hat <item> zu <list> hinzugefügt"). Missed + ownership
- *  transfer kinds wait for the Sharing phase (Welle-2). */
+ *  episode_watches RLS spans own + co-member rows, so we filter to the caller
+ *  explicitly — a co-member's tick must NOT clear the caller's own nudge. */
+async function fetchMissedCandidates(
+  itemIds: string[],
+  currentUserId: string,
+  sinceIso: string,
+): Promise<MissedCandidate[]> {
+  if (itemIds.length === 0) return [];
+  const nowIso = new Date().toISOString();
+  const { data: eps, error } = await supabase
+    .from("episodes")
+    .select("id, item_id, episode_number, air_date")
+    .in("item_id", itemIds)
+    .gte("air_date", sinceIso)
+    .lte("air_date", nowIso)
+    .order("air_date", { ascending: false })
+    .limit(5000);
+  if (error) {
+    console.error("missed episodes query failed", error);
+    return [];
+  }
+  const recent = (eps ?? []) as {
+    id: string;
+    item_id: string;
+    episode_number: number;
+    air_date: string;
+  }[];
+  if (recent.length === 0) return [];
+
+  const { data: watched, error: wErr } = await supabase
+    .from("episode_watches")
+    .select("episode_id")
+    .eq("user_id", currentUserId)
+    .in(
+      "episode_id",
+      recent.map((e) => e.id),
+    )
+    .limit(5000);
+  if (wErr) {
+    console.error("missed watch-state query failed", wErr);
+    return [];
+  }
+  const watchedSet = new Set((watched ?? []).map((r) => r.episode_id as string));
+
+  // One entry per item: its latest released, still-unticked episode. recent[]
+  // is descending air_date, so the first unwatched hit per item is the latest.
+  // A cascade-catch-up to that episode then clears any older gaps too.
+  const byItem = new Map<string, MissedCandidate>();
+  for (const e of recent) {
+    if (watchedSet.has(e.id) || byItem.has(e.item_id)) continue;
+    byItem.set(e.item_id, {
+      episodeId: e.id,
+      itemId: e.item_id,
+      episodeNumber: e.episode_number,
+      airDate: e.air_date,
+    });
+  }
+  return [...byItem.values()];
+}
+
+/** Logbuch — recent activity across visible lists, newest first. RLS does
+ *  the heavy lifting: episode_watches, list_items and list_ownership_transfers
+ *  all scope to lists the caller is a member of, so co-member ticks, co-member
+ *  adds and transfers in shared lists land automatically. Private lists return
+ *  only the caller's own rows because they're the only member.
+ *
+ *  Four kinds: bundled-watch sessions (SESSION_GAP_MS clustered), list_add
+ *  ("X hat <item> zu <list> hinzugefügt"), missed (latest released-but-unticked
+ *  episode of a tracked item, with a quick-tick CTA) and ownership_transfer. */
 async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[]> {
   const sinceIso = new Date(Date.now() - LOGBOOK_DAYS * 86_400_000).toISOString();
+  const missedSinceIso = new Date(
+    Date.now() - MISSED_DAYS * 86_400_000,
+  ).toISOString();
 
-  const [bundlesRes, addsRes] = await Promise.all([
+  // trackedItemIds (home scope) feeds the missed query; it's independent of the
+  // activity sources so it rides in the same fan-out.
+  const [trackedIds, bundlesRes, addsRes, transfersRes] = await Promise.all([
+    trackedItemIds(),
     supabase.rpc("home_watch_bundles", {
       _since: sinceIso,
       _gap_seconds: SESSION_GAP_MS / 1000,
@@ -342,31 +469,60 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       .gte("added_at", sinceIso)
       .order("added_at", { ascending: false })
       .limit(LOGBOOK_LIMIT),
+    supabase
+      .from("list_ownership_transfers")
+      .select(
+        "id, list_id, from_user_id, to_user_id, transferred_at, lists!inner(name, short_code)",
+      )
+      .gte("transferred_at", sinceIso)
+      .order("transferred_at", { ascending: false })
+      .limit(LOGBOOK_LIMIT),
   ]);
 
   if (bundlesRes.error) console.error("home_watch_bundles RPC failed", bundlesRes.error);
   if (addsRes.error) console.error("list_items recent-adds query failed", addsRes.error);
+  if (transfersRes.error)
+    console.error("list_ownership_transfers query failed", transfersRes.error);
 
   const bundles = (bundlesRes.data ?? []) as BundleRow[];
   const adds = (addsRes.data ?? []) as unknown as AddRow[];
-  if (bundles.length === 0 && adds.length === 0) return [];
+  const transfers = (transfersRes.data ?? []) as unknown as TransferRow[];
 
-  // Item meta covers BOTH event kinds — the items the bundles reference + the
-  // items the adds reference directly.
+  // Missed depends on the tracked-item scope, so it can't ride the fan-out
+  // above; it's its own (cheap, windowed) two-query step.
+  const missed = await fetchMissedCandidates(
+    trackedIds,
+    currentUserId,
+    missedSinceIso,
+  );
+
+  if (
+    bundles.length === 0 &&
+    adds.length === 0 &&
+    transfers.length === 0 &&
+    missed.length === 0
+  )
+    return [];
+
+  // Item meta covers every item-centric kind — bundles, adds, and missed.
   const itemIds = unique([
     ...bundles.map((b) => b.item_id),
     ...adds.map((a) => a.item_id),
+    ...missed.map((m) => m.itemId),
   ]);
   const meta = await itemMeta(itemIds);
 
-  // Profiles for every non-self actor mentioned (bundles OR adds), so the
-  // feed reads as "@partner" instead of "Jemand".
+  // Profiles for every non-self actor mentioned (bundles, adds, or either side
+  // of a transfer), so the feed reads as "@partner" instead of "Jemand".
   const coActorIds = unique([
     ...bundles
       .map((b) => b.actor_user_id)
       .filter((id) => id !== currentUserId),
     ...adds
       .map((a) => a.added_by_user_id)
+      .filter((id): id is string => id !== null && id !== currentUserId),
+    ...transfers
+      .flatMap((t) => [t.from_user_id, t.to_user_id])
       .filter((id): id is string => id !== null && id !== currentUserId),
   ]);
   const actorNames = await profileNames(coActorIds);
@@ -417,6 +573,51 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       actorUserId: a.added_by_user_id,
       actorName: isSelf ? null : actorNames.get(a.added_by_user_id) ?? null,
       isSelf,
+    });
+  }
+
+  // ── Missed (latest released-but-unticked episode per tracked item) ──────
+  for (const c of missed) {
+    const m = meta.get(c.itemId);
+    if (!m) continue;
+    events.push({
+      kind: "missed",
+      eventId: `m:${c.episodeId}`,
+      ts: c.airDate,
+      itemId: c.itemId,
+      title: m.title,
+      type: m.type,
+      slug: m.slug,
+      coverUrl: m.coverUrl,
+      episodeId: c.episodeId,
+      episodeNumber: c.episodeNumber,
+      actorUserId: currentUserId,
+      actorName: null,
+      isSelf: false,
+    });
+  }
+
+  // ── Ownership transfers ─────────────────────────────────────────────────
+  for (const t of transfers) {
+    if (!t.lists) continue;
+    const isFromMe = t.from_user_id === currentUserId;
+    const isToMe = t.to_user_id === currentUserId;
+    events.push({
+      kind: "ownership_transfer",
+      eventId: `t:${t.id}`,
+      ts: t.transferred_at,
+      listId: t.list_id,
+      listShortCode: t.lists.short_code,
+      listName: t.lists.name,
+      actorUserId: t.from_user_id ?? "",
+      actorName:
+        isFromMe || !t.from_user_id
+          ? null
+          : actorNames.get(t.from_user_id) ?? null,
+      isSelf: isFromMe,
+      recipientName:
+        isToMe || !t.to_user_id ? null : actorNames.get(t.to_user_id) ?? null,
+      recipientIsMe: isToMe,
     });
   }
 
