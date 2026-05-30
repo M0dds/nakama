@@ -290,7 +290,12 @@ export default function ListDetail() {
                 "löschen" (driven by list.data.isOwner via realtime). */}
             <Show
               when={list.data!.isOwner}
-              fallback={<LeaveListButton listId={list.data!.id} />}
+              fallback={
+                <LeaveListButton
+                  listId={list.data!.id}
+                  listName={list.data!.name}
+                />
+              }
             >
               <DeleteListButton
                 listId={list.data!.id}

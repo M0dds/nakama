@@ -1,7 +1,8 @@
 import { createSignal, For, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, Crown, X } from "lucide-solid";
+import { Check, Crown, Mail, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
   inviteToList,
@@ -58,6 +59,7 @@ export function MembersModule(props: {
 }) {
   const auth = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const members = createQuery(() => ({
     ...listMembersOptions(auth.user()!, props.listId),
@@ -87,13 +89,16 @@ export function MembersModule(props: {
     mutationFn: (username: string) =>
       inviteToList({ listId: props.listId, username }),
     onSuccess: (result) => {
+      const entered = inviteValue().trim();
+      const handle = entered.startsWith("@") ? entered : `@${entered}`;
       if (result.ok) {
+        // Success → toast (the input clears, so a transient inline note would
+        // read oddly). Errors stay inline, next to the field they belong to.
         setInviteValue("");
-        setInviteMsg({ kind: "ok", text: "Einladung gesendet." });
+        setInviteMsg(null);
+        toast(`Einladung an ${handle} gesendet.`, { icon: Mail });
         refreshShared();
       } else {
-        const entered = inviteValue().trim();
-        const handle = entered.startsWith("@") ? entered : `@${entered}`;
         setInviteMsg({ kind: "err", text: inviteErrorText(result.error, handle) });
       }
     },
@@ -114,7 +119,10 @@ export function MembersModule(props: {
   // ── Revoke ───────────────────────────────────────────────────────────
   const revokeMut = createMutation(() => ({
     mutationFn: (invitationId: string) => revokeInvitation(invitationId),
-    onSuccess: refreshShared,
+    onSuccess: () => {
+      toast("Einladung zurückgezogen.");
+      refreshShared();
+    },
   }));
 
   // ── Ownership transfer (per-row crown, inline-confirm) ─────────────────
@@ -125,8 +133,12 @@ export function MembersModule(props: {
   const transferMut = createMutation(() => ({
     mutationFn: (newOwnerId: string) =>
       transferOwnership({ listId: props.listId, newOwnerId }),
-    onSuccess: () => {
+    onSuccess: (_d, newOwnerId) => {
+      const m = members.data?.find((x) => x.userId === newOwnerId);
       setTransferConfirmId(null);
+      toast(m ? `${m.handle} ist jetzt Ersteller.` : "Eigentum übergeben.", {
+        icon: Crown,
+      });
       refreshShared();
     },
     onError: () => setTransferConfirmId(null),

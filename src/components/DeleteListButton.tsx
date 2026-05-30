@@ -1,7 +1,8 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Check, X } from "lucide-solid";
+import { Check, Trash2, X } from "lucide-solid";
+import { useToast } from "@/lib/toast";
 import {
   deleteList,
   listsQueryKey,
@@ -24,11 +25,15 @@ export function DeleteListButton(props: {
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [confirming, setConfirming] = createSignal(false);
 
   const mutation = createMutation(() => ({
     mutationFn: () => deleteList(props.listId),
     onSuccess: () => {
+      // Toast survives the navigate (provider lives in AppShell), so the
+      // confirmation lands on /lists where the list is now gone.
+      toast(`Liste „${props.listName}“ gelöscht.`, { icon: Trash2 });
       // Patch the overview cache directly so the deleted row vanishes
       // before the refetch lands.
       queryClient.setQueryData<{

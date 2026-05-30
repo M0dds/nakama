@@ -1,8 +1,9 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Check, X } from "lucide-solid";
+import { Check, LogOut, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import { listsQueryKey, type ListSummary } from "@/lib/queries/lists";
 import { leaveList } from "@/lib/queries/sharing";
 
@@ -15,16 +16,18 @@ import { leaveList } from "@/lib/queries/sharing";
  * On success the list leaves the caller's overview (RLS drops it once they're
  * no longer a member), so we patch the overview cache + navigate back to /lists.
  */
-export function LeaveListButton(props: { listId: string }) {
+export function LeaveListButton(props: { listId: string; listName: string }) {
   const auth = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [confirming, setConfirming] = createSignal(false);
 
   const mutation = createMutation(() => ({
     mutationFn: () =>
       leaveList({ listId: props.listId, userId: auth.user()!.id }),
     onSuccess: () => {
+      toast(`Liste „${props.listName}“ verlassen.`, { icon: LogOut });
       queryClient.setQueryData<
         { private: ListSummary[]; shared: ListSummary[] } | undefined
       >(listsQueryKey, (prev) =>
