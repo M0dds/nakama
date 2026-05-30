@@ -7,6 +7,7 @@ import { signOut } from "@/lib/auth-actions";
 import { useToast } from "@/lib/toast";
 import { listsQueryOptions, type ListSummary } from "@/lib/queries/lists";
 import { deleteAccount } from "@/lib/queries/profile";
+import { Button } from "@/components/Button";
 
 /**
  * Danger zone — bottom section of the Konto module. Per the chosen policy,
@@ -53,75 +54,70 @@ export function DeleteAccountSection() {
 
   return (
     <div class="mt-5 border-t border-border pt-5">
+      {/* Context: why deletion is blocked. Pushes the button down only when
+          present (mb-4), so the unblocked state sits flush under the divider. */}
+      <Show when={blocking().length > 0}>
+        <div class="mb-4">
+          <p class="text-mini text-text-muted">
+            Du bist noch Ersteller von {blocking().length} geteilten{" "}
+            {blocking().length === 1 ? "Liste" : "Listen"}. Übergib oder lösche
+            sie zuerst:
+          </p>
+          <ul class="mt-2 space-y-1">
+            <For each={blocking()}>
+              {(l) => (
+                <li>
+                  <A
+                    href={`/lists/${l.shortCode}`}
+                    class="font-mono text-mini text-text transition-colors hover:text-accent"
+                  >
+                    · {l.name}
+                  </A>
+                </li>
+              )}
+            </For>
+          </ul>
+        </div>
+      </Show>
+
       <Show
-        when={blocking().length > 0}
+        when={confirming()}
         fallback={
-          <Show
-            when={confirming()}
-            fallback={
-              <button
-                type="button"
-                onClick={() => setConfirming(true)}
-                class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-              >
-                Account löschen
-              </button>
-            }
+          <Button
+            variant="primary"
+            disabled={blocking().length > 0}
+            onClick={() => setConfirming(true)}
           >
-            <span class="inline-flex items-center gap-2">
-              <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-                Endgültig löschen?
-              </span>
-              <button
-                type="button"
-                aria-label="Ja, Account löschen"
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate()}
-                class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                <Check class="size-3.5" strokeWidth={2.5} />
-              </button>
-              <button
-                type="button"
-                aria-label="Abbrechen"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  setConfirming(false);
-                }}
-                class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-              >
-                <X class="size-3.5" strokeWidth={2} />
-              </button>
-            </span>
-          </Show>
+            <Trash2 class="size-4" strokeWidth={1.75} />
+            Account löschen
+          </Button>
         }
       >
-        <p class="text-mini text-text-muted">
-          Du bist noch Ersteller von {blocking().length} geteilten{" "}
-          {blocking().length === 1 ? "Liste" : "Listen"}. Übergib oder lösche
-          sie zuerst:
-        </p>
-        <ul class="mt-2 space-y-1">
-          <For each={blocking()}>
-            {(l) => (
-              <li>
-                <A
-                  href={`/lists/${l.shortCode}`}
-                  class="font-mono text-mini text-text transition-colors hover:text-accent"
-                >
-                  · {l.name}
-                </A>
-              </li>
-            )}
-          </For>
-        </ul>
-        <button
-          type="button"
-          disabled
-          class="mt-4 cursor-not-allowed font-mono text-mini uppercase tracking-wider text-text-muted opacity-50"
-        >
-          Account löschen
-        </button>
+        <span class="inline-flex items-center gap-2">
+          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+            Endgültig löschen?
+          </span>
+          <button
+            type="button"
+            aria-label="Ja, Account löschen"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+            class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            <Check class="size-3.5" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            aria-label="Abbrechen"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setConfirming(false);
+            }}
+            class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            <X class="size-3.5" strokeWidth={2} />
+          </button>
+        </span>
       </Show>
     </div>
   );
