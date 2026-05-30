@@ -415,6 +415,9 @@ async function fetchMissedCandidates(
     .from("episode_watches")
     .select("episode_id")
     .eq("user_id", currentUserId)
+    // Home is a GLOBAL surface — the missed nudge reads the global lane only,
+    // so a synced instance's catch-up doesn't silence the global prompt.
+    .is("list_item_id", null)
     .in(
       "episode_id",
       recent.map((e) => e.id),
@@ -452,6 +455,9 @@ async function fetchMissedCandidates(
     .from("episode_watches")
     .select("episodes!inner(item_id)")
     .eq("user_id", currentUserId)
+    // Global lane only — "started" means started GLOBALLY; a synced-instance
+    // tick shouldn't count as having begun the item on Home.
+    .is("list_item_id", null)
     .in("episodes.item_id", candidateItemIds)
     .limit(5000);
   if (sErr) {

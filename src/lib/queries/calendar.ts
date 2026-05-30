@@ -147,8 +147,9 @@ async function fetchCalendarEvents(
 
 /** The caller's watched episode_ids within the candidate set. RLS scopes
  *  episode_watches, but we still filter user_id for "watched by ME"
- *  semantics — co-member watches (the Mitseher indicator) are a Phase 7
- *  concern once sharing lands. */
+ *  semantics. The calendar is a GLOBAL surface (airing is global), so it reads
+ *  the global lane only (`list_item_id IS NULL`) — a synced instance's rows
+ *  must not flip the calendar's watched dots. */
 async function myWatchedSet(
   userId: string,
   episodeIds: string[],
@@ -158,6 +159,7 @@ async function myWatchedSet(
     .from("episode_watches")
     .select("episode_id")
     .eq("user_id", userId)
+    .is("list_item_id", null)
     .in("episode_id", episodeIds)
     .limit(WINDOW_LIMIT);
   if (error) {
