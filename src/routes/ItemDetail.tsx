@@ -100,10 +100,14 @@ export default function ItemDetail() {
     ...syncContextOptions(listItemId()!),
     enabled: !!auth.user() && !!listItemId(),
   }));
-  // Sync flag for the active list_item: instantly from link-state on
-  // navigation, else from the resolved syncCtx (reload / deep-link).
+  // Sync flag for the active list_item. syncCtx is the LIVE truth (invalidated
+  // + optimistically patched by the SyncToggle), so it takes precedence the
+  // moment it's available; the link-state value is only a pre-load hint to
+  // avoid a flash on navigation. (Crucial: link-state can be a STALE `false`
+  // — it's a snapshot from navigation time and `history.state` survives a hard
+  // reload — so we must NOT let it win via `??` after sync gets turned on.)
   const syncEnabled = (): boolean | undefined =>
-    location.state?.syncEnabled ?? syncCtx.data?.syncEnabled;
+    syncCtx.data?.syncEnabled ?? location.state?.syncEnabled;
   // The instance-lane id: the list_item id ONLY when sync is actually on, else
   // null (= global progress). Mirrors the RPCs' lane rule; drives which watch
   // rows the episode reads count.
