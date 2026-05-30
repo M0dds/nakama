@@ -1,6 +1,6 @@
 import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
-import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
+import { createQuery } from "@tanstack/solid-query";
 import { Check, Clock, Crown, Eye, EyeOff, ListPlus, RefreshCw } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -18,11 +18,6 @@ import {
   type UpcomingItem,
   type WatchBundle,
 } from "@/lib/queries/home";
-import {
-  episodesQueryKey,
-  markEpisodesWatchedUpTo,
-} from "@/lib/queries/episodes";
-import { listsQueryKey } from "@/lib/queries/lists";
 import {
   dateLabel,
   dayOffset,
@@ -579,24 +574,6 @@ function Logbuch(props: { events: LogbookEvent[] }) {
     });
   };
 
-  // Quick-tick for `missed` events: a cascade-catch-up to the latest released
-  // episode (auto-sync RPC fans out to co-members). On success we invalidate
-  // the cross-cutting keys (HEALTH cache pattern) — the missed row then drops
-  // out on the home refetch since the episode is now watched.
-  const queryClient = useQueryClient();
-  const tickMut = createMutation(() => ({
-    mutationFn: (ev: MissedEvent) =>
-      markEpisodesWatchedUpTo({ itemId: ev.itemId, upToEpisodeId: ev.episodeId }),
-    onSuccess: (_data, ev) => {
-      void queryClient.invalidateQueries({ queryKey: homeQueryKey });
-      void queryClient.invalidateQueries({
-        queryKey: episodesQueryKey(ev.type, ev.slug),
-      });
-      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
-      void queryClient.invalidateQueries({ queryKey: ["list"] });
-    },
-  }));
-
   const hasSelf = () => props.events.some((e) => e.isSelf);
   const filtered = () =>
     showSelf() ? props.events : props.events.filter((e) => !e.isSelf);
@@ -630,27 +607,9 @@ function Logbuch(props: { events: LogbookEvent[] }) {
                       <TransferSentence ev={ev} />
                     )}
                   </p>
-                  <div class="mt-0.5 flex items-center gap-2">
-                    <span class="font-mono text-mini tabular-nums text-text-muted">
-                      {relTime(ev.ts)}
-                    </span>
-                    <Show when={ev.kind === "missed"}>
-                      <button
-                        type="button"
-                        disabled={tickMut.isPending}
-                        onClick={() =>
-                          ev.kind === "missed" && tickMut.mutate(ev)
-                        }
-                        class="inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 font-mono text-mini uppercase tracking-wider text-accent transition-colors hover:bg-accent/10 disabled:opacity-50"
-                      >
-                        <Check class="size-3" strokeWidth={2.5} aria-hidden />
-                        {tickMut.isPending &&
-                        tickMut.variables?.eventId === ev.eventId
-                          ? "…"
-                          : "Abhaken"}
-                      </button>
-                    </Show>
-                  </div>
+                  <span class="mt-0.5 block font-mono text-mini tabular-nums text-text-muted">
+                    {relTime(ev.ts)}
+                  </span>
                 </div>
               </div>
             </li>
@@ -797,7 +756,8 @@ function EventIcon(props: { ev: LogbookEvent }) {
   );
 }
 
-/** "Du hast Frieren E07 gesehen." / "@aki hat One Piece E37–E1163 gesehen." */
+/** "Du hast Frieren E07 gesehen." / "@aki hat One Piece E37–E1163 gesehen."
+ *  Read-only — the Logbuch is a pure indicator, nothing links anywhere. */
 function WatchSentence(props: { ev: WatchBundle }) {
   return (
     <>
@@ -805,12 +765,7 @@ function WatchSentence(props: { ev: WatchBundle }) {
         {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
       </span>{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
-      <A
-        href={`/item/${props.ev.type}/${props.ev.slug}`}
-        class="font-medium underline-offset-2 hover:underline"
-      >
-        {props.ev.title}
-      </A>{" "}
+      <span class="font-medium">{props.ev.title}</span>{" "}
       <span class="font-mono text-mini uppercase tracking-wider">
         {rangeLabel(props.ev.type, props.ev.minEpisode, props.ev.maxEpisode)}
       </span>{" "}
@@ -827,36 +782,18 @@ function ListAddSentence(props: { ev: ListAddEvent }) {
         {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
       </span>{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
-      <A
-        href={`/item/${props.ev.type}/${props.ev.slug}`}
-        class="font-medium underline-offset-2 hover:underline"
-      >
-        {props.ev.title}
-      </A>{" "}
-      zu{" "}
-      <A
-        href={`/lists/${props.ev.listShortCode}`}
-        class="underline-offset-2 hover:underline"
-      >
-        {props.ev.listName}
-      </A>{" "}
-      hinzugefügt.
+      <span class="font-medium">{props.ev.title}</span> zu{" "}
+      <span class="font-medium">{props.ev.listName}</span> hinzugefügt.
     </>
   );
 }
 
-/** "Frieren E08 ist erschienen." — paired with the inline Abhaken quick-tick
- *  in the meta line below it. Always co-styled (never dimmed) since it's an
- *  actionable nudge, not the user's own logged action. */
+/** "Frieren E08 ist erschienen." — a pure "something new dropped" indicator
+ *  (no quick-tick, no link). */
 function MissedSentence(props: { ev: MissedEvent }) {
   return (
     <>
-      <A
-        href={`/item/${props.ev.type}/${props.ev.slug}`}
-        class="font-medium underline-offset-2 hover:underline"
-      >
-        {props.ev.title}
-      </A>{" "}
+      <span class="font-medium">{props.ev.title}</span>{" "}
       <span class="font-mono text-mini uppercase tracking-wider">
         {nextLabel(props.ev.type, props.ev.episodeNumber)}
       </span>{" "}
@@ -874,13 +811,7 @@ function TransferSentence(props: { ev: TransferEvent }) {
         {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
       </span>{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
-      <A
-        href={`/lists/${props.ev.listShortCode}`}
-        class="font-medium underline-offset-2 hover:underline"
-      >
-        {props.ev.listName}
-      </A>{" "}
-      an{" "}
+      <span class="font-medium">{props.ev.listName}</span> an{" "}
       <span class="font-medium">
         {props.ev.recipientIsMe ? "dich" : props.ev.recipientName ?? "Jemand"}
       </span>{" "}
