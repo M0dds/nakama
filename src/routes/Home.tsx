@@ -37,6 +37,7 @@ import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
+import { Avatar } from "@/components/Avatar";
 
 /**
  * Home dashboard — three derived modules, layout mirrors Logbook's `/`:
@@ -564,7 +565,7 @@ function Logbuch(props: { events: LogbookEvent[] }) {
           {(ev) => (
             <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
               <div class="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface">
-                <EventIcon ev={ev} />
+                <EventGlyph ev={ev} />
                 <div class="min-w-0 flex-1">
                   <p
                     class="text-body"
@@ -666,11 +667,55 @@ function EmptyLogbook() {
   );
 }
 
+/** Left-slot glyph. Co-member events wear the actor's face (with a small
+ *  kind-badge so the eye still reads what happened); the user's own events and
+ *  the actor-less `missed` nudge keep the bare kind icon. Fixed 24px slot keeps
+ *  the sentence left-edge flush across mixed rows. */
+function EventGlyph(props: { ev: LogbookEvent }) {
+  const showAvatar = () =>
+    !props.ev.isSelf && props.ev.kind !== "missed";
+  return (
+    <div class="flex w-6 shrink-0 justify-center pt-0.5">
+      <Show when={showAvatar()} fallback={<EventIcon ev={props.ev} />}>
+        <div class="relative">
+          <Avatar
+            handle={props.ev.actorName ?? "?"}
+            avatarUrl={props.ev.actorAvatarUrl}
+            size={24}
+          />
+          <span class="absolute -bottom-1 -right-1 flex size-[15px] items-center justify-center rounded-full border border-border bg-surface">
+            <KindBadge ev={props.ev} />
+          </span>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/** The tiny corner badge on a co-member avatar — same icon vocabulary as the
+ *  bare EventIcon, minus the self/missed cases that never reach the avatar. */
+function KindBadge(props: { ev: LogbookEvent }) {
+  const cls = "size-2.5 text-text-muted";
+  return (
+    <Switch>
+      <Match when={props.ev.kind === "ownership_transfer"}>
+        <Crown class={cls} strokeWidth={2} aria-hidden />
+      </Match>
+      <Match when={props.ev.kind === "list_add"}>
+        <ListPlus class={cls} strokeWidth={2} aria-hidden />
+      </Match>
+      <Match when={props.ev.kind === "watch"}>
+        <Eye class={cls} strokeWidth={2} aria-hidden />
+      </Match>
+    </Switch>
+  );
+}
+
 /** Per-kind icon. Self-events are slightly dimmed regardless of kind so
  *  the user's own activity reads as background context next to co-member
  *  activity. Missed carries the accent (it wants the eye — it's actionable). */
 function EventIcon(props: { ev: LogbookEvent }) {
-  const base = "mt-0.5 size-4 shrink-0";
+  const base = "size-4 shrink-0";
   return (
     <Switch>
       <Match when={props.ev.kind === "missed"}>

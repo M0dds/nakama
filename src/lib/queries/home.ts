@@ -92,6 +92,10 @@ interface BaseLogbookEvent {
   ts: string; // ISO — sort key
   actorUserId: string;
   actorName: string | null;
+  /** Co-member actor's profile picture for the feed's left-slot avatar. Null
+   *  for self-events and the actor-less `missed` nudge (those keep a bare
+   *  kind icon). */
+  actorAvatarUrl: string | null;
   isSelf: boolean;
 }
 
@@ -525,7 +529,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       .flatMap((t) => [t.from_user_id, t.to_user_id])
       .filter((id): id is string => id !== null && id !== currentUserId),
   ]);
-  const actorNames = await profileNames(coActorIds);
+  const actors = await actorProfiles(coActorIds);
 
   const events: LogbookEvent[] = [];
 
@@ -534,6 +538,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     const m = meta.get(b.item_id);
     if (!m) continue;
     const isSelf = b.actor_user_id === currentUserId;
+    const actor = isSelf ? undefined : actors.get(b.actor_user_id);
     events.push({
       kind: "watch",
       eventId: `w:${b.actor_user_id}:${b.item_id}:${b.min_episode}:${b.max_episode}:${b.last_watched_at}`,
@@ -547,7 +552,8 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       maxEpisode: b.max_episode,
       episodeCount: b.episode_count,
       actorUserId: b.actor_user_id,
-      actorName: isSelf ? null : actorNames.get(b.actor_user_id) ?? null,
+      actorName: actor?.name ?? null,
+      actorAvatarUrl: actor?.avatarUrl ?? null,
       isSelf,
     });
   }
@@ -558,6 +564,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     const m = meta.get(a.item_id);
     if (!m) continue;
     const isSelf = a.added_by_user_id === currentUserId;
+    const actor = isSelf ? undefined : actors.get(a.added_by_user_id);
     events.push({
       kind: "list_add",
       eventId: `a:${a.id}`,
@@ -571,7 +578,8 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       listShortCode: a.lists.short_code,
       listName: a.lists.name,
       actorUserId: a.added_by_user_id,
-      actorName: isSelf ? null : actorNames.get(a.added_by_user_id) ?? null,
+      actorName: actor?.name ?? null,
+      actorAvatarUrl: actor?.avatarUrl ?? null,
       isSelf,
     });
   }
@@ -593,6 +601,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       episodeNumber: c.episodeNumber,
       actorUserId: currentUserId,
       actorName: null,
+      actorAvatarUrl: null,
       isSelf: false,
     });
   }
@@ -602,6 +611,9 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     if (!t.lists) continue;
     const isFromMe = t.from_user_id === currentUserId;
     const isToMe = t.to_user_id === currentUserId;
+    const initiator = isFromMe || !t.from_user_id
+      ? undefined
+      : actors.get(t.from_user_id);
     events.push({
       kind: "ownership_transfer",
       eventId: `t:${t.id}`,
@@ -610,13 +622,11 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       listShortCode: t.lists.short_code,
       listName: t.lists.name,
       actorUserId: t.from_user_id ?? "",
-      actorName:
-        isFromMe || !t.from_user_id
-          ? null
-          : actorNames.get(t.from_user_id) ?? null,
+      actorName: initiator?.name ?? null,
+      actorAvatarUrl: initiator?.avatarUrl ?? null,
       isSelf: isFromMe,
       recipientName:
-        isToMe || !t.to_user_id ? null : actorNames.get(t.to_user_id) ?? null,
+        isToMe || !t.to_user_id ? null : actors.get(t.to_user_id)?.name ?? null,
       recipientIsMe: isToMe,
     });
   }
@@ -688,15 +698,25 @@ export async function itemMeta(ids: string[]): Promise<Map<string, ItemMetaRow>>
   return map;
 }
 
-/** Batch profile-name lookup for co-watcher display in the Logbuch.
- *  Prefers `@username` (mono handle), falls back to display_name, returns
- *  an empty map for empty input so callers don't need a guard. */
-async function profileNames(ids: string[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+/** Display label + avatar for one co-member actor. */
+interface ActorProfile {
+  /** "@username" preferred, then display_name, else null (→ UI falls back
+   *  to "Jemand"). */
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+/** Batch actor-profile lookup for co-member attribution in the Logbuch —
+ *  the @handle/display name plus the avatar for the feed's left-slot face.
+ *  Returns an empty map for empty input so callers don't need a guard. */
+async function actorProfiles(
+  ids: string[],
+): Promise<Map<string, ActorProfile>> {
+  const map = new Map<string, ActorProfile>();
   if (ids.length === 0) return map;
   const { data, error } = await supabase
     .from("profiles")
-    .select("user_id, username, display_name")
+    .select("user_id, username, display_name, avatar_url")
     .in("user_id", ids);
   if (error) {
     console.error("profiles lookup failed", error);
@@ -705,8 +725,10 @@ async function profileNames(ids: string[]): Promise<Map<string, string>> {
   for (const p of data ?? []) {
     const username = p.username as string | null;
     const displayName = p.display_name as string | null;
-    const name = username ? `@${username}` : displayName ?? null;
-    if (name) map.set(p.user_id as string, name);
+    map.set(p.user_id as string, {
+      name: username ? `@${username}` : displayName ?? null,
+      avatarUrl: (p.avatar_url as string | null) ?? null,
+    });
   }
   return map;
 }
