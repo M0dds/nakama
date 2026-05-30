@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import { Avatar } from "@/components/Avatar";
+import { EditableAvatar } from "@/components/EditableAvatar";
 import { EditableDisplayName } from "@/components/EditableDisplayName";
 import { Skeleton } from "@/components/Skeleton";
 
@@ -83,7 +83,11 @@ export default function Profile() {
             >
               {(user) => (
                 <div class="flex items-center gap-4">
-                  <Avatar handle={handle()} avatarUrl={avatarUrl()} size={64} />
+                  <EditableAvatar
+                    userId={user().id}
+                    handle={handle()}
+                    avatarUrl={avatarUrl()}
+                  />
                   <div class="min-w-0">
                     <EditableDisplayName
                       userId={user().id}

@@ -84,3 +84,44 @@ export function updateDisplayName(input: {
 }): Promise<UpdateProfileResult> {
   return writeProfile(input.userId, { display_name: input.displayName });
 }
+
+/** Write profiles.avatar_url (self only). */
+export function updateAvatarUrl(input: {
+  userId: string;
+  avatarUrl: string | null;
+}): Promise<UpdateProfileResult> {
+  return writeProfile(input.userId, { avatar_url: input.avatarUrl });
+}
+
+export const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Upload an image to the `avatars` bucket and return its public URL.
+ *
+ * Stable path `<uid>/avatar.<ext>` with upsert, so a re-upload overwrites in
+ * place (no orphaned files). getPublicUrl yields a canonical, cache-friendly
+ * URL — we append `?v=<ts>` so the browser + co-members fetch the new image
+ * instead of the cached old one. Requires the avatars bucket + storage RLS
+ * from migration 20260530150000.
+ */
+export async function uploadAvatar(input: {
+  userId: string;
+  file: File;
+}): Promise<string> {
+  const ext = (input.file.name.split(".").pop() || "png")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const path = `${input.userId}/avatar.${ext || "png"}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("avatars")
+    .upload(path, input.file, {
+      upsert: true,
+      contentType: input.file.type || "image/png",
+      cacheControl: "3600",
+    });
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
