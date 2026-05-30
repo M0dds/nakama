@@ -1,31 +1,47 @@
 import { Show } from "solid-js";
+import { createQuery } from "@tanstack/solid-query";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
+import { myProfileOptions } from "@/lib/queries/profile";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import { Button } from "@/components/Button";
+import { Avatar } from "@/components/Avatar";
+import { EditableDisplayName } from "@/components/EditableDisplayName";
 import { Skeleton } from "@/components/Skeleton";
 
 /**
- * Profile page. Identity block (avatar initial + @handle + email), theme +
- * mode switcher in the right column, sign-out CTA in the aside slot.
+ * Profile page. Identity block (real avatar + display-name + @handle + email,
+ * read from the `profiles` row) in the left 2/3, theme + mode switcher in the
+ * right 1/3, sign-out in the PageHeader aside (the page-level account action,
+ * same slot as Liste löschen/verlassen on the list-detail page).
  *
- * Phase 2 stub of the real profile from Logbook: avatar URL editing,
- * display-name editing, notifications toggle, account deletion all land
- * later when we wire the `profiles` table. For now the page proves the
- * shell + auth + theme switcher work together.
+ * Identity is read-only for now: display-name editing, avatar upload and
+ * account deletion land later behind the `profiles` write path.
  */
 export default function Profile() {
   const auth = useAuth();
   const navigate = useNavigate();
 
+  const profileQ = createQuery(() => ({
+    ...myProfileOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+
+  const profile = () => profileQ.data ?? null;
+
   const handle = () => {
     const u = auth.user();
-    return u ? getUserHandle(u) : "user";
+    if (!u) return "user";
+    const p = profile();
+    return getUserHandle(
+      u,
+      p ? { display_name: p.displayName, username: p.username } : undefined,
+    );
   };
+  const avatarUrl = () => profile()?.avatarUrl ?? null;
 
   const onSignOut = async () => {
     await signOut();
@@ -67,13 +83,14 @@ export default function Profile() {
             >
               {(user) => (
                 <div class="flex items-center gap-4">
-                  <div class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-accent">
-                    <span class="font-mono text-heading font-medium text-accent-on">
-                      {handle().charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <Avatar handle={handle()} avatarUrl={avatarUrl()} size={64} />
                   <div class="min-w-0">
-                    <p class="truncate font-mono text-body-lg font-medium text-text">
+                    <EditableDisplayName
+                      userId={user().id}
+                      initialName={profile()?.displayName ?? null}
+                      handle={handle()}
+                    />
+                    <p class="truncate font-mono text-mini text-text-muted">
                       @{handle()}
                     </p>
                     <p class="truncate font-mono text-mini text-text-muted">
@@ -83,17 +100,6 @@ export default function Profile() {
                 </div>
               )}
             </Show>
-
-            <div class="mt-6 border-t border-border pt-6">
-              <Button variant="secondary" onClick={onSignOut}>
-                Abmelden
-              </Button>
-              <p class="mt-2 text-mini text-text-muted">
-                Display-Name, Avatar-Upload und Account-Löschung folgen
-                später, sobald wir die <code class="font-mono">profiles</code>
-                -Tabelle anbinden.
-              </p>
-            </div>
           </BentoModule>
         </div>
 
