@@ -4,19 +4,26 @@
  * around today, for items on the caller's home-tracked lists, with the
  * caller's own watch state attached.
  *
- * Why one wide window instead of a per-view range read: navigating weeks /
- * months stays inside the window, so prev/next never refetches — the grids
- * just re-bucket the same cached array. The window is generous (a couple of
- * months back, a few ahead) so this holds for any realistic browsing; going
- * far outside it simply shows empty days until the next stale refresh. The
- * tracked-scope + item-meta lookups are the exact same helpers the Home
- * dashboard uses (trackedItemIds + itemMeta), so "what shows up" matches
- * the home modules by construction.
+ * The window is ANCHORED on a month (the calendar's viewed month, passed in):
+ * it spans WINDOW_BACK months back to WINDOW_AHEAD ahead of that anchor.
+ * Navigating weeks / months within the loaded window never refetches — the
+ * grids just re-bucket the same cached array. The caller (Calendar.tsx) only
+ * advances the anchor when the viewed month nears the window edge, so the
+ * window follows along and far-out browsing loads its data instead of showing
+ * empty days. The tracked-scope + item-meta lookups are the exact same helpers
+ * the Home dashboard uses (trackedItemIds + itemMeta), so "what shows up"
+ * matches the home modules by construction.
  */
 import type { User } from "@supabase/supabase-js";
 import { queryOptions } from "@tanstack/solid-query";
 import { supabase } from "@/lib/supabase";
-import { addMonths, isoDay, startOfMonth, unique } from "@/lib/format";
+import {
+  addMonths,
+  fromIsoDay,
+  isoDay,
+  startOfMonth,
+  unique,
+} from "@/lib/format";
 import { itemMeta, trackedItemIds, type MediaType } from "@/lib/queries/home";
 
 // ── Query keys ──────────────────────────────────────────────────────────
@@ -31,10 +38,11 @@ export const calendarEventsKey = (userId: string) =>
 
 // ── Tunables ────────────────────────────────────────────────────────────
 
-/** Months of history kept in the window (relative to the current month). */
-const WINDOW_BACK = 2;
+/** Months of history kept in the window (relative to the anchor month).
+ *  Exported so Calendar.tsx can keep its recenter margin in sync. */
+export const WINDOW_BACK = 2;
 /** Months ahead kept in the window. */
-const WINDOW_AHEAD = 4;
+export const WINDOW_AHEAD = 4;
 /** Explicit ceiling so a busy window can't silently truncate at PostgREST's
  *  implicit 1000-row cap (the HEALTH A7 / GAP_QUERY_LIMIT class of bug). */
 const WINDOW_LIMIT = 5000;
@@ -65,23 +73,29 @@ export interface CalendarEvent {
 
 // ── Query options ───────────────────────────────────────────────────────
 
-export function calendarEventsOptions(user: User) {
+export function calendarEventsOptions(user: User, anchorIso: string) {
   return queryOptions({
-    queryKey: calendarEventsKey(user.id),
-    queryFn: () => fetchCalendarEvents(user.id),
+    queryKey: [...calendarEventsKey(user.id), anchorIso] as const,
+    queryFn: () => fetchCalendarEvents(user.id, anchorIso),
     staleTime: 5 * 60_000,
+    // Keep the grid populated while a recenter (new anchor) loads — the prior
+    // window's events stay visible instead of flashing empty.
+    placeholderData: (prev) => prev,
   });
 }
 
 // ── Fetcher ─────────────────────────────────────────────────────────────
 
-async function fetchCalendarEvents(userId: string): Promise<CalendarEvent[]> {
+async function fetchCalendarEvents(
+  userId: string,
+  anchorIso: string,
+): Promise<CalendarEvent[]> {
   const itemIds = await trackedItemIds();
   if (itemIds.length === 0) return [];
 
-  const today = new Date();
-  const from = addMonths(startOfMonth(today), -WINDOW_BACK);
-  const to = addMonths(startOfMonth(today), WINDOW_AHEAD);
+  const anchor = startOfMonth(fromIsoDay(anchorIso));
+  const from = addMonths(anchor, -WINDOW_BACK);
+  const to = addMonths(anchor, WINDOW_AHEAD);
 
   const { data: eps, error } = await supabase
     .from("episodes")

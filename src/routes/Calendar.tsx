@@ -1,5 +1,6 @@
 import type { JSX } from "solid-js";
 import {
+  createEffect,
   createMemo,
   createSignal,
   For,
@@ -17,6 +18,8 @@ import {
   calendarEventsKey,
   calendarEventsOptions,
   calendarQueryKey,
+  WINDOW_AHEAD,
+  WINDOW_BACK,
   type CalendarEvent,
 } from "@/lib/queries/calendar";
 import { homeQueryKey } from "@/lib/queries/home";
@@ -73,15 +76,45 @@ export default function Calendar() {
   const auth = useAuth();
   const queryClient = useQueryClient();
 
+  const todayIso = isoDay(new Date());
+  const [refDate, setRefDate] = createSignal(new Date());
+  const [view, setView] = createSignal<View>("week");
+  const [selectedIso, setSelectedIso] = createSignal(todayIso);
+
+  // Loaded-data window anchor. It lazily FOLLOWS the viewed month: advanced
+  // only once the viewed month reaches the EDGE-most loaded month, so
+  // navigating within the window never refetches, and stepping to the edge
+  // recenters + loads the next stretch. Because the recenter fires while the
+  // edge month is still loaded (and placeholderData keeps the prior window
+  // visible during the fetch), no empty month ever flashes.
+  //
+  // Loaded span is [anchor − WINDOW_BACK … anchor + WINDOW_AHEAD − 1]: the
+  // query's upper bound is exclusive (lt air_date < anchor+WINDOW_AHEAD), so
+  // the last fully-covered month is anchor + WINDOW_AHEAD − 1.
+  const monthIndex = (d: Date) => d.getFullYear() * 12 + d.getMonth();
+  const [windowAnchor, setWindowAnchor] = createSignal(
+    startOfMonth(new Date()),
+  );
+  createEffect(() => {
+    const viewed = monthIndex(refDate());
+    const anchor = monthIndex(windowAnchor());
+    const lowestLoaded = anchor - WINDOW_BACK;
+    const highestLoaded = anchor + WINDOW_AHEAD - 1;
+    if (viewed <= lowestLoaded || viewed >= highestLoaded) {
+      setWindowAnchor(startOfMonth(refDate()));
+    }
+  });
+  const anchorIso = createMemo(() => isoDay(windowAnchor()));
+
   const eventsQ = createQuery(() => ({
-    ...calendarEventsOptions(auth.user()!),
+    ...calendarEventsOptions(auth.user()!, anchorIso()),
     enabled: !!auth.user(),
   }));
 
   // Mitseher across the calendar window — co-member watches keyed by episode.
   // One window-scoped query feeds every day-pane row's eye marker.
   const coWatchersQ = createQuery(() => ({
-    ...calendarCoWatchersOptions(auth.user()!),
+    ...calendarCoWatchersOptions(auth.user()!, anchorIso()),
     enabled: !!auth.user(),
   }));
 
@@ -95,11 +128,6 @@ export default function Calendar() {
     },
     { table: "episodes", invalidates: [calendarQueryKey] },
   ]);
-
-  const todayIso = isoDay(new Date());
-  const [refDate, setRefDate] = createSignal(new Date());
-  const [view, setView] = createSignal<View>("week");
-  const [selectedIso, setSelectedIso] = createSignal(todayIso);
 
   // Events bucketed by local calendar day. Recomputed only when the query
   // data changes; both grids + the pane read from this one map.
@@ -146,7 +174,9 @@ export default function Calendar() {
   // invalidate the cross-cutting keys on settle so list badges + the home
   // modules + the item page reflect the new watch state (handshake's
   // cross-cutting cache-fan-out rule).
-  const cacheKey = () => calendarEventsKey(auth.user()!.id);
+  // Includes the active anchor — the data lives under the anchored key, so the
+  // optimistic patch must target the same one (a bare userId key would miss).
+  const cacheKey = () => [...calendarEventsKey(auth.user()!.id), anchorIso()];
   const patch = (pred: (e: CalendarEvent) => boolean, watched: boolean) =>
     queryClient.setQueryData<CalendarEvent[]>(cacheKey(), (old) =>
       old?.map((e) => (pred(e) ? { ...e, watched } : e)),

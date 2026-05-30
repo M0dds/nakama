@@ -393,7 +393,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **3 · Listen** | ✓ done — Overview, Detail, Create/Rename/Delete, Tracking-Toggle, Realtime, Optimistic |
 | **4 · Items + Tracking** | ✓ done (außer Status-Control für Movies/Games — siehe Offene Punkte). Inkl. Jikan + MangaDex Title-Fallback, Heute/Morgen/Demnächst-Tags |
 | **5 · Home Dashboard** | ✓ done — Was kommt / Fortsetzen / Logbuch. „Neue Folge"-Badges auf allen List-Surfaces |
-| **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker. Offen: Mitseher (Phase 7), dynamisches Range-Read |
+| **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker, Mitseher-Marker (Phase 7), dynamisches anker-zentriertes Range-Read |
 | **7 · Sharing** | ✓ done — Invite-by-@handle, Mitglieder-Modul, Einladungs-Inbox + Nav-Badge, Sync-Toggle mit Backfill, Auto-Sync-Fan-out, Mitseher-Indikator, Ownership-Transfer, Leave-List |
 | **7-Reste** | ✓ done (in `main`) — Logbuch-Welle-2 (`missed`, nur begonnene Items, + `ownership_transfer`), Co-Member-Avatare im Feed, Toast-System (`toast.tsx` + `Toaster`) + Trigger, ErrorBoundary, `MovePointerSensor` |
 | **8 · Polish** | offen — Motion-Choreografie, Empty-States, Skeleton-States, Route-Transitions |
@@ -409,7 +409,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 - ~~**Logbuch-Welle-2**~~ **erledigt** — `missed`-Events (neueste released-aber-ungetickte Folge pro getracktem Item, 14-Tage-Fenster, inline „Abhaken"-Quick-Tick via `mark_episodes_watched_synced`) + `ownership_transfer`-Events (aus `list_ownership_transfers`, RLS-scoped). `LogbookEvent`-Typen zu `BaseLogbookEvent`/`ItemLogbookEvent` gesplittet; Home-Realtime hört jetzt auch auf `list_ownership_transfers`. **missed ist auf BEGONNENE Items eingeschränkt** (≥1 Watch, started-check in `fetchMissedCandidates`) — sonst würde „Abhaken" einen nie gestarteten Long-Runner komplett durchticken.
 - ~~**Co-Member-Avatare im Logbuch-Feed**~~ **erledigt** — `profileNames` → `actorProfiles` (liefert `avatar_url`), `EventGlyph` zeigt für Co-Member das Gesicht + Kind-Badge, eigene/missed bleiben Icon.
 - ~~**Sonner/Toast**~~ **erledigt** — dependency-free `src/lib/toast.tsx` (`ToastProvider` + `useToast`) + `Toaster` (liquid rise/fall, z-30, in AppShell). Trigger: Einladung empfangen (global in BottomNav, von jeder Route) + Accept-Bestätigung in `InvitationsInbox`.
-- **Dynamisches Kalender-Range-Read** (noch offen) statt fix-breitem Fenster (`calendar.ts` WINDOW_BACK/AHEAD = −2/+4 Monate; die Mitseher-Query in `sharing.ts` spiegelt das Fenster mit −2/+5). Weit-raus-Navigation zeigt leere Tage bis Stale-Refresh.
+- ~~**Dynamisches Kalender-Range-Read**~~ **erledigt** — das `calendar.ts`-Fenster (`WINDOW_BACK/AHEAD` = −2/+4) wird jetzt auf einen **Anker-Monat** zentriert, den `Calendar.tsx` lazy nachzieht (recentert am Rand-Monat, `placeholderData` hält das Grid während des Refetch gefüllt). Events- + Mitseher-Query (sharing.ts) keyen beide auf den Anker (`anchorIso`). Weit-raus-Navigation lädt jetzt nach statt leer zu bleiben.
 
 1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
 

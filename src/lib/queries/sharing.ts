@@ -358,29 +358,25 @@ export const calendarCoWatchersKey = (userId: string) =>
 /**
  * Co-watchers across the calendar window, in one query (the day-pane shows many
  * items, so a per-item fetch would be N round-trips). Filters on the embedded
- * episodes.air_date over a window generous enough to cover the calendar's
- * −2/+4-month view — avoids an enormous episode-id IN list. Keyed by episode id
- * like the per-item variant.
+ * episodes.air_date over a window around the calendar's ANCHOR month (passed in,
+ * −2/+4 to cover the events window) — avoids an enormous episode-id IN list.
+ * Keyed by episode id like the per-item variant, plus the anchor so it follows
+ * the events query when the calendar recenters.
  */
-export function calendarCoWatchersOptions(user: User) {
+export function calendarCoWatchersOptions(user: User, anchorIso: string) {
   return {
-    queryKey: calendarCoWatchersKey(user.id),
+    queryKey: [...calendarCoWatchersKey(user.id), anchorIso] as const,
     staleTime: 30_000,
+    placeholderData: (prev: Record<string, CoWatcher[]> | undefined) => prev,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
       const coMemberIds = await coMemberIdsOf(user.id);
       if (coMemberIds.length === 0) return {};
 
-      const now = new Date();
-      const from = new Date(
-        now.getFullYear(),
-        now.getMonth() - 2,
-        1,
-      ).toISOString();
-      const to = new Date(
-        now.getFullYear(),
-        now.getMonth() + 5,
-        0,
-      ).toISOString();
+      // anchorIso is "YYYY-MM-DD" (first of the viewed month). Parse the parts
+      // directly to dodge new Date(iso)'s UTC-midnight shift.
+      const [y, mo] = anchorIso.split("-").map(Number);
+      const from = new Date(y, mo - 1 - 2, 1).toISOString();
+      const to = new Date(y, mo - 1 + 5, 0).toISOString();
 
       const { data, error } = await supabase
         .from("episode_watches")
