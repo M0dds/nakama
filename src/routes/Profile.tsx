@@ -14,13 +14,13 @@ import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 import { Skeleton } from "@/components/Skeleton";
 
 /**
- * Profile page. Identity block (real avatar + display-name + @handle + email,
- * read from the `profiles` row) in the left 2/3, theme + mode switcher in the
- * right 1/3, sign-out in the PageHeader aside (the page-level account action,
- * same slot as Liste löschen/verlassen on the list-detail page).
- *
- * Identity is read-only for now: display-name editing, avatar upload and
- * account deletion land later behind the `profiles` write path.
+ * Profile page. Konto module (left 2/3): editable identity — avatar upload
+ * (EditableAvatar → avatars storage bucket), inline display-name edit
+ * (EditableDisplayName → profiles.display_name), @handle + email as stable
+ * secondary lines, and the account-deletion danger zone (DeleteAccountSection)
+ * at the bottom. Erscheinungsbild module (right 1/3): theme + mode switcher.
+ * Sign-out lives in the PageHeader aside (page-level account action, same slot
+ * as Liste löschen/verlassen on the list-detail page).
  */
 export default function Profile() {
   const auth = useAuth();
