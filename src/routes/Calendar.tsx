@@ -9,7 +9,6 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { A } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
@@ -764,13 +763,9 @@ function DayPaneRow(props: { ev: CalendarEvent; watchers: CoWatcher[] }) {
 
   return (
     <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-      {/* Whole row → item page. Hover bg bleeds to the column edges via the
-          ul's -mx-5, same shape as the subpage list rows. */}
-      <A
-        href={`/item/${props.ev.type}/${props.ev.slug}`}
-        class="flex items-center gap-3 px-5 transition-colors hover:bg-surface"
-        aria-label={`${props.ev.title} ${epLabel()} öffnen`}
-      >
+      {/* Pure indicator row — no link, no tick. Just shows what airs and
+          whether it's been seen (own dot + co-member eye). */}
+      <div class="flex items-center gap-3 px-5">
         <div class="my-2.5 block h-[5.33rem] w-16 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
           <Show
             when={cover()}
@@ -815,7 +810,7 @@ function DayPaneRow(props: { ev: CalendarEvent; watchers: CoWatcher[] }) {
             />
           </div>
         </div>
-      </A>
+      </div>
     </li>
   );
 }
