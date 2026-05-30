@@ -79,43 +79,92 @@ export function useDragSettling(handler: (e: DragEvent) => void) {
 }
 
 /**
- * Defensive drag cleanup for solid-dnd 0.7.x. Its PointerSensor binds only
- * `pointermove` + `pointerup` on the document — there is NO `pointercancel`
- * handler. So when a press that has already activated a drag (the 250ms
- * hold-to-drag, or a >10px move) gets cancelled by the browser — a native
- * drag kicking in, pointer-capture loss, a DOM change under the pointer —
- * `dragEnd` never fires. The active draggable stays wedged: the row sits
- * elevated with its drop shadow and nothing can be dragged afterwards, until
- * a full reload. (Symptom: "click the handle without moving → row stuck.")
+ * Replacement pointer sensor for solid-dnd 0.7.5, used INSTEAD of the stock
+ * <DragDropSensors />. The stock PointerSensor has two faults that wedge the
+ * whole drag system:
  *
- * Mount this inside <DragDropProvider>. It force-ends a still-active drag on
- * pointercancel, with a window-level pointerup as a belt-and-suspenders — the
- * sensor's own document pointerup runs first on the happy path and zeroes the
- * state, so this only acts when that didn't happen. Returns null (no DOM).
+ *   1. It activates a drag on a stationary 250 ms press (hold-to-drag), so a
+ *      plain click on the handle — no movement — starts a drag. If the ensuing
+ *      pointerup isn't delivered to its document listener (e.g. implicit
+ *      pointer-capture released when the row re-renders, or a browser pointer
+ *      cancel), `dragEnd`/`sensorEnd` never run: `state.active.sensorId` stays
+ *      set, which makes `draggableActivators` short-circuit EVERY future press
+ *      (`if (state.active.sensor) break`). Result: one stuck row + no element
+ *      draggable at all, until reload.
+ *   2. It never listens for `pointercancel`, so a genuinely cancelled drag
+ *      leaks the same way.
+ *
+ * This sensor activates ONLY on movement past a small threshold — a click that
+ * doesn't move never enters drag state, so it can't get stuck — and tears down
+ * on pointerup AND pointercancel, removing every listener it added. It drives
+ * the same context actions the stock sensor does, so createSortable/closest-
+ * Center/transforms all behave identically once a drag is actually underway.
  */
-export function DragSafetyNet() {
+const ACTIVATION_DISTANCE = 8;
+
+export function MovePointerSensor() {
   const ctx = useDragDropContext();
   if (!ctx) return null;
-  const [state] = ctx;
+  const [state, actions] = ctx;
+  const { addSensor, removeSensor, sensorStart, sensorMove, sensorEnd, dragStart, dragEnd } =
+    actions;
+  const id = "nakama-move-pointer-sensor";
+  const isActiveSensor = () => state.active.sensorId === id;
 
-  const onCancel = () => {
-    // Only act once a drag has actually activated. Skipping the idle case
-    // matters on touch, where pointercancel fires on every scroll-start — we
-    // must not turn each of those into a stray pointerup.
-    if (state.active.sensorId === null && state.active.draggableId === null)
-      return;
-    // Hand the sensor the `pointerup` it never received so it runs its OWN
-    // teardown — detach() (removes the still-attached document move/up
-    // listeners + the activation timer) AND dragEnd() + sensorEnd(). Calling
-    // dragEnd() directly would reset the visible state but leave those stale
-    // listeners live, which could then spuriously start a fresh drag on the
-    // next pointer move.
-    document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+  const origin = { x: 0, y: 0 };
+  let pendingDraggableId: string | number | null = null;
+
+  const attach = (event: PointerEvent, draggableId: string | number) => {
+    if (event.button !== 0) return; // primary button / touch only
+    pendingDraggableId = draggableId;
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerEnd);
+    document.addEventListener("pointercancel", onPointerEnd);
+  };
+
+  const detach = () => {
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerEnd);
+    document.removeEventListener("pointercancel", onPointerEnd);
+  };
+
+  const onPointerMove = (event: PointerEvent) => {
+    const coordinates = { x: event.clientX, y: event.clientY };
+    if (!state.active.sensor) {
+      const dx = coordinates.x - origin.x;
+      const dy = coordinates.y - origin.y;
+      if (
+        pendingDraggableId !== null &&
+        Math.sqrt(dx * dx + dy * dy) > ACTIVATION_DISTANCE
+      ) {
+        sensorStart(id, origin);
+        dragStart(pendingDraggableId);
+      }
+    }
+    if (isActiveSensor()) {
+      event.preventDefault();
+      sensorMove(coordinates);
+    }
+  };
+
+  const onPointerEnd = (event: PointerEvent) => {
+    detach();
+    pendingDraggableId = null;
+    if (isActiveSensor()) {
+      event.preventDefault();
+      dragEnd();
+      sensorEnd();
+    }
   };
 
   onMount(() => {
-    window.addEventListener("pointercancel", onCancel);
-    onCleanup(() => window.removeEventListener("pointercancel", onCancel));
+    addSensor({ id, activators: { pointerdown: attach } });
+    onCleanup(() => {
+      detach();
+      removeSensor(id);
+    });
   });
 
   return null;

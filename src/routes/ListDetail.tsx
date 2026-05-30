@@ -9,7 +9,6 @@ import {
   closestCenter,
   createSortable,
   DragDropProvider,
-  DragDropSensors,
   SortableProvider,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -24,7 +23,7 @@ import {
   type ListEntry,
 } from "@/lib/queries/lists";
 import {
-  DragSafetyNet,
+  MovePointerSensor,
   reorderSection,
   sortableRowStyle,
   topOfSection,
@@ -337,8 +336,7 @@ export default function ListDetail() {
                   onDragEnd={onDragEnd}
                   collisionDetector={closestCenter}
                 >
-                  <DragDropSensors />
-                  <DragSafetyNet />
+                  <MovePointerSensor />
                   <ListEntries
                     items={items.data!}
                     listShortCode={params.shortCode}

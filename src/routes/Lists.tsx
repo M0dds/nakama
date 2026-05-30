@@ -9,7 +9,6 @@ import {
   closestCenter,
   createSortable,
   DragDropProvider,
-  DragDropSensors,
   SortableProvider,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
@@ -21,7 +20,7 @@ import {
   type ListSummary,
 } from "@/lib/queries/lists";
 import {
-  DragSafetyNet,
+  MovePointerSensor,
   reorderSection,
   sortableRowStyle,
   topOfSection,
@@ -220,8 +219,7 @@ export default function Lists() {
         onDragEnd={onDragEnd}
         collisionDetector={closestCenter}
       >
-        <DragDropSensors />
-        <DragSafetyNet />
+        <MovePointerSensor />
         <div class="flex flex-col md:flex-row md:items-start">
           {/* Linke Spalte 2/3 — Einladungen + Deine Listen + Geteilte Listen */}
           <div class="md:w-2/3">
