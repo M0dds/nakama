@@ -159,24 +159,25 @@ export function MembersModule(props: {
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-body text-text">
                     {m.name}
+                    {/* @handle inline right after the name, so the two read as
+                        one unit. Skipped when it's just the @-prefixed display
+                        name (magic-link users, where both derive from the email
+                        — no point showing "maria @maria"). */}
+                    <Show
+                      when={
+                        m.handle &&
+                        m.handle !== m.name &&
+                        m.handle !== `@${m.name}`
+                      }
+                    >
+                      <span class="ml-1.5 font-mono text-mini text-text-muted">
+                        {m.handle}
+                      </span>
+                    </Show>
                     <Show when={m.isMe}>
                       <span class="text-text-muted"> · du</span>
                     </Show>
                   </p>
-                  {/* @handle as a secondary id, unless it's just the @-prefixed
-                      display name (magic-link users, where both derive from the
-                      email — no point showing "maria" then "@maria"). */}
-                  <Show
-                    when={
-                      m.handle &&
-                      m.handle !== m.name &&
-                      m.handle !== `@${m.name}`
-                    }
-                  >
-                    <p class="truncate font-mono text-mini text-text-muted">
-                      {m.handle}
-                    </p>
-                  </Show>
                 </div>
 
                 <Show when={m.role === "owner"}>
