@@ -1,6 +1,8 @@
 import { createSignal, Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
+import { ListPlus } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/toast";
 import {
   createList,
   listsQueryKey,
@@ -22,6 +24,7 @@ import { Button } from "@/components/Button";
 export function CreateListForm() {
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [name, setName] = createSignal("");
   const [description, setDescription] = createSignal("");
@@ -45,6 +48,7 @@ export function CreateListForm() {
       // Refetch in the background as a sanity-check against any optimistic
       // drift (counts, server-side computed fields).
       queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      toast(`Liste „${newList.name}“ erstellt.`, { icon: ListPlus });
       setName("");
       setDescription("");
       setError(null);
