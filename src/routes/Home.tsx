@@ -23,7 +23,7 @@ import {
 } from "@/lib/queries/episodes";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
-  dayMonth,
+  dateLabel,
   dayOffset,
   episodeCode,
   formatDate,
@@ -299,7 +299,7 @@ function DayTag(props: {
   active: boolean;
 }) {
   const offset = () => dayOffset(props.airDate);
-  const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30.05."
+  const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30. Mai"
   const time = () =>
     hasAirTime(props.airDate) ? timeLabel(props.airDate) : null;
   const keyword = () => {
@@ -309,12 +309,12 @@ function DayTag(props: {
   };
 
   // Hover/active detail after the keyword. Today/tomorrow drop the weekday —
-  // "HEUTE" already says the day — and read "30.05. · 17:00"; other days keep
-  // the weekday and just gain the time → "MO · 01.06. · 17:00". The air time
+  // "HEUTE" already says the day — and read "30. Mai · 17:00"; other days keep
+  // the weekday and just gain the time → "MO · 01. Jun · 17:00". The air time
   // is omitted for date-only entries (no real airing schedule).
   const detail = () => {
     const t = time();
-    const date = keyword() ? dayMonth(new Date(props.airDate)) : weekdayDate();
+    const date = keyword() ? dateLabel(props.airDate) : weekdayDate();
     return t ? `${date} · ${t}` : date;
   };
 

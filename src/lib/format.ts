@@ -95,18 +95,15 @@ export function dateLabel(iso: string): string {
   return `${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
 }
 
-/** "30.05." — zero-padded numeric day.month, no weekday. */
-export function dayMonth(d: Date): string {
-  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
-}
-
-/** "DI · 02.06." — weekday + numeric date. Mono mini-caps in the UI. */
+/** "DI · 02. Jun" — weekday + day + 3-letter month (no trailing dot). Mono
+ *  mini-caps in the UI, so it reads "DI · 02. JUN". Same day/month form as
+ *  dateLabel, just with the weekday prefix. */
 export function formatDate(d: Date): string {
   const wd = d
     .toLocaleDateString("de-DE", { weekday: "short" })
     .replace(".", "")
     .toUpperCase();
-  return `${wd} · ${dayMonth(d)}`;
+  return `${wd} · ${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
 }
 
 /** "17:00" — 24h local time-of-day. */
