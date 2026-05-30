@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-8 sind durch, alles in `main`. Build grün (`tsc -b && vite build`), Working Tree clean, keine offenen Branches, alle 5 Migrationen angewendet. Nichts nach `origin` gepusht (alles lokal — vor Deploy push klären). **Phase 8 (Polish) gelandet:** Cover/Avatar-Fade-in beim Decode (`fadeOnLoad`, `src/lib/image-fade.ts`), formhaltende Skeletons (`src/components/Skeleton.tsx`), Theme-Switch-Crossfade (`applyTheme` + `theme-transition` in `@layer base`). Route-Transitions bewusst verworfen (Tab-Tool cuttet hart). Dazu Paletten-Refresh (Budapest/Medieval → Onsen/Vesper) + `accent-secondary` entfernt. **Nächster Schritt: Phase 9 (Deploy/Hosting)** — zuerst `origin`-Push-Strategie klären. Feature-Inventar pro Phase: §Status. Was noch offen ist: §Offene Punkte.
+**Stand:** Phasen 1-8 durch, alles in `main`. Build grün (`tsc -b && vite build`), Tree clean, keine offenen Branches, alle 5 Migrationen angewendet. **Nichts nach `origin` gepusht — alles lokal; vor Deploy Push-Strategie klären.** Nächster Schritt: Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
 
 ---
 
@@ -86,8 +86,8 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 
 **Komplett aus Logbook gepfropft.** `src/index.css` enthält:
 
-- **8 Themes × 2 Modes:** `default` (Standard japanisch-minimalistisch, Vermillion-Akzent), `teenaged` (Teenage Engineering), `sakura`, `totoro`, `biotech`, `maritime`, `onsen` (Teal/Koralle, komplementär), `vesper` (Violett/Amber, komplementär). Pro Theme nur die Core-Tokens (`--bg`, `--surface`, `--text`, `--text-muted`, `--border`, `--accent`, `--accent-on`); `--rule`/`--nav-*`/Shadows leiten sich global ab. **Kein `--accent-secondary` mehr** (war ungenutzt, in Phase 8 entfernt — eine Akzentfarbe).
-- **Tokens:** `--bg`, `--surface`, `--text`, `--text-muted`, `--border` (hairline), `--rule` (heavier tier), `--accent`, `--accent-on`, `--accent-secondary`, `--nav-bg/fg` (inverted).
+- **8 Themes × 2 Modes:** `default` (Standard japanisch-minimalistisch, Vermillion-Akzent), `teenaged` (Teenage Engineering), `sakura`, `totoro`, `biotech`, `maritime`, `onsen` (Teal/Koralle, komplementär), `vesper` (Violett/Amber, komplementär). Pro Theme nur die Core-Tokens; `--rule`/`--nav-*`/Shadows leiten sich global ab. Eine Akzentfarbe pro Theme (`--accent-secondary` war ungenutzt, Phase 8 entfernt).
+- **Tokens:** `--bg`, `--surface`, `--text`, `--text-muted`, `--border` (hairline), `--rule` (heavier tier), `--accent`, `--accent-on`, `--nav-bg/fg` (inverted).
 - **Elevation:** `--shadow-resting/raised/floating` — mode-based, nicht theme-based.
 - **Motion:** `--ease-quart` cubic-bezier(0.16, 1, 0.3, 1), `--dur-fast/base/slow` (200/300/320 ms).
 - **Type:** `--text-mini` (12px Mono Caps), `--text-label` (13px Mono), `--text-body` (15px), `--text-body-lg` (16px), `--text-heading` (22px), `--text-heading-lg` (24px). Zwei Weights: 400/500.
@@ -464,7 +464,7 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **AniList Cover-URL-Naming-Falle:** API-Feld `coverImage.large` liefert `/cover/medium/` URL (~230 px), nicht `/cover/large/` (~430 px). Letzteres im API-Feld `extraLarge`. Search holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time um.
 - **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript narrowed.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
-- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt (Phase-3-5-Catch-up `20260528200000` + Home-RPCs `20260529120000` + Pin-RPCs `20260529130000` + Phase-7-Auto-Sync-Cascade `20260530120000`). Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas vier Files in Timestamp-Reihenfolge.
+- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000` (= 5 Files). Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas fünf Files in Timestamp-Reihenfolge.
 
 - **Auto-Sync-RPCs statt Listen-Kontext (Phase 7).** Die geteilte Live-DB trägt `toggle_episode_synced(_item_id, _episode_id, _watched)` als *Auto-Sync*-Variante (Logbook `20260528180000`): sie fächert über ALLE Sync-ON-Listen mit dem Item auf, kein `list_item.id` im Call. Der Cascade hatte kein Auto-Sync-Twin — `mark_episodes_watched` fächert nur für ein explizit übergebenes `_list_item_id`. Nakamas Item-Page/Kalender sind kontextfrei, daher Migration `20260530120000`: neuer `mark_episodes_watched_synced(_item_id, _up_to_episode_id)` (Twin) + sicherheitshalber Re-Assert von `toggle_episode_synced` in der Auto-Sync-Form (drop+create, falls die geteilte DB noch die alte Signatur trug). **Falle:** named-param RPC-Calls brechen, wenn die Live-Funktion andere Parameter-NAMEN bei gleichen Typen hat — `create or replace` kann Param-Namen nicht ändern, es braucht `drop function` zuerst.
 
