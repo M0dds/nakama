@@ -71,6 +71,7 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 | `/login` | public | done |
 | `/auth/callback` | public | done |
 | `/styleguide` | public | done (18 Sektionen inkl. Anti-Patterns) |
+| `/features` | public | done — Feature-/Landingpage (standalone, von Login verlinkt), `src/routes/Features.tsx` |
 | `/` | protected (AppLayout) | done — Was kommt / Fortsetzen / Logbuch |
 | `/lists` | protected (AppLayout) | done |
 | `/lists/:shortCode` | protected (AppLayout) | done — DB-generated `adj-adj-noun` (`/lists/mystic-coral-voyager`) |
@@ -405,11 +406,18 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Konkret offen für die nächste Session
 
-**Phase 7 (Sharing) ist gelandet** (`src/lib/queries/sharing.ts`, `MembersModule`, `InvitationsInbox`, `SyncToggle`, `CoWatcherMark`, `Avatar` + Migration `20260530120000`), nach `main` gemerged. **Phase 7-Reste ebenfalls gelandet** (Branch `phase/7-reste`, noch nicht gemerged):
+**Phase 7 (Sharing) + Phase 7-Reste sind nach `main` gemerged**, Build grün, Working Tree clean, keine offenen Feature-Branches. Phase 7-Reste:
 - ~~**Logbuch-Welle-2**~~ **erledigt** — `missed`-Events (neueste released-aber-ungetickte Folge pro getracktem Item, 14-Tage-Fenster, inline „Abhaken"-Quick-Tick via `mark_episodes_watched_synced`) + `ownership_transfer`-Events (aus `list_ownership_transfers`, RLS-scoped). `LogbookEvent`-Typen zu `BaseLogbookEvent`/`ItemLogbookEvent` gesplittet; Home-Realtime hört jetzt auch auf `list_ownership_transfers`. **missed ist auf BEGONNENE Items eingeschränkt** (≥1 Watch, started-check in `fetchMissedCandidates`) — sonst würde „Abhaken" einen nie gestarteten Long-Runner komplett durchticken.
 - ~~**Co-Member-Avatare im Logbuch-Feed**~~ **erledigt** — `profileNames` → `actorProfiles` (liefert `avatar_url`), `EventGlyph` zeigt für Co-Member das Gesicht + Kind-Badge, eigene/missed bleiben Icon.
 - ~~**Sonner/Toast**~~ **erledigt** — dependency-free `src/lib/toast.tsx` (`ToastProvider` + `useToast`) + `Toaster` (liquid rise/fall, z-30, in AppShell). Trigger: Einladung empfangen (global in BottomNav, von jeder Route) + Accept-Bestätigung in `InvitationsInbox`.
 - ~~**Dynamisches Kalender-Range-Read**~~ **erledigt** — das `calendar.ts`-Fenster (`WINDOW_BACK/AHEAD` = −2/+4) wird jetzt auf einen **Anker-Monat** zentriert, den `Calendar.tsx` lazy nachzieht (recentert am Rand-Monat, `placeholderData` hält das Grid während des Refetch gefüllt). Events- + Mitseher-Query (sharing.ts) keyen beide auf den Anker (`anchorIso`). Weit-raus-Navigation lädt jetzt nach statt leer zu bleiben.
+
+**Post-Phase-7-Reste Session-Politur** (alles in `main`):
+- **Feature-/Landingpage `/features`** — public/standalone (`src/routes/Features.tsx`), Hero + nummerierte Feature-Sektionen mit stil-echten Mockups + live `ThemeSwitcher`, von der Login-Seite verlinkt.
+- **Air-Zeit-Anzeige** — AniList `airingAt` landet als voller Timestamp in `air_date`; gezeigt via `timeLabel`/`hasAirTime` in „Was kommt" (Hover), Item-Folgenliste (Heute/Morgen-Tags) + Kalender-Tagespane (Episodentitel → Uhrzeit). `missed`-Abhaken ist dadurch effektiv zeitgated; die Item-Seite tickt jederzeit.
+- **`missed` nur für begonnene Items** — started-check in `fetchMissedCandidates` (≥1 Watch), sonst würde „Abhaken" einen nie gestarteten Long-Runner durchticken.
+- **Toast-Erweiterungen** — Trigger auch bei Item-entfernt / Reset / Liste erstellt; **Swipe-to-dismiss** (horizontaler Pointer-Drag, Fly-out ab Schwelle).
+- **Datumsformat „30. MAI"** — `formatDate`/`dateLabel` (3-Buchstaben-Monat, kein Trailing-Dot) in „Was kommt"; Kalender-Tagespane-Header rechtsbündig „HEUTE · 30. MAI".
 
 1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
 
