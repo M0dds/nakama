@@ -4,14 +4,15 @@ import { X } from "lucide-solid";
 import type { ToastItem } from "@/lib/toast";
 
 /**
- * Toast stack — bottom-centered, floating above the BottomNav (which sits at
- * bottom-[26px]). z-30 keeps toasts above page content but below the AddSheet
- * backdrop (z-40), so opening the add-sheet cleanly covers them.
+ * Toast stack — top-right corner. z-30 keeps toasts above page content but
+ * below the AddSheet backdrop (z-40), so opening the add-sheet cleanly covers
+ * them. The container is width-capped (max-w-sm) and responsive: full width
+ * minus gutters on mobile, anchored to the right on desktop.
  *
- * Each card rises in and falls out (liquid). The `leaving` set — not a flag on
- * the toast object — drives the exit so the array stays referentially stable
- * for <For> (a new object reference would remount the row and skip the
- * animation; see AGENTS.md <For>-remount gotcha).
+ * Each card slides in from the right and falls out (liquid). The `leaving` set
+ * — not a flag on the toast object — drives the exit so the array stays
+ * referentially stable for <For> (a new object reference would remount the row
+ * and skip the animation; see AGENTS.md <For>-remount gotcha).
  */
 export function Toaster(props: {
   toasts: ToastItem[];
@@ -21,7 +22,7 @@ export function Toaster(props: {
   return (
     <div
       aria-live="polite"
-      class="pointer-events-none fixed inset-x-0 bottom-[104px] z-30 flex flex-col items-center gap-2 px-4"
+      class="pointer-events-none fixed right-4 top-4 z-30 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
     >
       <For each={props.toasts}>
         {(t) => (
@@ -42,12 +43,20 @@ function ToastCard(props: {
   onDismiss: () => void;
 }) {
   const [entered, setEntered] = createSignal(false);
+  // Bar starts full and drains over the toast's lifetime. Separate signal from
+  // `entered` only so its long transition can't smear the card's enter motion.
+  const [draining, setDraining] = createSignal(false);
+  const duration = () => props.toast.durationMs ?? 0;
+
   onMount(() => {
-    // Double-rAF so the browser paints the initial (offset + transparent)
-    // state before the transition flips — single rAF can collapse mount +
+    // Double-rAF so the browser paints the initial (offset + transparent, bar
+    // full) state before the transitions flip — single rAF can collapse mount +
     // flip into one frame and skip the animation (AppShell openAdd comment).
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => setEntered(true)),
+      requestAnimationFrame(() => {
+        setEntered(true);
+        setDraining(true);
+      }),
     );
   });
   const shown = () => entered() && !props.leaving;
@@ -55,10 +64,10 @@ function ToastCard(props: {
   return (
     <div
       role="status"
-      class="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-sm border border-border bg-surface px-4 py-3 shadow-floating transition-all duration-300 [transition-timing-function:var(--ease-quart)]"
+      class="pointer-events-auto relative flex w-full items-center gap-3 overflow-hidden rounded-sm border border-border bg-surface px-4 py-3 shadow-floating transition-all duration-300 [transition-timing-function:var(--ease-quart)]"
       classList={{
-        "translate-y-2 scale-95 opacity-0": !shown(),
-        "translate-y-0 scale-100 opacity-100": shown(),
+        "translate-x-3 opacity-0": !shown(),
+        "translate-x-0 opacity-100": shown(),
       }}
     >
       <Show when={props.toast.icon}>
@@ -90,6 +99,20 @@ function ToastCard(props: {
       >
         <X class="size-3.5" strokeWidth={2} aria-hidden />
       </button>
+
+      {/* Auto-dismiss countdown — drains left-to-right over the toast's
+          lifetime. scaleX (origin-left) is GPU-cheap; linear matches the
+          plain setTimeout. Hidden for sticky toasts (durationMs = 0). */}
+      <Show when={duration() > 0}>
+        <span
+          aria-hidden
+          class="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent"
+          style={{
+            transform: draining() ? "scaleX(0)" : "scaleX(1)",
+            transition: `transform ${duration()}ms linear`,
+          }}
+        />
+      </Show>
     </div>
   );
 }

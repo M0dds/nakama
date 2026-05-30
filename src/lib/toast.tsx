@@ -91,10 +91,12 @@ export function ToastProvider(props: ParentProps) {
 
   const toast: ToastFn = (message, opts = {}) => {
     const id = nextId++;
-    setToasts((ts) => [...ts, { id, message, ...opts }]);
-    const duration = opts.durationMs ?? DEFAULT_DURATION_MS;
-    if (duration > 0) {
-      timers.set(id, window.setTimeout(() => dismiss(id), duration));
+    // Resolve the duration up-front and store it on the item so the card's
+    // progress bar can animate over the exact same span as the auto-dismiss.
+    const durationMs = opts.durationMs ?? DEFAULT_DURATION_MS;
+    setToasts((ts) => [...ts, { id, message, ...opts, durationMs }]);
+    if (durationMs > 0) {
+      timers.set(id, window.setTimeout(() => dismiss(id), durationMs));
     }
     return id;
   };
