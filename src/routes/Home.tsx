@@ -1,7 +1,7 @@
 import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, Clock, Crown, Eye, EyeOff, ListPlus } from "lucide-solid";
+import { Check, Clock, Crown, Eye, EyeOff, ListPlus, RefreshCw } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
@@ -368,10 +368,14 @@ function EmptyUpcoming() {
  */
 const FORTSETZEN_VISIBLE = 4;
 
+/** Row identity: a sync instance and the global entry of the same item are two
+ *  distinct rows, so we key on listItemId when present (not just itemId). */
+const rowKey = (it: ContinueItem) => it.listItemId ?? it.itemId;
+
 function Fortsetzen(props: { items: ContinueItem[] }) {
   const navigate = useNavigate();
   const [activeId, setActiveId] = createSignal<string | null>(
-    props.items[0]?.itemId ?? null,
+    props.items[0] ? rowKey(props.items[0]) : null,
   );
   const [expanded, setExpanded] = createSignal(false);
 
@@ -387,9 +391,9 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
       const next = !prev;
       // Collapsing while the active row would disappear — refocus to the top.
       if (!next) {
-        const idx = props.items.findIndex((it) => it.itemId === activeId());
+        const idx = props.items.findIndex((it) => rowKey(it) === activeId());
         if (idx >= FORTSETZEN_VISIBLE)
-          setActiveId(props.items[0]?.itemId ?? null);
+          setActiveId(props.items[0] ? rowKey(props.items[0]) : null);
       }
       return next;
     });
@@ -400,29 +404,39 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
       <ul class="-mx-5">
         <For each={visible()}>
           {(item) => {
-            const active = () => item.itemId === activeId();
+            const key = rowKey(item);
+            const active = () => key === activeId();
+            // Instance entry → list-scoped route (+ link-state for instant lane
+            // + sync flag); global entry → the context-free item page.
+            const href = item.listItemId
+              ? `/lists/${item.listShortCode}/item/${item.type}/${item.slug}`
+              : `/item/${item.type}/${item.slug}`;
+            const linkState = item.listItemId
+              ? { listItemId: item.listItemId, syncEnabled: true }
+              : undefined;
             return (
               <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                 <A
-                  href={`/item/${item.type}/${item.slug}`}
+                  href={href}
+                  state={linkState}
                   aria-expanded={active()}
                   aria-label={
                     active() ? `${item.title} öffnen` : `${item.title} ansehen`
                   }
-                  onMouseEnter={() => setActiveId(item.itemId)}
+                  onMouseEnter={() => setActiveId(key)}
                   onClick={(e) => {
-                    if (item.itemId !== activeId()) {
+                    if (key !== activeId()) {
                       e.preventDefault();
-                      setActiveId(item.itemId);
+                      setActiveId(key);
                     }
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      if (item.itemId === activeId()) {
-                        navigate(`/item/${item.type}/${item.slug}`);
+                      if (key === activeId()) {
+                        navigate(href, { state: linkState });
                       } else {
-                        setActiveId(item.itemId);
+                        setActiveId(key);
                       }
                     }
                   }}
@@ -467,10 +481,18 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                     >
                       {typeLabel(item.type)}
                     </span>
-                    <div class="flex items-start gap-3">
+                    <div class="flex items-start gap-2">
                       <h3 class="min-w-0 truncate text-body font-medium text-text">
                         {item.title}
                       </h3>
+                      {/* Sync-instance marker — the list this shared,
+                          watched-from-0 instance belongs to. */}
+                      <Show when={item.listName}>
+                        <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase text-text-muted">
+                          <RefreshCw class="size-3" strokeWidth={2} aria-hidden />
+                          {item.listName}
+                        </span>
+                      </Show>
                       <Show when={item.hasNewEpisode}>
                         <span class="shrink-0 font-mono text-mini uppercase text-accent">
                           {newReleaseLabel(item.type)}

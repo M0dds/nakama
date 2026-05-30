@@ -52,6 +52,12 @@ export interface ContinueItem {
    *  the list-row badge: items the user is chronically behind on (latest
    *  release predates last watch) deliberately don't light up. */
   hasNewEpisode: boolean;
+  /** Sync-instances: set for an INSTANCE entry — the synced list_item this row
+   *  tracks, plus its list for the label + the list-scoped link. null for a
+   *  global entry (the regular per-user progress). */
+  listItemId: string | null;
+  listShortCode: string | null;
+  listName: string | null;
 }
 
 /** Was kommt — the next release per tracked item, soonest first. */
@@ -192,90 +198,61 @@ export function recentlyTickedOptions(user: User) {
 
 interface ContinueRow {
   item_id: string;
+  slug: string;
   title: string;
   type: MediaType;
   cover_url: string | null;
   total_episodes: number;
   watched_episodes: number;
   next_episode: number;
+  last_watched_at: string;
+  has_new_episode: boolean;
+  list_item_id: string | null;
+  list_short_code: string | null;
+  list_name: string | null;
 }
 
-/** Fortsetzen via the DB-side `continue_watching` RPC (inherited from
- *  Logbook). RLS scopes the rows to lists the caller is in; the RPC handles
- *  the SQL-side aggregation so 1000+-episode shows don't trip the PostgREST
- *  row cap. The RPC doesn't return slug or "new-since-last-watch" — both
- *  are batched after.
+/** Fortsetzen via the Nakama-specific `home_continue_watching` RPC (sync-
+ *  instances). It returns BOTH the global per-user entries AND one extra entry
+ *  per active sync instance (labelled with its list), all ranked by recency
+ *  server-side — so 1000+-episode shows don't trip the PostgREST row cap. slug,
+ *  has_new_episode and the list fields come back inline, so the only follow-up
+ *  is the batched next-episode title lookup.
  *
- *  Note: `nextEpisode` is the next UNwatched (released) episode's number.
- *  The component renders it as "E07" / "Kap. 12" depending on type. */
+ *  `nextEpisode` is the next UNwatched (released) episode's number; the
+ *  component renders it as "E07" / "Kap. 12". An instance entry carries
+ *  listItemId/listShortCode/listName so the row links into the list-scoped item
+ *  page and shows the list name. */
 async function fetchContinueWatching(): Promise<ContinueItem[]> {
-  const { data, error } = await supabase.rpc("continue_watching", {
+  const { data, error } = await supabase.rpc("home_continue_watching", {
     _limit: CONTINUE_LIMIT,
   });
   if (error) {
-    console.error("continue_watching RPC failed", error);
+    console.error("home_continue_watching RPC failed", error);
     return [];
   }
   const rows = (data ?? []) as ContinueRow[];
   if (rows.length === 0) return [];
 
-  const itemIds = rows.map((r) => r.item_id);
-  const [slugs, newSince, nextTitles] = await Promise.all([
-    slugMap(itemIds),
-    newEpisodeSinceLastWatch(itemIds),
-    nextEpisodeTitles(
-      rows.map((r) => ({ itemId: r.item_id, episodeNumber: r.next_episode })),
-    ),
-  ]);
-
-  return rows.flatMap((r) => {
-    const slug = slugs.get(r.item_id);
-    if (!slug) return []; // shouldn't happen — defensive against orphan rows
-    return [
-      {
-        itemId: r.item_id,
-        title: r.title,
-        type: r.type,
-        slug,
-        coverUrl: r.cover_url,
-        total: r.total_episodes,
-        watched: r.watched_episodes,
-        nextEpisode: r.next_episode,
-        nextEpisodeTitle: nextTitles.get(`${r.item_id}:${r.next_episode}`) ?? null,
-        hasNewEpisode: newSince.has(r.item_id),
-      },
-    ];
-  });
-}
-
-/** Per-item check: did any episode air AFTER the caller's most recent watch
- *  on that item? Returns the set of itemIds for which the answer is yes —
- *  i.e. "a new episode dropped since you last engaged with this".
- *
- *  Delegated to the `home_new_releases` RPC, which computes both per-item
- *  maxima (last watch, last release) server-side in one round-trip. The old
- *  client-side version pulled up to 2000 watch rows + 2000 episode rows and
- *  reduced them in JS — which silently truncated for heavy watchers or for
- *  candidate sets spanning several long-running shows (HEALTH A4).
- *
- *  Items where the caller is chronically behind (latest release predates
- *  their last watch) deliberately don't qualify — the badge is for "while
- *  you were away", not "you have a backlog". The RPC's inner join enforces
- *  the same "must have watched it at all" precondition. */
-async function newEpisodeSinceLastWatch(
-  itemIds: string[],
-): Promise<Set<string>> {
-  if (itemIds.length === 0) return new Set();
-  const { data, error } = await supabase.rpc("home_new_releases", {
-    _item_ids: itemIds,
-  });
-  if (error) {
-    console.error("home_new_releases RPC failed", error);
-    return new Set();
-  }
-  return new Set(
-    ((data ?? []) as { item_id: string }[]).map((r) => r.item_id),
+  const nextTitles = await nextEpisodeTitles(
+    rows.map((r) => ({ itemId: r.item_id, episodeNumber: r.next_episode })),
   );
+
+  return rows.map((r) => ({
+    itemId: r.item_id,
+    title: r.title,
+    type: r.type,
+    slug: r.slug,
+    coverUrl: r.cover_url,
+    total: r.total_episodes,
+    watched: r.watched_episodes,
+    nextEpisode: r.next_episode,
+    nextEpisodeTitle: nextTitles.get(`${r.item_id}:${r.next_episode}`) ?? null,
+    hasNewEpisode: r.has_new_episode,
+    listItemId: r.list_item_id,
+    listShortCode: r.list_short_code,
+    listName: r.list_name,
+  }));
 }
 
 /** Was kommt — first upcoming release inside the 14-day window per tracked
@@ -797,25 +774,6 @@ async function nextEpisodeTitles(
   for (const r of data ?? []) {
     const title = r.title as string | null;
     if (title) map.set(`${r.item_id}:${r.episode_number}`, title);
-  }
-  return map;
-}
-
-/** Slim slug-only variant of itemMeta — used by continue_watching where
- *  the RPC already returns title + type + cover but not slug. */
-async function slugMap(ids: string[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  if (ids.length === 0) return map;
-  const { data, error } = await supabase
-    .from("items")
-    .select("id, slug")
-    .in("id", ids);
-  if (error) {
-    console.error("items slug lookup failed", error);
-    return map;
-  }
-  for (const r of data ?? []) {
-    map.set(r.id as string, r.slug as string);
   }
   return map;
 }
