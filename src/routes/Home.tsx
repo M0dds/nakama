@@ -23,13 +23,16 @@ import {
 } from "@/lib/queries/episodes";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
+  dayMonth,
   dayOffset,
   episodeCode,
   formatDate,
+  hasAirTime,
   newReleaseLabel,
   nextLabel,
   rangeLabel,
   relTime,
+  timeLabel,
   typeInitial,
   typeLabel,
 } from "@/lib/format";
@@ -296,11 +299,23 @@ function DayTag(props: {
   active: boolean;
 }) {
   const offset = () => dayOffset(props.airDate);
-  const dateLabel = () => formatDate(new Date(props.airDate));
+  const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30.05."
+  const time = () =>
+    hasAirTime(props.airDate) ? timeLabel(props.airDate) : null;
   const keyword = () => {
     if (offset() === 0) return props.isHero ? "HEUTE" : "AUCH HEUTE";
     if (offset() === 1) return "MORGEN";
     return null;
+  };
+
+  // Hover/active detail after the keyword. Today/tomorrow drop the weekday —
+  // "HEUTE" already says the day — and read "30.05. · 17:00"; other days keep
+  // the weekday and just gain the time → "MO · 01.06. · 17:00". The air time
+  // is omitted for date-only entries (no real airing schedule).
+  const detail = () => {
+    const t = time();
+    const date = keyword() ? dayMonth(new Date(props.airDate)) : weekdayDate();
+    return t ? `${date} · ${t}` : date;
   };
 
   return (
@@ -314,15 +329,15 @@ function DayTag(props: {
             "text-text-muted": offset() > 1,
           }}
         >
-          {keyword() ?? dateLabel()}
+          {keyword() ?? weekdayDate()}
         </span>
       }
     >
       <span class="block font-mono text-mini uppercase tracking-wider text-accent-on">
         <Show when={keyword()}>
-          <span>{keyword()} </span>
+          <span>{keyword()} · </span>
         </Show>
-        <span class="opacity-75">{dateLabel()}</span>
+        <span class="opacity-75">{detail()}</span>
       </span>
     </Show>
   );

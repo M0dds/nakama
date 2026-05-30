@@ -95,17 +95,35 @@ export function dateLabel(iso: string): string {
   return `${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
 }
 
+/** "30.05." — zero-padded numeric day.month, no weekday. */
+export function dayMonth(d: Date): string {
+  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+}
+
 /** "DI · 02.06." — weekday + numeric date. Mono mini-caps in the UI. */
 export function formatDate(d: Date): string {
   const wd = d
     .toLocaleDateString("de-DE", { weekday: "short" })
     .replace(".", "")
     .toUpperCase();
-  const dm = d.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
+  return `${wd} · ${dayMonth(d)}`;
+}
+
+/** "17:00" — 24h local time-of-day. */
+export function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
-  return `${wd} · ${dm}`;
+}
+
+/** True when the timestamp carries a real time-of-day (not local midnight).
+ *  AniList stores a precise airingAt, so scheduled episodes are always true;
+ *  the guard just keeps a stray date-only entry from rendering a bogus
+ *  "00:00". */
+export function hasAirTime(iso: string): boolean {
+  const d = new Date(iso);
+  return d.getHours() !== 0 || d.getMinutes() !== 0;
 }
 
 /** Calendar-day offset (0 = today, 1 = tomorrow). Uses local midnight on
