@@ -349,18 +349,33 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
  *
  *  `limit` controls how many of the latest episodes are returned (default
  *  26 — roughly one cour, fits most ongoing anime without needing to load
- *  more). "Weitere laden" in the UI bumps the limit by another 26. The
- *  queryKey is `[...episodesQueryKey(type, slug), limit]` so each step is
- *  its own cache entry; invalidations target the prefix and clear all
- *  paginations at once. */
+ *  more). "Weitere laden" in the UI bumps the limit by another 26.
+ *
+ *  `instanceListItemId` selects the progress lane (sync-instances model):
+ *    - null   → GLOBAL progress (`episode_watches.list_item_id IS NULL`) —
+ *               Home / Calendar / search / non-synced lists / the global item
+ *               page all read this lane.
+ *    - <LI>   → that synced list_item's INSTANCE (`list_item_id = <LI>`) — the
+ *               list-scoped item page passes it only when sync is actually on.
+ *  The explicit IS NULL matters once instances exist: without it a synced
+ *  instance elsewhere would leak its rows into the global watched count.
+ *
+ *  The queryKey is `[...episodesQueryKey(type, slug), limit, instanceListItemId]`
+ *  so each pagination step AND each lane is its own cache entry; invalidations
+ *  target the prefix and clear all of them at once. */
 export function episodesQueryOptions(
   user: User,
   type: string,
   slug: string,
   limit: number = 26,
+  instanceListItemId: string | null = null,
 ) {
   return {
-    queryKey: [...episodesQueryKey(type, slug), limit] as const,
+    queryKey: [
+      ...episodesQueryKey(type, slug),
+      limit,
+      instanceListItemId,
+    ] as const,
     queryFn: async (): Promise<EpisodePayload> => {
       // Resolve the item via the natural key — we need its UUID for the
       // episodes/episode_watches joins (foreign-keyed on items.id) and the
@@ -392,20 +407,27 @@ export function episodesQueryOptions(
 
       await ensureEpisodes(item);
 
+      // Watched-count head query, scoped to the active progress lane (global
+      // NULL rows, or this synced instance's rows). Built up first so the
+      // lane filter applies before it joins the parallel batch below.
+      const watchedHead = supabase
+        .from("episode_watches")
+        .select("episode_id, episodes!inner(item_id)", {
+          count: "exact",
+          head: true,
+        })
+        .eq("user_id", user.id)
+        .eq("episodes.item_id", item.id);
+
       // Now read: total + watched (head counts) + latest `limit` in parallel.
       const [totalRes, watchedRes, latestRes] = await Promise.all([
         supabase
           .from("episodes")
           .select("id", { count: "exact", head: true })
           .eq("item_id", item.id),
-        supabase
-          .from("episode_watches")
-          .select("episode_id, episodes!inner(item_id)", {
-            count: "exact",
-            head: true,
-          })
-          .eq("user_id", user.id)
-          .eq("episodes.item_id", item.id),
+        instanceListItemId
+          ? watchedHead.eq("list_item_id", instanceListItemId)
+          : watchedHead.is("list_item_id", null),
         supabase
           .from("episodes")
           .select("id, season_number, episode_number, title, air_date")
@@ -431,11 +453,14 @@ export function episodesQueryOptions(
       const visibleIds = latestRows.map((e) => e.id);
       let watchedSet = new Set<string>();
       if (visibleIds.length > 0) {
-        const { data: w } = await supabase
+        const visibleWatch = supabase
           .from("episode_watches")
           .select("episode_id")
           .eq("user_id", user.id)
           .in("episode_id", visibleIds);
+        const { data: w } = await (instanceListItemId
+          ? visibleWatch.eq("list_item_id", instanceListItemId)
+          : visibleWatch.is("list_item_id", null));
         watchedSet = new Set(
           (w ?? []).map((r) => (r as { episode_id: string }).episode_id),
         );
@@ -462,12 +487,17 @@ export function episodesQueryOptions(
 // Mutations
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Single-tap toggle. Routes through the toggle_episode_synced RPC (auto-sync):
- *  it always writes the caller's own row, then fans out — on tick AND un-tick —
- *  to every member of every sync-ON list the caller is in that holds this item.
- *  No list context needed in the call; sync is a property of the item's
- *  membership, not the URL. Idempotent in both directions server-side. Solo
- *  users (no sync-ON list) just get their own row written/removed.
+/** Single-tap toggle, via the instance-aware set_episode_watch RPC.
+ *
+ *  `listItemId` carries the list context when the item was opened from a list
+ *  row (the list-scoped item page); omit it on the global item page / Home /
+ *  Calendar. The RPC picks the lane server-side:
+ *    - null OR a non-synced list_item → GLOBAL lane (own `list_item_id IS NULL`
+ *      row, NO fan-out — global progress is per-user even inside a shared,
+ *      non-synced list).
+ *    - a synced list_item → that INSTANCE's row + fan-out to the list's members
+ *      (sync = a shared watch-through from 0).
+ *  So the caller just passes its list_item_id (if any) and lets the RPC decide.
  *
  *  Deliberately no `.select()`/row-count check (HEALTH B2): the RPC returns
  *  void and the operation is idempotent, so 0 affected rows is ambiguous, not
@@ -476,38 +506,46 @@ export async function toggleEpisode(input: {
   itemId: string;
   episodeId: string;
   watched: boolean;
+  listItemId?: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("toggle_episode_synced", {
+  const { error } = await supabase.rpc("set_episode_watch", {
     _item_id: input.itemId,
     _episode_id: input.episodeId,
     _watched: input.watched,
+    _list_item_id: input.listItemId ?? null,
   });
   if (error) throw error;
 }
 
-/** Long-press cascade. Goes through the mark_episodes_watched_synced RPC, which
- *  resolves the "all episodes ≤ upToEpisodeId" set server-side in one statement
- *  AND fans out (auto-sync) to every member of every sync-ON list the caller is
- *  in that holds this item — the cascade twin of toggle_episode_synced, so a
- *  long-press behaves identically to a single tap regardless of entry point.
- *  No list context needed; solo users just get their own rows. */
+/** Long-press cascade ("bis hier alles"), via the instance-aware
+ *  mark_episodes_watched_upto RPC: it resolves the "all episodes ≤
+ *  upToEpisodeId" set server-side in one statement and branches on the SAME
+ *  global-vs-instance rule as set_episode_watch (see there). `listItemId` is
+ *  the list context when opened from a list row; omit on the global item page. */
 export async function markEpisodesWatchedUpTo(input: {
   itemId: string;
   upToEpisodeId: string;
+  listItemId?: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("mark_episodes_watched_synced", {
+  const { error } = await supabase.rpc("mark_episodes_watched_upto", {
     _item_id: input.itemId,
     _up_to_episode_id: input.upToEpisodeId,
+    _list_item_id: input.listItemId ?? null,
   });
   if (error) throw error;
 }
 
-/** Reset all of the caller's watch progress for one item via the
- *  reset_item_progress RPC — a set-based delete server-side, so it doesn't
- *  pull every episode id to the client first. */
-export async function resetItemProgress(itemId: string): Promise<void> {
-  const { error } = await supabase.rpc("reset_item_progress", {
+/** Reset the caller's watch progress for one item via the reset_progress RPC —
+ *  a set-based delete server-side, so it doesn't pull every episode id to the
+ *  client first. Resets the GLOBAL lane by default; pass a synced `listItemId`
+ *  to reset just that instance (caller-only either way). */
+export async function resetItemProgress(
+  itemId: string,
+  listItemId?: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc("reset_progress", {
     _item_id: itemId,
+    _list_item_id: listItemId ?? null,
   });
   if (error) throw error;
 }
