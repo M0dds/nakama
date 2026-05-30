@@ -22,10 +22,6 @@ import {
   type CalendarEvent,
 } from "@/lib/queries/calendar";
 import {
-  calendarCoWatchersOptions,
-  type CoWatcher,
-} from "@/lib/queries/sharing";
-import {
   addDays,
   addMonths,
   formatMonth,
@@ -46,7 +42,6 @@ import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
-import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { Segmented } from "@/components/Segmented";
 import { Skeleton } from "@/components/Skeleton";
 
@@ -105,21 +100,12 @@ export default function Calendar() {
     enabled: !!auth.user(),
   }));
 
-  // Mitseher across the calendar window — co-member watches keyed by episode.
-  // One window-scoped query feeds every day-pane row's eye marker.
-  const coWatchersQ = createQuery(() => ({
-    ...calendarCoWatchersOptions(auth.user()!, anchorIso()),
-    enabled: !!auth.user(),
-  }));
-
-  // Episode watches + new episode metadata are the only changes that move
-  // the calendar; list membership changes are caught on the next stale read.
-  // A co-member's tick also moves the Mitseher overlay.
+  // Episode watches + new episode metadata are the only changes that move the
+  // calendar; list membership changes are caught on the next stale read. The
+  // calendar shows only the caller's OWN seen-state (no co-member eye — that's
+  // a shared-list-only signal), so a watch just refreshes the events query.
   useRealtimeInvalidation("calendar", [
-    {
-      table: "episode_watches",
-      invalidates: [calendarQueryKey, ["calendar", "co-watchers"]],
-    },
+    { table: "episode_watches", invalidates: [calendarQueryKey] },
     { table: "episodes", invalidates: [calendarQueryKey] },
   ]);
 
@@ -224,7 +210,6 @@ export default function Calendar() {
               iso={selectedIso()}
               events={dayEvents(selectedIso())}
               todayIso={todayIso}
-              coWatchers={coWatchersQ.data ?? {}}
             />
           </BentoModule>
         </div>
@@ -682,7 +667,6 @@ function DayPane(props: {
   iso: string;
   events: CalendarEvent[];
   todayIso: string;
-  coWatchers: Record<string, CoWatcher[]>;
 }) {
   const date = () => fromIsoDay(props.iso);
   const isToday = () => props.iso === props.todayIso;
@@ -726,12 +710,7 @@ function DayPane(props: {
             row stays mounted and just its reactive props.ev updates. */}
         <ul class="-mx-5">
           <Index each={props.events}>
-            {(ev) => (
-              <DayPaneRow
-                ev={ev()}
-                watchers={props.coWatchers[ev().episodeId] ?? []}
-              />
-            )}
+            {(ev) => <DayPaneRow ev={ev()} />}
           </Index>
         </ul>
       </Show>
@@ -742,11 +721,11 @@ function DayPane(props: {
 /**
  * One episode in the day-pane — a READ-ONLY information row (handshake #1: the
  * calendar shows progress but isn't a tick surface; ticking happens on the item
- * page). The whole row links to the item page; on the right it carries the
- * co-member Mitseher eye + the caller's own watched dot. Released vs upcoming
- * only changes the text colour + meta line.
+ * page). On the right it carries only the caller's OWN watched dot — the
+ * co-member eye is a shared-list-only signal and never appears in the calendar.
+ * Released vs upcoming only changes the text colour + meta line.
  */
-function DayPaneRow(props: { ev: CalendarEvent; watchers: CoWatcher[] }) {
+function DayPaneRow(props: { ev: CalendarEvent }) {
   const cover = () => highResCover(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
   // Meta line under the title: the air TIME instead of the episode title — in
@@ -795,20 +774,16 @@ function DayPaneRow(props: { ev: CalendarEvent; watchers: CoWatcher[] }) {
             </p>
           </div>
 
-          {/* Right cluster — Mitseher eye (left) + the watched dot. The dot
-              mirrors the item-detail episode list: filled accent = watched,
-              hollow ring = not yet. Read-only indicators only. */}
-          <div class="flex shrink-0 items-center gap-2">
-            <CoWatcherMark watchers={props.watchers} />
-            <span
-              aria-hidden
-              class={`size-2 shrink-0 rounded-full transition-colors ${
-                props.ev.watched
-                  ? "bg-accent"
-                  : "bg-transparent ring-1 ring-border"
-              }`}
-            />
-          </div>
+          {/* Own watched dot only (no co-member eye in the calendar): filled
+              accent = watched, hollow ring = not yet. Read-only indicator. */}
+          <span
+            aria-hidden
+            class={`size-2 shrink-0 rounded-full transition-colors ${
+              props.ev.watched
+                ? "bg-accent"
+                : "bg-transparent ring-1 ring-border"
+            }`}
+          />
         </div>
       </div>
     </li>
