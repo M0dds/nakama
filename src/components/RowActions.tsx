@@ -1,8 +1,9 @@
 import { Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { ArrowRightLeft, Check, RotateCcw, X } from "lucide-solid";
+import { ArrowRightLeft, Check, ListX, RotateCcw, X } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
 import { PinButton } from "@/components/PinButton";
+import { useToast } from "@/lib/toast";
 import {
   episodesQueryKey,
   resetItemProgress,
@@ -51,6 +52,7 @@ interface Props {
 
 export function RowActions(props: Props) {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   // Mutations are defined at top level (Solid components run once and
   // createMutation must live in a stable reactive scope). They're only
@@ -68,6 +70,9 @@ export function RowActions(props: Props) {
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      toast(`Fortschritt für „${d.itemTitle}“ zurückgesetzt.`, {
+        icon: RotateCcw,
+      });
       d.setConfirming(null);
     },
   }));
@@ -82,6 +87,7 @@ export function RowActions(props: Props) {
       // covered by the ["list"] prefix).
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      toast(`„${d.itemTitle}“ aus der Liste entfernt.`, { icon: ListX });
       d.setConfirming(null);
     },
   }));

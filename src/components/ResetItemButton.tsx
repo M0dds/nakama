@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Check, X } from "lucide-solid";
+import { Check, RotateCcw, X } from "lucide-solid";
+import { useToast } from "@/lib/toast";
 import {
   episodesQueryKey,
   resetItemProgress,
@@ -27,6 +28,7 @@ export function ResetItemButton(props: {
   slug: string;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [confirming, setConfirming] = createSignal(false);
 
   const mutation = createMutation(() => ({
@@ -41,6 +43,9 @@ export function ResetItemButton(props: {
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      // Generic copy — we're on the item's own page, context is clear (and the
+      // component doesn't carry the title).
+      toast("Fortschritt zurückgesetzt.", { icon: RotateCcw });
       setConfirming(false);
     },
   }));
