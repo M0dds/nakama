@@ -24,6 +24,7 @@ import {
   type ListEntry,
 } from "@/lib/queries/lists";
 import {
+  DragSafetyNet,
   reorderSection,
   sortableRowStyle,
   topOfSection,
@@ -337,6 +338,7 @@ export default function ListDetail() {
                   collisionDetector={closestCenter}
                 >
                   <DragDropSensors />
+                  <DragSafetyNet />
                   <ListEntries
                     items={items.data!}
                     listShortCode={params.shortCode}

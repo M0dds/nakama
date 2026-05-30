@@ -21,6 +21,7 @@ import {
   type ListSummary,
 } from "@/lib/queries/lists";
 import {
+  DragSafetyNet,
   reorderSection,
   sortableRowStyle,
   topOfSection,
@@ -220,6 +221,7 @@ export default function Lists() {
         collisionDetector={closestCenter}
       >
         <DragDropSensors />
+        <DragSafetyNet />
         <div class="flex flex-col md:flex-row md:items-start">
           {/* Linke Spalte 2/3 — Einladungen + Deine Listen + Geteilte Listen */}
           <div class="md:w-2/3">

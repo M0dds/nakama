@@ -1,5 +1,9 @@
-import { createSignal, onCleanup } from "solid-js";
-import { transformStyle, type DragEvent } from "@thisbeyond/solid-dnd";
+import { createSignal, onCleanup, onMount } from "solid-js";
+import {
+  transformStyle,
+  useDragDropContext,
+  type DragEvent,
+} from "@thisbeyond/solid-dnd";
 
 /** solid-dnd doesn't export the `Transform` type itself — only the
  *  `transformStyle` consumer of it. Derive it back via Parameters so our
@@ -72,6 +76,49 @@ export function useDragSettling(handler: (e: DragEvent) => void) {
   };
 
   return { dragSettling, onDragStart, onDragEnd, settle };
+}
+
+/**
+ * Defensive drag cleanup for solid-dnd 0.7.x. Its PointerSensor binds only
+ * `pointermove` + `pointerup` on the document — there is NO `pointercancel`
+ * handler. So when a press that has already activated a drag (the 250ms
+ * hold-to-drag, or a >10px move) gets cancelled by the browser — a native
+ * drag kicking in, pointer-capture loss, a DOM change under the pointer —
+ * `dragEnd` never fires. The active draggable stays wedged: the row sits
+ * elevated with its drop shadow and nothing can be dragged afterwards, until
+ * a full reload. (Symptom: "click the handle without moving → row stuck.")
+ *
+ * Mount this inside <DragDropProvider>. It force-ends a still-active drag on
+ * pointercancel, with a window-level pointerup as a belt-and-suspenders — the
+ * sensor's own document pointerup runs first on the happy path and zeroes the
+ * state, so this only acts when that didn't happen. Returns null (no DOM).
+ */
+export function DragSafetyNet() {
+  const ctx = useDragDropContext();
+  if (!ctx) return null;
+  const [state] = ctx;
+
+  const onCancel = () => {
+    // Only act once a drag has actually activated. Skipping the idle case
+    // matters on touch, where pointercancel fires on every scroll-start — we
+    // must not turn each of those into a stray pointerup.
+    if (state.active.sensorId === null && state.active.draggableId === null)
+      return;
+    // Hand the sensor the `pointerup` it never received so it runs its OWN
+    // teardown — detach() (removes the still-attached document move/up
+    // listeners + the activation timer) AND dragEnd() + sensorEnd(). Calling
+    // dragEnd() directly would reset the visible state but leave those stale
+    // listeners live, which could then spuriously start a fresh drag on the
+    // next pointer move.
+    document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+  };
+
+  onMount(() => {
+    window.addEventListener("pointercancel", onCancel);
+    onCleanup(() => window.removeEventListener("pointercancel", onCancel));
+  });
+
+  return null;
 }
 
 /**
