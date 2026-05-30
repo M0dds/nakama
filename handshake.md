@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-7 + Phase-7-Reste + UX-Politur sind nach `main` gemerged. Build grün (`tsc -b && vite build`), Working Tree clean, keine offenen Branches, alle 5 Migrationen angewendet. Nichts nach `origin` gepusht (alles lokal — vor Deploy push klären). **Nächster Schritt: Phase 8 (Polish-Pass)** — Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition. Feature-Inventar pro Phase: §Status. Was noch offen ist: §Offene Punkte.
+**Stand:** Phasen 1-8 sind durch, alles in `main`. Build grün (`tsc -b && vite build`), Working Tree clean, keine offenen Branches, alle 5 Migrationen angewendet. Nichts nach `origin` gepusht (alles lokal — vor Deploy push klären). **Phase 8 (Polish) gelandet:** Cover/Avatar-Fade-in beim Decode (`fadeOnLoad`, `src/lib/image-fade.ts`), formhaltende Skeletons (`src/components/Skeleton.tsx`), Theme-Switch-Crossfade (`applyTheme` + `theme-transition` in `@layer base`). Route-Transitions bewusst verworfen (Tab-Tool cuttet hart). Dazu Paletten-Refresh (Budapest/Medieval → Onsen/Vesper) + `accent-secondary` entfernt. **Nächster Schritt: Phase 9 (Deploy/Hosting)** — zuerst `origin`-Push-Strategie klären. Feature-Inventar pro Phase: §Status. Was noch offen ist: §Offene Punkte.
 
 ---
 
@@ -86,7 +86,7 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 
 **Komplett aus Logbook gepfropft.** `src/index.css` enthält:
 
-- **8 Themes × 2 Modes:** `default` (Standard japanisch-minimalistisch, Vermillion-Akzent), `teenaged` (Teenage Engineering), `sakura`, `budapest`, `totoro`, `medieval`, `biotech`, `maritime`.
+- **8 Themes × 2 Modes:** `default` (Standard japanisch-minimalistisch, Vermillion-Akzent), `teenaged` (Teenage Engineering), `sakura`, `totoro`, `biotech`, `maritime`, `onsen` (Teal/Koralle, komplementär), `vesper` (Violett/Amber, komplementär). Pro Theme nur die Core-Tokens (`--bg`, `--surface`, `--text`, `--text-muted`, `--border`, `--accent`, `--accent-on`); `--rule`/`--nav-*`/Shadows leiten sich global ab. **Kein `--accent-secondary` mehr** (war ungenutzt, in Phase 8 entfernt — eine Akzentfarbe).
 - **Tokens:** `--bg`, `--surface`, `--text`, `--text-muted`, `--border` (hairline), `--rule` (heavier tier), `--accent`, `--accent-on`, `--accent-secondary`, `--nav-bg/fg` (inverted).
 - **Elevation:** `--shadow-resting/raised/floating` — mode-based, nicht theme-based.
 - **Motion:** `--ease-quart` cubic-bezier(0.16, 1, 0.3, 1), `--dur-fast/base/slow` (200/300/320 ms).
@@ -116,6 +116,8 @@ Kurzbeschreibungen — Implementierungsdetails stehen im Source, durable Pattern
 - `ThemeSwitcher` — Modus-Toggle + Theme-Grid; in Profil + Styleguide
 - `Segmented` — liquid 2/3-Wege-Switch mit Stretch-and-Contract-Bubble (siehe §Gotchas → Liquid Bubble). Eingesetzt von `ListTrackingToggle`, `ThemeSwitcher`, Styleguide
 - `NotFound` — geteilte Surface für nicht-existente Liste/Item. Ersetzt früheren silent `navigate("/lists")`-Bounce
+- `Skeleton` (`src/components/Skeleton.tsx`) — Phase 8 Lade-Platzhalter: surface-getönter, hart-eckiger, `motion-safe:animate-pulse` Block. Per-Fläche zu formhaltenden Kompositionen zusammengesetzt (Listen-/Item-Rows, Was-kommt-Cards, Logbuch-Feed, Kalender-Grid, Profil-Avatar) → kein Layout-Shift beim Nachladen. Ersetzt alle „Lade …"-Texte.
+- `fadeOnLoad` (`src/lib/image-fade.ts`) — Phase 8 Ref-Helfer für `<img>`: faded das Bild beim Decode ein (WAAPI, `fill: backwards`, kein Flash, kein zurückbleibender Transform → klobbert `transition-transform` der Hover-Cover nicht). An allen 7 Bild-Stellen. `prefers-reduced-motion` → sofort sichtbar.
 
 **Layout-Shell:**
 
@@ -391,7 +393,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **6 · Kalender** | ✓ done — Wochen-/Monats-Grid, Tag-Pane Quick-Tick + Long-Press-Cascade, Date-Picker, Mitseher-Marker (Phase 7), dynamisches anker-zentriertes Range-Read |
 | **7 · Sharing** | ✓ done — Invite-by-@handle, Mitglieder-Modul, Einladungs-Inbox + Nav-Badge, Sync-Toggle mit Backfill, Auto-Sync-Fan-out, Mitseher-Indikator, Ownership-Transfer, Leave-List |
 | **7-Reste** | ✓ done (in `main`) — Logbuch-Welle-2 (`missed`, nur begonnene Items, + `ownership_transfer`), Co-Member-Avatare im Feed, Toast-System (`toast.tsx` + `Toaster`) + Trigger, ErrorBoundary, `MovePointerSensor` |
-| **8 · Polish** | offen — Motion-Choreografie, Empty-States, Skeleton-States, Route-Transitions |
+| **8 · Polish** | ✓ done — Cover/Avatar-Fade-in (`fadeOnLoad`), Skeleton-States (`Skeleton`), Theme-Switch-Crossfade (`@layer base`). Route-Transitions bewusst verworfen (Tab-Tool cuttet hart, Apple-Linse) |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
 
 ---
@@ -400,8 +402,8 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Jetzt
 
-1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell harte Swaps), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, sanfte Theme-Switch-Transition (CSS-Vars flippen aktuell instant).
-2. Kleine UX-Polish-Wünsche zwischendrin atomar abarbeiten — so kamen Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing rein.
+1. **Phase 9 — Deploy/Hosting.** ZUERST mit dem User die `origin`-Push-Strategie klären (Branch/Remote) — **nichts ist gepusht, alles lokal.** Dann: PWA-Manifest steht in `vite.config.ts`; DB-Verifikation (Logbook-Migrationen gegen Live-DB abgleichen + als Nakama-Migrationen tracken).
+2. Kleine UX-Polish-Wünsche zwischendrin atomar abarbeiten — so kamen Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing, der Phase-8-Polish rein.
 
 ### Geplant, nicht akut
 
@@ -450,6 +452,8 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **Per-property transition-timing braucht inline style.** Tailwind's `transition-{prop} duration-X delay-Y` setzt EIN timing für alle gelisteten properties. Für unterschiedliche Timings pro Property: inline `style={{ transition: 'left 500ms ..., opacity 50ms ...' }}` mit comma-separierten Rules.
 - **Conditional Transition bei hidden-Toggle.** PinButton/DragHandle haben `hidden`-Prop: wenn true, KEIN `transition-opacity` in Class → opacity-0 wird INSTANT (matched hard-cut Show-Swap der parallel laufenden destructive icons). Wenn false: transition-opacity aktiv → hover-reveal smooth. Browser checked transition-property AT NEW STATE.
 - **Drag-Settle suppresses hover-bg.** Lists.tsx + ListDetail.tsx setzen `dragSettling`-Signal von dragStart bis `SETTLE_MS=220ms` nach dragEnd. Während dieser Zeit ist `hover:bg-surface` auf Rows aus — sonst flicker'd hover-bg während Items unter Cursor durchgleiten.
+- **Motion-Philosophie (Apple-Linse, Phase 8).** Nakama ist ein *Tool*, keine Landingpage: Motion ist **funktional**, nicht dekorativ — sie erklärt Zustandsänderungen (Bubble-Morph, Pin-Resort, Toast), wahrt räumliche Kontinuität (AddSheet morpht aus dem `+`), oder versteckt Lade-/Decode-Ruckeln (Cover-Fade, Skeletons). **Kein Entrance-Choreo auf Content** (gestaffelte Page-/Element-Einblendungen wurden gebaut und wieder verworfen — lasen sich „aufgeführt"/laggy). **Route-Transitions sind bewusst hart** (Tab-Tool wie iOS-Tabbar — nicht erneut animieren).
+- **Theme-Switch-Crossfade braucht `@layer base`, NICHT unlayered.** Die `theme-transition`-Regel (faded alle Farben beim Theme-Wechsel) muss in einem Cascade-Layer *unter* Tailwinds `utilities` liegen. **Cascade Layers schlagen Spezifität:** eine *unlayered* Regel (auch mit `:where()`/Spezifität 0) überschreibt JEDE `@layer utilities`-Utility — also auch `transition-all` der Liquid-Bubble → die Bubble springt statt zu stretchen, aber nur während des Theme-Fensters (heimtückisch: Kalender-Segmented heil, Theme-Segmented kaputt). In `@layer base` gewinnt jede eigene Transition-Utility, nur statische Flächen kriegen den Farb-Crossfade. `applyTheme` toggelt die Klasse 300 ms + forced reflow (`void root.offsetHeight`) damit der Fade zuverlässig feuert; reduced-motion überspringt.
 
 ### Daten / RLS
 
