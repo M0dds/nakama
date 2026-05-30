@@ -9,10 +9,11 @@ import type { ToastItem } from "@/lib/toast";
  * them. The container is width-capped (max-w-sm) and responsive: full width
  * minus gutters on mobile, anchored to the right on desktop.
  *
- * Each card slides in from the right and falls out (liquid). The `leaving` set
- * — not a flag on the toast object — drives the exit so the array stays
- * referentially stable for <For> (a new object reference would remount the row
- * and skip the animation; see AGENTS.md <For>-remount gotcha).
+ * Each card slides in from the right and falls out (liquid), and can be
+ * swiped away horizontally (Apple-style). The `leaving` set — not a flag on
+ * the toast object — drives the exit so the array stays referentially stable
+ * for <For> (a new object reference would remount the row and skip the
+ * animation; see AGENTS.md <For>-remount gotcha).
  */
 export function Toaster(props: {
   toasts: ToastItem[];
@@ -37,6 +38,11 @@ export function Toaster(props: {
   );
 }
 
+/** Drag past this (px, either direction) to dismiss; below it, snap back. */
+const SWIPE_DISMISS_PX = 80;
+/** Opacity reaches 0 at this drag distance — gives the swipe visible feedback. */
+const SWIPE_FADE_PX = 200;
+
 function ToastCard(props: {
   toast: ToastItem;
   leaving: boolean;
@@ -47,6 +53,13 @@ function ToastCard(props: {
   // `entered` only so its long transition can't smear the card's enter motion.
   const [draining, setDraining] = createSignal(false);
   const duration = () => props.toast.durationMs ?? 0;
+
+  // Swipe-to-dismiss state. dragX follows the finger; dragging disables the
+  // transition so the follow is 1:1.
+  const [dragX, setDragX] = createSignal(0);
+  const [dragging, setDragging] = createSignal(false);
+  let startX = 0;
+  let pointerId: number | null = null;
 
   onMount(() => {
     // Double-rAF so the browser paints the initial (offset + transparent, bar
@@ -59,16 +72,67 @@ function ToastCard(props: {
       }),
     );
   });
+
   const shown = () => entered() && !props.leaving;
+
+  // One inline transform/opacity source so the enter/exit base and the live
+  // drag offset compose cleanly (a classList toggle would fight the inline
+  // drag transform). baseX 12px ≈ the old translate-x-3 enter offset.
+  const cardStyle = () => {
+    const baseX = shown() ? 0 : 12;
+    const baseOpacity = shown() ? 1 : 0;
+    const fade = Math.max(0, 1 - Math.abs(dragX()) / SWIPE_FADE_PX);
+    return {
+      transform: `translateX(${baseX + dragX()}px)`,
+      opacity: `${baseOpacity * fade}`,
+      transition: dragging()
+        ? "none"
+        : "transform 300ms var(--ease-quart), opacity 300ms var(--ease-quart)",
+    };
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    // Let taps on the action / dismiss buttons through — only the card body
+    // starts a swipe.
+    if ((e.target as HTMLElement).closest("button")) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    setDragging(true);
+    startX = e.clientX;
+    pointerId = e.pointerId;
+    e.currentTarget instanceof HTMLElement &&
+      e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragging()) return;
+    setDragX(e.clientX - startX);
+  };
+  const onPointerEnd = (e: PointerEvent) => {
+    if (!dragging()) return;
+    setDragging(false);
+    if (pointerId !== null && e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.releasePointerCapture?.(pointerId);
+    }
+    pointerId = null;
+    const dx = dragX();
+    if (Math.abs(dx) > SWIPE_DISMISS_PX) {
+      // Fly the rest of the way out in the drag direction, then let the
+      // provider remove it (transition is back on now that dragging is false).
+      setDragX(Math.sign(dx) * window.innerWidth);
+      props.onDismiss();
+    } else {
+      setDragX(0); // snap back
+    }
+  };
 
   return (
     <div
       role="status"
-      class="pointer-events-auto relative flex w-full items-center gap-3 overflow-hidden rounded-sm border border-border bg-surface px-4 py-3 shadow-floating transition-all duration-300 [transition-timing-function:var(--ease-quart)]"
-      classList={{
-        "translate-x-3 opacity-0": !shown(),
-        "translate-x-0 opacity-100": shown(),
-      }}
+      style={cardStyle()}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      class="pointer-events-auto relative flex w-full touch-pan-y items-center gap-3 overflow-hidden rounded-sm border border-border bg-surface px-4 py-3 shadow-floating"
     >
       <Show when={props.toast.icon}>
         <Dynamic
@@ -78,11 +142,11 @@ function ToastCard(props: {
           aria-hidden="true"
         />
       </Show>
-      <p class="min-w-0 flex-1 text-body text-text">{props.toast.message}</p>
+      <p class="min-w-0 flex-1 select-none text-body text-text">
+        {props.toast.message}
+      </p>
       {/* Both controls follow the project's icon-button idiom — square-ish,
-          rounded-xs, muted at rest with a hover bg-fill + colour shift. The
-          fill is `border` (the translucent hairline tone) since the card is
-          already `surface`, so the usual `hover:bg-surface` would be a no-op. */}
+          rounded-xs, muted at rest with a hover bg-fill + colour shift. */}
       <Show when={props.toast.action}>
         <button
           type="button"
