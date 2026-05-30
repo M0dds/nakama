@@ -79,6 +79,10 @@ function ToastCard(props: {
         />
       </Show>
       <p class="min-w-0 flex-1 text-body text-text">{props.toast.message}</p>
+      {/* Both controls follow the project's icon-button idiom — square-ish,
+          rounded-xs, muted at rest with a hover bg-fill + colour shift. The
+          fill is `border` (the translucent hairline tone) since the card is
+          already `surface`, so the usual `hover:bg-surface` would be a no-op. */}
       <Show when={props.toast.action}>
         <button
           type="button"
@@ -86,7 +90,7 @@ function ToastCard(props: {
             props.toast.action!.onClick();
             props.onDismiss();
           }}
-          class="shrink-0 rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-accent transition-colors hover:bg-accent/10"
+          class="inline-flex shrink-0 items-center rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-border hover:text-accent"
         >
           {props.toast.action!.label}
         </button>
@@ -95,7 +99,7 @@ function ToastCard(props: {
         type="button"
         onClick={props.onDismiss}
         aria-label="Schließen"
-        class="-mr-1 shrink-0 rounded-xs p-1 text-text-muted transition-colors hover:text-text"
+        class="-mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-border hover:text-text"
       >
         <X class="size-3.5" strokeWidth={2} aria-hidden />
       </button>
