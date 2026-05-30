@@ -170,9 +170,7 @@ export function MembersModule(props: {
                         m.handle !== `@${m.name}`
                       }
                     >
-                      <span class="ml-1.5 font-mono text-mini text-text-muted">
-                        {m.handle}
-                      </span>
+                      <span class="text-text-muted"> · {m.handle}</span>
                     </Show>
                     <Show when={m.isMe}>
                       <span class="text-text-muted"> · du</span>
