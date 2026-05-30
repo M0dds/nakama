@@ -11,6 +11,7 @@ import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-que
 import { Check, Loader2, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { searchAniList, type AniListResult } from "@/lib/anilist";
+import { fadeOnLoad } from "@/lib/image-fade";
 import { addItemToList } from "@/lib/queries/items";
 import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
@@ -576,6 +577,7 @@ function ResultRow(props: {
               }
             >
               <img
+                ref={fadeOnLoad}
                 src={props.result.coverUrl!}
                 alt=""
                 class="size-full object-cover"

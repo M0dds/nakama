@@ -3,6 +3,7 @@ import { A, useNavigate } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
 import { Check, Clock, Crown, Eye, EyeOff, ListPlus } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
+import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
 import {
   continueWatchingOptions,
@@ -244,6 +245,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                         highResCover swaps in the `/cover/large/` variant
                         — same URL host, larger image. */}
                     <img
+                      ref={fadeOnLoad}
                       src={highResCover(item.coverUrl)!}
                       alt=""
                       class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
@@ -444,6 +446,7 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                       }
                     >
                       <img
+                        ref={fadeOnLoad}
                         src={item.coverUrl!}
                         alt=""
                         class="h-full w-full object-cover"

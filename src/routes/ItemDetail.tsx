@@ -8,6 +8,7 @@ import {
 import { ChevronDown, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
+import { fadeOnLoad } from "@/lib/image-fade";
 import { itemQueryOptions } from "@/lib/queries/items";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
@@ -430,6 +431,7 @@ function Cover(props: { coverUrl: string | null; fallbackLetter: string }) {
             native) tips into pixelated territory on retina. highResCover
             swaps in `/cover/large/` (~430 px) — same host. */}
         <img
+          ref={fadeOnLoad}
           src={highResCover(props.coverUrl)!}
           alt=""
           class="size-full object-cover"

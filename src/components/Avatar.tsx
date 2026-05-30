@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { fadeOnLoad } from "@/lib/image-fade";
 
 /**
  * Round member avatar — profile image when available, else a mono initial on
@@ -40,6 +41,7 @@ export function Avatar(props: {
         }
       >
         <img
+          ref={fadeOnLoad}
           src={props.avatarUrl!}
           alt=""
           class="size-full object-cover"

@@ -13,6 +13,7 @@ import { A } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
+import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
 import {
   calendarEventsKey,
@@ -867,7 +868,12 @@ function DayPaneRow(props: {
               </div>
             }
           >
-            <img src={cover()!} alt="" class="h-full w-full object-cover" />
+            <img
+              ref={fadeOnLoad}
+              src={cover()!}
+              alt=""
+              class="h-full w-full object-cover"
+            />
           </Show>
         </A>
 
