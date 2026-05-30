@@ -38,11 +38,13 @@ import {
   formatMonth,
   formatWeekRange,
   fromIsoDay,
+  hasAirTime,
   isoDay,
   mondayOf,
   MONTH_ABBR_3,
   nextLabel,
   startOfMonth,
+  timeLabel,
   typeInitial,
   typeLabel,
   WEEKDAYS_MON,
@@ -718,17 +720,20 @@ function DayPane(props: {
 
   return (
     <div>
-      {/* Day header. */}
+      {/* Day header. "Today" is signalled by accenting the date — the same
+          quiet language the grid uses (accent date number, no badge) — instead
+          of a loud "HEUTE" caps chip that read as out of place here. */}
       <div class="mb-3 flex items-baseline gap-2">
         <h3 class="text-body-lg font-medium text-text">{weekdayLong()}</h3>
-        <span class="font-mono text-label tabular-nums text-text-muted">
+        <span
+          class="font-mono text-label tabular-nums"
+          classList={{
+            "text-accent": props.iso === props.todayIso,
+            "text-text-muted": props.iso !== props.todayIso,
+          }}
+        >
           {dateText()}
         </span>
-        <Show when={props.iso === props.todayIso}>
-          <span class="font-mono text-mini uppercase tracking-wider text-accent">
-            heute
-          </span>
-        </Show>
       </div>
 
       <Show
@@ -825,6 +830,16 @@ function DayPaneRow(props: {
 
   const cover = () => highResCover(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
+  // Meta line under the title: the air TIME instead of the episode title — in
+  // the calendar "when does it drop" beats the episode name (which lives on
+  // the item page). Future episodes without a known time keep the "noch nicht
+  // erschienen" hint; the dimmed style already marks them as upcoming.
+  const metaLine = () =>
+    hasAirTime(props.ev.airDate)
+      ? `${epLabel()} · ${timeLabel(props.ev.airDate)}`
+      : props.ev.released
+        ? epLabel()
+        : `${epLabel()} · noch nicht erschienen`;
 
   return (
     <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
@@ -863,9 +878,7 @@ function DayPaneRow(props: {
                   {typeLabel(props.ev.type)}
                 </span>
                 <p class="truncate text-body text-text-muted">{props.ev.title}</p>
-                <p class="font-mono text-mini text-text-muted">
-                  {epLabel()} · noch nicht erschienen
-                </p>
+                <p class="font-mono text-mini text-text-muted">{metaLine()}</p>
               </div>
             </div>
           }
@@ -891,9 +904,7 @@ function DayPaneRow(props: {
               </span>
               <p class="truncate text-body text-text">{props.ev.title}</p>
               <p class="truncate font-mono text-mini text-text-muted">
-                <Show when={props.ev.episodeTitle} fallback={epLabel()}>
-                  {epLabel()} · {props.ev.episodeTitle}
-                </Show>
+                {metaLine()}
               </p>
             </div>
 
