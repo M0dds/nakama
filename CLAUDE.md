@@ -13,10 +13,10 @@
 - Dev: `npm run dev` on port 5173 (kann auf 5174 ausweichen wenn 5173 belegt).
 
 **Next concrete steps** (see handshake §Offene Punkte for full detail):
-1. **Migration `20260530120000_mark_episodes_watched_synced.sql` anwenden** (manuell im SQL-Editor) — definiert den Auto-Sync-Cascade-RPC + re-asserted `toggle_episode_synced`. Bis dahin funktioniert der Single-Tap (RPC ist live), aber der Cascade „bis hier" wirft. `supabase/migrations/` hat jetzt vier Files.
-2. **Phase 7 Sharing testen** — am besten mit zwei Accounts: Invite-Loop (Badge + Inbox + Realtime), Sync-Toggle + Backfill, Mitseher, Transfer/Leave. Siehe handshake §Verification-Gedanken.
-3. **Phase 8: Polish-Pass.** Route-Transitions (hart geswapped), Skeleton-States statt „Lade …", Cover-Fade-in beim onload, Theme-Switch-Transition.
-4. **Bewusst offen aus Phase 7:** Logbuch-Welle-2 (`missed` + `ownership_transfer` Events), dynamisches Kalender-Range-Read, Sonner/Toast (Trigger jetzt da). Deferred Health-Findings: A5, C8, D1-D3.
+1. **Phase 7 ABGESCHLOSSEN + mit zwei Accounts getestet, stabil.** Branch `phase/7-sharing` (~15 Commits) — **Stand letzter Session: NICHT nach `main` gemerged** (zuerst mergen, dann weiterbauen). Beide neuen Migrationen sind im Supabase-Projekt angewendet: `20260530120000` (Auto-Sync-Cascade `mark_episodes_watched_synced` + Re-Assert von `toggle_episode_synced`) + `20260530140000` (Realtime-Publication: `list_items`/`list_members` etc.). Session-Fixes danach: Realtime-Burst-Coalescing in `useRealtimeInvalidation` (Sturm bei Cascade auf langen Anime + Sync-Fan-out), Finished-Show-Titel-Bug (`selectTitleGaps` inkl. NULL-air_date, `TITLE_ENRICHMENT_VERSION` → 4), Inbox in linke Spalte + Hover, Co-Watcher-`.limit(5000)`, Leave-im-Aside (`LeaveListButton`), Transfer als Krone-Icon in der Mitglieder-Zeile.
+2. **GEWÄHLTE nächste Richtung: Phase 7-Reste.** (a) Sonner/Toast — Trigger jetzt da (Invite akzeptiert während User woanders, etc.), bisher alles inline. (b) Logbuch-Welle-2 — `missed`-Events (released-but-unticked als Quick-Tick-CTA) + `ownership_transfer`-Events; Logik liegt in Logbook `src/lib/logbook.ts`. (c) Mitseher-Avatare im Logbuch-Feed (aktuell nur Satzform „@lisa hat …").
+3. **Erst-Schritt im neuen Chat:** Branch `phase/7-sharing` → `main` mergen (Build ist grün), dann mit Phase 7-Reste starten.
+4. Danach offen: Phase 8 Polish (Route-Transitions, Skeletons, Cover-Fade-in), Phase 9 Deploy/Hosting, DB-Verifikation (Logbook-Migrationen waren in der Live-DB unvollständig — Publication/RPCs gegen DB abgleichen + als Nakama-Migrationen tracken). Deferred Health-Findings: A5, C8, D1-D3.
 5. Bei kleinen User-Wünschen: gleich abarbeiten. Atomar committen.
 
 @AGENTS.md
