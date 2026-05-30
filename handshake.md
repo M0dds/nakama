@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-7 abgeschlossen. **Phase 7 (Sharing) gelandet:** Mitglieder-Modul (03) auf `/lists/:shortCode` (Roster mit Avatar + @handle, Invite-by-@handle mit inline-Result, Pending-Invites + Revoke, Ownership-Transfer, Liste-verlassen); Einladungs-Posteingang auf `/lists` + Zähl-Badge am Listen-Tab der BottomNav (global + Realtime); per-Item-Sync-Toggle im Details-Modul der Item-Page (via Router-Link-State, nur wenn aus geteilter Liste geöffnet, Backfill beim Einschalten); Auto-Sync-Fan-out für Ticks (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`, beide kontextfrei); Mitseher-Indikator (Auge + Hover-Overlay mit Profilbildern) in Item-Folgenliste + Kalender-Tag-Pane. Kalender (`/calendar`): Wochen-/Monats-Grid + Tag-Pane mit Quick-Tick & Long-Press-Cascade, Date-Picker. Home Dashboard (Was kommt / Fortsetzen / Logbuch), „Neue Folge"-Badges auf allen Listen-Surfaces. Drag-Reorder + Pin-to-Top, RowActions-Cluster. Title-Enrichment via Jikan + MangaDex. **Phase 7-Reste nach `main` gemerged:** Logbuch-Welle-2 (`missed` — nur begonnene Items — mit „Abhaken"-Quick-Tick + `ownership_transfer`), Co-Member-Avatare im Feed (`EventGlyph`), dependency-free Toast-System (`toast.tsx` + `Toaster`, top-right + Fortschrittsbalken, Trigger auf Einladung/Liste/Transfer-Aktionen), ErrorBoundary (`App.tsx`), `MovePointerSensor` (eigener move-only Drag-Sensor). **Nächster Schritt: Phase 8 (Polish-Pass) — Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition.**
+**Stand:** Phasen 1-7 + Phase-7-Reste + UX-Politur sind nach `main` gemerged. Build grün (`tsc -b && vite build`), Working Tree clean, keine offenen Branches, alle 5 Migrationen angewendet. Nichts nach `origin` gepusht (alles lokal — vor Deploy push klären). **Nächster Schritt: Phase 8 (Polish-Pass)** — Route-Transitions, Skeleton-States, Cover-Fade-in, Theme-Switch-Transition. Feature-Inventar pro Phase: §Status. Was noch offen ist: §Offene Punkte.
 
 ---
 
@@ -219,12 +219,9 @@ export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
 export async function resetItemProgress(itemId)
 // reset_item_progress RPC. Set-based delete server-side.
 
-// Title-Enrichment Gates:
+// Title-Enrichment Gates (Rationale: §Gotchas → Daten/RLS):
 const TITLE_ENRICHMENT_VERSION = 3  // bumpen erzwingt one-time backfill
-const GAP_QUERY_LIMIT = 5000        // bypass PostgREST 1000-row default
-// Bulk-upsert (single round-trip, NICHT per-row UPDATE-Loop — letzteres
-// hat bei One Piece 1100+ Folgen 110s gebraucht ohne ein Update zu commit-
-// ten). Siehe §Gotchas → Bulk Upsert.
+const GAP_QUERY_LIMIT = 5000        // bypass PostgREST 1000-row default; bulk-upsert, nie per-row-Loop
 ```
 
 `src/lib/queries/home.ts` (Phase 5):
@@ -300,12 +297,9 @@ export async function setItemSync({ listItemId, enabled })     // update sync_en
 export interface AniListResult { sourceId; type; title; year; coverUrl; format }
 export async function searchAniList(q, signal?): Promise<AniListResult[]>
 
-// Cover-URL-Naming-Falle: API-Feld-Namen sind off-by-one gegen URL-Pfade.
-//   API `medium`     → /cover/small/   (~50 px)
-//   API `large`      → /cover/medium/  (~230 px)  ← legacy in DB
-//   API `extraLarge` → /cover/large/   (~430 px)  ← was wir wollen
-// Search-Query holt extraLarge zuerst; legacy DB-URLs werden render-time
-// umgeschwenkt via highResCover().
+// Cover-URL-Naming-Falle (Details: §Gotchas → Daten/RLS): API-Feld `extraLarge`
+// → /cover/large/ (~430 px). Search holt extraLarge; highResCover() schwenkt
+// Legacy-DB-URLs (~230 px) render-time hoch.
 export function highResCover(url): string | null
 
 export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisodesResult>
@@ -404,60 +398,29 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ## Offene Punkte
 
-### Konkret offen für die nächste Session
+### Jetzt
 
-**Phase 7 (Sharing) + Phase 7-Reste sind nach `main` gemerged**, Build grün, Working Tree clean, keine offenen Feature-Branches. Phase 7-Reste:
-- ~~**Logbuch-Welle-2**~~ **erledigt** — `missed`-Events (neueste released-aber-ungetickte Folge pro getracktem Item, 14-Tage-Fenster, inline „Abhaken"-Quick-Tick via `mark_episodes_watched_synced`) + `ownership_transfer`-Events (aus `list_ownership_transfers`, RLS-scoped). `LogbookEvent`-Typen zu `BaseLogbookEvent`/`ItemLogbookEvent` gesplittet; Home-Realtime hört jetzt auch auf `list_ownership_transfers`. **missed ist auf BEGONNENE Items eingeschränkt** (≥1 Watch, started-check in `fetchMissedCandidates`) — sonst würde „Abhaken" einen nie gestarteten Long-Runner komplett durchticken.
-- ~~**Co-Member-Avatare im Logbuch-Feed**~~ **erledigt** — `profileNames` → `actorProfiles` (liefert `avatar_url`), `EventGlyph` zeigt für Co-Member das Gesicht + Kind-Badge, eigene/missed bleiben Icon.
-- ~~**Sonner/Toast**~~ **erledigt** — dependency-free `src/lib/toast.tsx` (`ToastProvider` + `useToast`) + `Toaster` (liquid rise/fall, z-30, in AppShell). Trigger: Einladung empfangen (global in BottomNav, von jeder Route) + Accept-Bestätigung in `InvitationsInbox`.
-- ~~**Dynamisches Kalender-Range-Read**~~ **erledigt** — das `calendar.ts`-Fenster (`WINDOW_BACK/AHEAD` = −2/+4) wird jetzt auf einen **Anker-Monat** zentriert, den `Calendar.tsx` lazy nachzieht (recentert am Rand-Monat, `placeholderData` hält das Grid während des Refetch gefüllt). Events- + Mitseher-Query (sharing.ts) keyen beide auf den Anker (`anchorIso`). Weit-raus-Navigation lädt jetzt nach statt leer zu bleiben.
+1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell harte Swaps), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, sanfte Theme-Switch-Transition (CSS-Vars flippen aktuell instant).
+2. Kleine UX-Polish-Wünsche zwischendrin atomar abarbeiten — so kamen Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing rein.
 
-**Post-Phase-7-Reste Session-Politur** (alles in `main`):
-- **Feature-/Landingpage `/features`** — public/standalone (`src/routes/Features.tsx`), Hero + nummerierte Feature-Sektionen mit stil-echten Mockups + live `ThemeSwitcher`, von der Login-Seite verlinkt.
-- **Air-Zeit-Anzeige** — AniList `airingAt` landet als voller Timestamp in `air_date`; gezeigt via `timeLabel`/`hasAirTime` in „Was kommt" (Hover), Item-Folgenliste (Heute/Morgen-Tags) + Kalender-Tagespane (Episodentitel → Uhrzeit). `missed`-Abhaken ist dadurch effektiv zeitgated; die Item-Seite tickt jederzeit.
-- **`missed` nur für begonnene Items** — started-check in `fetchMissedCandidates` (≥1 Watch), sonst würde „Abhaken" einen nie gestarteten Long-Runner durchticken.
-- **Toast-Erweiterungen** — Trigger auch bei Item-entfernt / Reset / Liste erstellt; **Swipe-to-dismiss** (horizontaler Pointer-Drag, Fly-out ab Schwelle).
-- **Datumsformat „30. MAI"** — `formatDate`/`dateLabel` (3-Buchstaben-Monat, kein Trailing-Dot) in „Was kommt"; Kalender-Tagespane-Header rechtsbündig „HEUTE · 30. MAI".
+### Geplant, nicht akut
 
-1. **Phase 8 — Polish-Pass.** Route-Transitions (aktuell hart geswapped), Skeleton-States statt „Lade …"-Text, Cover-Fade-in beim onload, Theme-Switch-Transition (CSS-Vars flippen instant).
-
-2. Kleine UX-Polish-Wünsche zwischen-drin atomar abarbeiten — letzte Sessions haben Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing so eingebracht.
-
-### Geplant, aber NICHT akut
-
-- ~~**Sonner / Toast-System.**~~ **Erledigt (Phase 7-Reste).** Dependency-free statt sonner: `src/lib/toast.tsx` + `Toaster` in AppShell. `useToast()` von überall im authed App. Trigger bisher: Einladung empfangen + Accept-Bestätigung — weitere async-Trigger (z.B. Invite akzeptiert aus Inviter-Sicht) lassen sich jetzt trivial andocken.
-
-- **Status-Control für Movies/Games** (`item_history` table). Wartet auf TMDB/IGDB-Source. AniList kennt nur Anime/Manga.
-
-- ~~**Sync-Fan-out für Cascade & Single-Toggle.**~~ **Erledigt (Phase 7e).** Statt `list_item.id` durchzureichen läuft beides über die *Auto-Sync*-RPCs (`toggle_episode_synced` + neuer `mark_episodes_watched_synced`), die Sync aus der Item-Mitgliedschaft ableiten — kein Listen-Kontext nötig.
-
-- ~~**Logbuch-Welle-2:**~~ **Erledigt (Phase 7-Reste).** Feed hat jetzt vier Kinds: `watch`, `list_add`, `missed` (mit „Abhaken"-Quick-Tick), `ownership_transfer`. Port aus Logbook `src/lib/logbook.ts` ins RLS-/RPC-Idiom in `home.ts`.
-
-- **Newest-Episode-Title-Lag.** Jikan/MAL + AniList streamingEpisodes hinken 1-3 Wochen hinter Air-Date für neueste Folgen. User sieht „Name der Folge ist noch nicht bekannt"-Fallback. Quellen-Issue, beim nächsten 12 h Stale-Refresh kommt's nach.
-
-- **Manga-Kapitel-Titel:** MangaDex-Coverage patchy für offiziell-lizenzierte Serien (One Piece ~6 EN-Titel insgesamt). Best-effort akzeptiert.
-
-- **Long-anime PostgREST-Cap.** `GAP_QUERY_LIMIT=5000`. Bei 5000+ Folgen (extrem selten) verpassen wir das letzte Drittel.
+- **Status-Control für Movies/Games** (`item_history`-Table). Wartet auf TMDB/IGDB-Source — AniList kennt nur Anime/Manga.
+- **Newest-Episode-Title-Lag.** Jikan/MAL + AniList `streamingEpisodes` hinken 1-3 Wochen hinter Air-Date; UI zeigt „Name der Folge ist noch nicht bekannt"-Fallback bis zum nächsten 12 h Stale-Refresh. Quellen-Issue.
+- **Manga-Kapitel-Titel.** MangaDex-Coverage patchy für lizenzierte Serien (One Piece ~6 EN-Titel insgesamt). Best-effort akzeptiert.
+- **Long-anime PostgREST-Cap.** `GAP_QUERY_LIMIT=5000`; bei 5000+ Folgen (extrem selten) fehlt das letzte Drittel.
 
 ### Bekannte tech-debt
 
-- **AddSheet Such-Pill Content-Fade beim Schließen** geht mit 300 ms over ease-out, fadet input + icon während Pill noch morpht. Bei sehr schnellen Aktionen sichtbar.
-- **AddSheet `origin()` wird beim Mount EINMAL gemessen.** Window-Resize während Sheet offen → Close-Morph läuft zur falschen Position. Mobile selten, Desktop nice-to-have.
-- **`/item/:type/:slug` ohne Listen-Kontext.** Phase 7 reicht für den Sync-Toggle die `listItemId` via Router-Link-State von der Listen-Row mit (genau dieser Fix). Offen bleibt nur der Back-Button auf Deep-Links (kein State → `history.back()`/Fallback `/lists`) und Home/Kalender/Suche-Einstiege, die bewusst kontextfrei bleiben (kein Sync-Toggle dort).
-- **NotFound-Backlink** verlinkt pauschal `/lists`. `history.back` via PageHeader handlet meistens, aber Deep-Link auf falsche shortCode landet auf Overview statt vorheriger Liste.
+- **AddSheet Such-Pill Content-Fade beim Schließen** läuft 300 ms over ease-out, fadet Input + Icon während die Pill noch morpht. Bei sehr schnellen Aktionen sichtbar.
+- **`/item/:type/:slug` ohne Listen-Kontext.** Sync-Toggle kriegt `listItemId` via Router-Link-State von der Listen-Row. Offen: Back-Button auf Deep-Links (kein State → `history.back()`/Fallback `/lists`); Home/Kalender/Suche-Einstiege bleiben bewusst kontextfrei (kein Sync-Toggle dort).
+- **NotFound-Backlink** verlinkt pauschal `/lists`; Deep-Link auf falsche shortCode landet auf Overview statt voriger Liste.
 
 ---
 
 ## Workflow-Notizen (User)
 
-Vollständig in `CLAUDE.md`. Quick reference:
-
-- Designer ohne Coding-Background, mit starken Design-Instinkten. **Zeigen schlägt erklären.** Iteration im Dev-Server, nicht in Mockups. WebStorm.
-- Vor **Schema-Änderungen** + **neuen Screens** fragen („Sheet oder eigene Seite?").
-- Bei **Design-Richtungswechseln** kurz Konzept skizzieren, dann bauen.
-- Material/tactile + japanisch-minimalistisch + TE. Flache uniforme Card-Grids vermeiden.
-- **Git pflegen, atomar.** Lowercase Conventional (`feat(area): …`, `fix(ui): …`, `chore: …`).
-- **Dev:** `npm run dev` (port 5173). Bei Bedarf `npx kill-port 5173 && npm run dev`.
+Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173, bei Bedarf `npx kill-port 5173 && npm run dev`). **Git** atomar pflegen, lowercase Conventional (`feat(area): …`, `fix(ui): …`, `chore: …`). **Vor** Schema-Änderungen + neuen Screens fragen, bei Design-Richtungswechseln kurz skizzieren. Zeigen schlägt erklären — Iteration im Dev-Server, nicht in Mockups. Visuell: material/tactile + japanisch-minimalistisch + TE, flache uniforme Card-Grids vermeiden.
 
 ---
 
