@@ -93,7 +93,7 @@ export function updateAvatarUrl(input: {
   return writeProfile(input.userId, { avatar_url: input.avatarUrl });
 }
 
-export const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB
+export const MAX_AVATAR_BYTES = 10 * 1024 * 1024; // 10 MB (cropper recompresses)
 
 /**
  * Upload an image to the `avatars` bucket and return its public URL.

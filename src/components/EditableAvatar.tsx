@@ -10,6 +10,7 @@ import {
   type MyProfile,
 } from "@/lib/queries/profile";
 import { Avatar } from "@/components/Avatar";
+import { AvatarCropDialog } from "@/components/AvatarCropDialog";
 
 /**
  * Avatar with click-to-change upload. Wraps the read-only Avatar primitive in
@@ -30,6 +31,8 @@ export function EditableAvatar(props: {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [uploading, setUploading] = createSignal(false);
+  const [pendingFile, setPendingFile] = createSignal<File | null>(null);
+  const [cropOpen, setCropOpen] = createSignal(false);
   const key = () => myProfileKey(props.userId);
 
   const mutation = createMutation(() => ({
@@ -71,15 +74,23 @@ export function EditableAvatar(props: {
       return;
     }
     if (file.size > MAX_AVATAR_BYTES) {
-      toast("Bild ist zu groß (max. 5 MB).");
+      toast("Bild ist zu groß (max. 10 MB).");
       return;
     }
+    // Pick → crop → upload. The cropper hands back a small square JPEG.
+    setPendingFile(file);
+    setCropOpen(true);
+  };
+
+  const onCropped = (cropped: File) => {
+    setCropOpen(false);
     setUploading(true);
-    mutation.mutate(file);
+    mutation.mutate(cropped);
   };
 
   return (
-    <div class="group relative size-16 shrink-0">
+    <>
+      <div class="group relative size-16 shrink-0">
       <Avatar handle={props.handle} avatarUrl={props.avatarUrl} size={64} />
       <label
         class="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full text-transparent transition-colors group-hover:bg-black/45 group-hover:text-white"
@@ -100,6 +111,14 @@ export function EditableAvatar(props: {
           onChange={onPick}
         />
       </label>
-    </div>
+      </div>
+
+      <AvatarCropDialog
+        file={pendingFile()}
+        open={cropOpen()}
+        onClose={() => setCropOpen(false)}
+        onCropped={onCropped}
+      />
+    </>
   );
 }
