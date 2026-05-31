@@ -42,15 +42,22 @@ export interface ContinueItem {
   coverUrl: string | null;
   total: number;
   watched: number;
+  /** Season of the next (current) episode. Multi-season works (TMDB series)
+   *  carry real seasons; AniList anime/manga are always season 1. The next
+   *  episode is the lowest unwatched-released (season, episode), so on a
+   *  multi-season show the UI shows "S2 · E03" instead of an ambiguous "E03". */
+  nextSeason: number;
   nextEpisode: number;
   /** Title of the next (current) episode, when the data source has it —
    *  surfaced in the Fortsetzen row so "E07" reads as "E07 · <title>".
    *  Null for data gaps (old anime, patchy manga chapters). */
   nextEpisodeTitle: string | null;
-  /** True when an episode aired AFTER the user's most recent watch on this
-   *  item — i.e. "while you were away, a new one dropped". Distinct from
-   *  the list-row badge: items the user is chronically behind on (latest
-   *  release predates last watch) deliberately don't light up. */
+  /** How many released-but-unwatched episodes within the last 14 days — the
+   *  SAME window + count the /lists row badge uses, so Fortsetzen and the list
+   *  agree (badge shown when > 0, pluralized when > 1). A chronic backlog stays
+   *  quiet because those episodes aired outside the window. */
+  newEpisodeCount: number;
+  /** Convenience: newEpisodeCount > 0. */
   hasNewEpisode: boolean;
   /** Sync-instances: set for an INSTANCE entry — the synced list_item this row
    *  tracks, plus its list for the label + the list-scoped link. null for a
@@ -204,9 +211,10 @@ interface ContinueRow {
   cover_url: string | null;
   total_episodes: number;
   watched_episodes: number;
+  next_season: number;
   next_episode: number;
   last_watched_at: string;
-  has_new_episode: boolean;
+  new_episode_count: number;
   list_item_id: string | null;
   list_short_code: string | null;
   list_name: string | null;
@@ -235,7 +243,11 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
   if (rows.length === 0) return [];
 
   const nextTitles = await nextEpisodeTitles(
-    rows.map((r) => ({ itemId: r.item_id, episodeNumber: r.next_episode })),
+    rows.map((r) => ({
+      itemId: r.item_id,
+      season: r.next_season,
+      episode: r.next_episode,
+    })),
   );
 
   return rows.map((r) => ({
@@ -246,9 +258,12 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
     coverUrl: r.cover_url,
     total: r.total_episodes,
     watched: r.watched_episodes,
+    nextSeason: r.next_season,
     nextEpisode: r.next_episode,
-    nextEpisodeTitle: nextTitles.get(`${r.item_id}:${r.next_episode}`) ?? null,
-    hasNewEpisode: r.has_new_episode,
+    nextEpisodeTitle:
+      nextTitles.get(`${r.item_id}:${r.next_season}:${r.next_episode}`) ?? null,
+    newEpisodeCount: r.new_episode_count,
+    hasNewEpisode: r.new_episode_count > 0,
     listItemId: r.list_item_id,
     listShortCode: r.list_short_code,
     listName: r.list_name,
@@ -748,23 +763,28 @@ async function actorProfiles(
   return map;
 }
 
-/** Titles for specific (item, episode_number) pairs — the "current" episode
- *  per Fortsetzen row. PostgREST can't express a compound-key IN, so we
- *  over-fetch on the cross product of item_ids × episode_numbers and pick the
- *  exact matches by composite key. The candidate set is small (the continue
- *  list is capped at CONTINUE_LIMIT), but the explicit .limit() guards against
- *  the 1000-row cap regardless. Keyed `${itemId}:${episodeNumber}`. */
+/** Titles for specific (item, season, episode) triples — the "current" episode
+ *  per Fortsetzen row. MUST include the season: on a multi-season series
+ *  episode_number resets per season (S1E6 and S2E6 both exist), so an
+ *  episode_number-only match would pull an arbitrary season's title. PostgREST
+ *  can't express a compound-key IN, so we over-fetch on the cross product of
+ *  item_ids × seasons × episode_numbers and pick the exact triples client-side.
+ *  The candidate set is small (continue list capped at CONTINUE_LIMIT); the
+ *  explicit .limit() guards the 1000-row cap regardless. Keyed
+ *  `${itemId}:${season}:${episode}`. */
 async function nextEpisodeTitles(
-  pairs: { itemId: string; episodeNumber: number }[],
+  pairs: { itemId: string; season: number; episode: number }[],
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   if (pairs.length === 0) return map;
   const itemIds = unique(pairs.map((p) => p.itemId));
-  const numbers = unique(pairs.map((p) => p.episodeNumber));
+  const seasons = unique(pairs.map((p) => p.season));
+  const numbers = unique(pairs.map((p) => p.episode));
   const { data, error } = await supabase
     .from("episodes")
-    .select("item_id, episode_number, title")
+    .select("item_id, season_number, episode_number, title")
     .in("item_id", itemIds)
+    .in("season_number", seasons)
     .in("episode_number", numbers)
     .limit(5000);
   if (error) {
@@ -773,7 +793,8 @@ async function nextEpisodeTitles(
   }
   for (const r of data ?? []) {
     const title = r.title as string | null;
-    if (title) map.set(`${r.item_id}:${r.episode_number}`, title);
+    if (title)
+      map.set(`${r.item_id}:${r.season_number}:${r.episode_number}`, title);
   }
   return map;
 }

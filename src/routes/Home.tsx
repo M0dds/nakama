@@ -28,6 +28,7 @@ import {
   nextLabel,
   rangeLabel,
   relTime,
+  seasonEpisodeLabel,
   timeLabel,
   typeInitial,
   typeLabel,
@@ -495,17 +496,25 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                       </h3>
                       <Show when={item.hasNewEpisode}>
                         <span class="shrink-0 font-mono text-mini uppercase text-accent">
-                          {newReleaseLabel(item.type)}
+                          {newReleaseLabel(item.type, item.newEpisodeCount)}
                         </span>
                       </Show>
                     </div>
                     <p class="truncate font-mono text-mini text-text-muted">
                       <Show
                         when={item.nextEpisodeTitle}
-                        fallback={nextLabel(item.type, item.nextEpisode)}
+                        fallback={seasonEpisodeLabel(
+                          item.type,
+                          item.nextSeason,
+                          item.nextEpisode,
+                        )}
                       >
-                        {nextLabel(item.type, item.nextEpisode)} ·{" "}
-                        {item.nextEpisodeTitle}
+                        {seasonEpisodeLabel(
+                          item.type,
+                          item.nextSeason,
+                          item.nextEpisode,
+                        )}{" "}
+                        · {item.nextEpisodeTitle}
                       </Show>
                     </p>
                   </div>

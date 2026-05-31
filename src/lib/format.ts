@@ -49,12 +49,14 @@ export function typeInitial(type: string): string {
   }
 }
 
-/** "Neue Folge" / "Neues Kapitel" — null for non-episodic types. Used by
- *  the /lists badge + Fortsetzen badge + Home upcoming module so the
- *  wording stays consistent. */
-export function newReleaseLabel(type: string): string | null {
-  if (type === "manga") return "Neues Kapitel";
-  if (type === "anime" || type === "series") return "Neue Folge";
+/** "Neue Folge(n)" / "Neue(s) Kapitel" — null for non-episodic types. Singular
+ *  vs plural by `count` (> 1 → plural), no count number. Used by the Fortsetzen
+ *  badge; the /lists + list-detail badges have their own count-aware copies. */
+export function newReleaseLabel(type: string, count = 1): string | null {
+  const plural = count > 1;
+  if (type === "manga") return plural ? "Neue Kapitel" : "Neues Kapitel";
+  if (type === "anime" || type === "series")
+    return plural ? "Neue Folgen" : "Neue Folge";
   return null;
 }
 
@@ -67,6 +69,18 @@ export function episodeCode(n: number): string {
 /** Type-aware "next-up" label: "E07" for episode types, "Kap. 7" for manga. */
 export function nextLabel(type: string, n: number): string {
   return type === "manga" ? `Kap. ${n}` : episodeCode(n);
+}
+
+/** Like nextLabel, but prefixes the season for multi-season works → "S2 · E03".
+ *  Season 1 (anime, manga, single-season series) stays bare so the common case
+ *  reads unchanged. */
+export function seasonEpisodeLabel(
+  type: string,
+  season: number,
+  n: number,
+): string {
+  const base = nextLabel(type, n);
+  return season > 1 ? `S${season} · ${base}` : base;
 }
 
 /** Single value or range, type-aware. "E07" / "E37–E1163" / "Kap. 9–40". */
