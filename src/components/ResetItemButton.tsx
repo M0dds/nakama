@@ -11,10 +11,11 @@ import { listsQueryKey } from "@/lib/queries/lists";
 /**
  * Inline-confirm reset for an item's watch progress. Same shape as
  * DeleteListButton: trigger → "Wirklich zurücksetzen? · ✓ / ✗" in place.
- * Reset clears the caller's watch progress for this item in the ACTIVE lane
- * (server-side via reset_progress): the global lane by default, or — when a
- * synced `listItemId` is passed — just that instance. Doesn't touch other
- * members' global progress.
+ * Reset clears watch progress for this item in the ACTIVE lane (server-side
+ * via reset_progress): the global lane (caller-only) by default, or — when a
+ * synced `listItemId` is passed — the whole shared instance, FOR ALL MEMBERS
+ * (the RPC fans out). The copy reflects that: `synced` → "Wirklich für alle
+ * zurücksetzen?".
  *
  * Sits in the PageHeader aside slot (h-6 items-center), so both states
  * share the same 24 px band — no baseline shift between trigger and
@@ -22,13 +23,15 @@ import { listsQueryKey } from "@/lib/queries/lists";
  *
  * Takes `itemId` (UUID, what the reset_progress RPC needs), the natural-key
  * pair (`type`, `slug`) for the cache invalidation (keyed on the URL-stable
- * identifier), and the optional `listItemId` selecting the lane.
+ * identifier), the optional `listItemId` selecting the lane, and `synced`
+ * (purely for the copy — the RPC decides global-vs-instance itself).
  */
 export function ResetItemButton(props: {
   itemId: string;
   type: string;
   slug: string;
   listItemId?: string | null;
+  synced?: boolean;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -40,15 +43,18 @@ export function ResetItemButton(props: {
       // Reset wipes every watch for this item, which flips the "Neue Folge"
       // badge on every list this item is in (if any of its recent episodes
       // becomes unwatched). Invalidate the lists caches alongside the item's
-      // own episodes query.
+      // own episodes query. A synced reset also clears co-members' progress →
+      // refresh the co-watcher marks too.
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(props.type, props.slug),
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
-      // Generic copy — we're on the item's own page, context is clear (and the
-      // component doesn't carry the title).
-      toast("Fortschritt zurückgesetzt.", { icon: RotateCcw });
+      void queryClient.invalidateQueries({ queryKey: ["co-watchers"] });
+      toast(
+        props.synced ? "Für alle zurückgesetzt." : "Fortschritt zurückgesetzt.",
+        { icon: RotateCcw },
+      );
       setConfirming(false);
     },
   }));
@@ -68,7 +74,7 @@ export function ResetItemButton(props: {
     >
       <span class="inline-flex items-center gap-2">
         <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-          Wirklich zurücksetzen?
+          {props.synced ? "Wirklich für alle zurücksetzen?" : "Wirklich zurücksetzen?"}
         </span>
         <button
           type="button"

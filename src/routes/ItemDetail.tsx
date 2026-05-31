@@ -364,6 +364,7 @@ export default function ItemDetail() {
               type={params.type}
               slug={params.slug}
               listItemId={listItemId()}
+              synced={syncEnabled() === true}
             />
           </Show>
         }
