@@ -11,7 +11,7 @@
  */
 
 import { searchAniList } from "@/lib/anilist";
-import { searchTmdbSeries } from "@/lib/tmdb";
+import { searchTmdbSeries, searchTmdbMovies } from "@/lib/tmdb";
 import type { MediaType } from "@/lib/queries/home";
 
 export type MediaSource = "anilist" | "tmdb" | "steam";
@@ -27,6 +27,10 @@ export interface MediaResult {
   year: number | null;
   coverUrl: string | null;
   format: string | null; // AniList format (TV/MOVIE/…) or null → items.metadata
+  /** ISO release date — movies only (TMDB `release_date`). Stamped into
+   *  items.metadata.releaseDate on add so "Was kommt" can surface a film
+   *  that hasn't come out yet (films are episode-less → no air_date row). */
+  releaseDate?: string | null;
 }
 
 /** Search the single source that owns `type`. Returns [] for types whose
@@ -50,8 +54,10 @@ export async function searchMedia(
       }));
     case "series":
       return searchTmdbSeries(q, signal);
+    case "movie":
+      return searchTmdbMovies(q, signal);
     default:
-      // movie / game — source not implemented yet.
+      // game — source (Steam) not implemented yet.
       return [];
   }
 }

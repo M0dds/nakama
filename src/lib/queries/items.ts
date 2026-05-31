@@ -87,6 +87,11 @@ export async function addItemToList(input: {
 
   // Step 1 — upsert the canonical item row. source.source carries the
   // provider ("anilist" / "tmdb" / "steam") — no longer hardcoded.
+  // Movies ride a releaseDate into metadata so "Was kommt" can surface an
+  // upcoming film (films have no episode/air_date rows to read).
+  const metadata: Record<string, unknown> = {};
+  if (source.format) metadata.format = source.format;
+  if (source.releaseDate) metadata.releaseDate = source.releaseDate;
   const { data: item, error: itemError } = await supabase
     .from("items")
     .upsert(
@@ -96,7 +101,7 @@ export async function addItemToList(input: {
         type: source.type,
         title: source.title,
         cover_url: source.coverUrl,
-        metadata: source.format ? { format: source.format } : {},
+        metadata,
       },
       { onConflict: "source,source_id" },
     )

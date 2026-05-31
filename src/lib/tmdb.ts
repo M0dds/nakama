@@ -5,9 +5,10 @@
  * token, NOT the legacy v3 `api_key` query param) read from
  * `VITE_TMDB_TOKEN` — see .env.local.
  *
- * Phase "Serien": this module covers TV series only. Movies (same source,
- * but no episodes → item_history status control) land in the next sub-step;
- * the search shape is already movie-ready (`type` widened to MediaType).
+ * Covers TV series (`searchTmdbSeries` + episode list) and movies
+ * (`searchTmdbMovies`). Movies are episode-less: they carry only a release
+ * date (stamped into items.metadata on add) and a binary seen-state in
+ * item_history — no episode fetch, no detail page.
  *
  * Results are normalized into the shared `MediaResult` shape (src/lib/search.ts)
  * so the same item rows slot into the shared Supabase DB next to AniList ones.
@@ -113,6 +114,138 @@ export async function searchTmdbSeries(
     coverUrl: coverUrl(r.poster_path),
     format: null,
   }));
+}
+
+// =========================================================================
+// Search — movies
+// =========================================================================
+
+interface RawMovieSearch {
+  results?: Array<{
+    id: number;
+    title: string | null;
+    original_title: string | null;
+    release_date: string | null;
+    poster_path: string | null;
+  }>;
+}
+
+/** Search movies by title. Same shape as the series search, but `release_date`
+ *  rides along on the result (→ items.metadata.releaseDate on add) so a film
+ *  that's still upcoming can surface in "Was kommt". [] on any failure. */
+export async function searchTmdbMovies(
+  q: string,
+  signal?: AbortSignal,
+): Promise<MediaResult[]> {
+  const json = await tmdbGet<RawMovieSearch>(
+    "/search/movie",
+    { query: q, include_adult: "false", page: "1" },
+    signal,
+  );
+  const rows = json?.results ?? [];
+  return rows.map((r) => ({
+    source: "tmdb" as const,
+    sourceId: String(r.id),
+    type: "movie" as const,
+    title: r.title || r.original_title || "Ohne Titel",
+    year: yearOf(r.release_date),
+    coverUrl: coverUrl(r.poster_path),
+    format: null,
+    // TMDB date-only → store as UTC midnight ISO, mirroring the series
+    // air_date convention (no fabricated clock time; see format.ts).
+    releaseDate: r.release_date
+      ? new Date(r.release_date).toISOString()
+      : null,
+  }));
+}
+
+// =========================================================================
+// Movie details — the film detail page (no episodes; rich metadata instead)
+// =========================================================================
+
+/** What the film detail page shows next to the seen-toggle. All fields are
+ *  best-effort (null/[] when TMDB doesn't have them). Fetched live (not stored
+ *  in the DB) — credits don't change, so TanStack's cache + a long staleTime
+ *  is enough, and the items table stays lean. */
+export interface TmdbMovieDetails {
+  overview: string | null;
+  runtime: number | null; // minutes
+  /** German release if TMDB has a DE entry (theatrical preferred), else the
+   *  primary release (usually the earliest/US date). ISO 8601, UTC midnight. */
+  releaseDate: string | null;
+  genres: string[];
+  directors: string[];
+  cast: string[]; // top-billed names, in billing order
+}
+
+interface RawMovieDetail {
+  overview: string | null;
+  runtime: number | null;
+  release_date: string | null;
+  genres?: Array<{ name: string }>;
+  credits?: {
+    crew?: Array<{ job: string; name: string }>;
+    cast?: Array<{ name: string; order: number }>;
+  };
+  release_dates?: {
+    results?: Array<{
+      iso_3166_1: string;
+      release_dates?: Array<{ type: number; release_date: string }>;
+    }>;
+  };
+}
+
+const MAX_CAST = 8;
+
+/** The German release date, if TMDB carries a DE entry. TMDB's flat
+ *  `release_date` is the "primary" (often the earliest, i.e. the US date) — a
+ *  film can be out in the US but not yet here (Backrooms: US done, DE 17 Jun).
+ *  We pick the DE date, preferring theatrical (type 3) → theatrical-limited (2)
+ *  → premiere (1) → whatever's earliest. Returns null when there's no DE row. */
+function germanReleaseDate(raw: RawMovieDetail): string | null {
+  const de = raw.release_dates?.results?.find((r) => r.iso_3166_1 === "DE");
+  const dates = de?.release_dates ?? [];
+  if (dates.length === 0) return null;
+  const rank = (t: number) => (t === 3 ? 0 : t === 2 ? 1 : t === 1 ? 2 : 3);
+  const best = [...dates].sort((a, b) => {
+    const r = rank(a.type) - rank(b.type);
+    return r !== 0 ? r : a.release_date.localeCompare(b.release_date);
+  })[0];
+  return best?.release_date ? new Date(best.release_date).toISOString() : null;
+}
+
+/** Fetch one movie's detail + credits + per-country release dates in a single
+ *  round-trip (`append_to_response`). Returns null on failure / no token, so
+ *  the detail page falls back to the bare seen-toggle without throwing. */
+export async function fetchTmdbMovieDetails(
+  sourceId: string,
+): Promise<TmdbMovieDetails | null> {
+  const id = Number(sourceId);
+  if (!Number.isFinite(id)) return null;
+
+  const d = await tmdbGet<RawMovieDetail>(`/movie/${id}`, {
+    append_to_response: "credits,release_dates",
+  });
+  if (!d) return null;
+
+  const directors = (d.credits?.crew ?? [])
+    .filter((c) => c.job === "Director")
+    .map((c) => c.name);
+  const cast = [...(d.credits?.cast ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .slice(0, MAX_CAST)
+    .map((c) => c.name);
+
+  return {
+    overview: d.overview?.trim() || null,
+    runtime: d.runtime && d.runtime > 0 ? d.runtime : null,
+    releaseDate:
+      germanReleaseDate(d) ??
+      (d.release_date ? new Date(d.release_date).toISOString() : null),
+    genres: (d.genres ?? []).map((g) => g.name),
+    directors,
+    cast,
+  };
 }
 
 // =========================================================================

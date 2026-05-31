@@ -21,14 +21,14 @@ import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
 
 /** Media-type filter for the search panel. anime/manga (AniList) + series
- *  (TMDB) are live; movie/series-movies + game (Steam) come next, so their
- *  labels show but are disabled — present so the set reads complete, not yet
- *  wired so they can't add source-less items. */
+ *  (TMDB) and movies (TMDB) are live; game (Steam) comes next, so its label
+ *  shows but is disabled — present so the set reads complete, not yet wired
+ *  so it can't add source-less items. */
 const MEDIA_FILTERS: { value: MediaType; label: string; disabled?: boolean }[] = [
   { value: "anime", label: "Anime" },
   { value: "manga", label: "Manga" },
   { value: "series", label: "Serie" },
-  { value: "movie", label: "Film", disabled: true },
+  { value: "movie", label: "Film" },
   { value: "game", label: "Spiel", disabled: true },
 ];
 

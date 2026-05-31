@@ -9,7 +9,13 @@ import { ChevronDown, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
-import { itemQueryOptions } from "@/lib/queries/items";
+import { fetchTmdbMovieDetails } from "@/lib/tmdb";
+import { itemQueryOptions, type ItemDetails } from "@/lib/queries/items";
+import {
+  movieSeenKey,
+  movieSeenOptions,
+  setItemSeen,
+} from "@/lib/queries/status";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
   episodesQueryKey,
@@ -146,7 +152,11 @@ export default function ItemDetail() {
       instanceLI(),
     ),
     enabled:
-      !!auth.user() && !!params.type && !!params.slug && laneReady(),
+      !!auth.user() &&
+      !!params.type &&
+      !!params.slug &&
+      params.type !== "movie" &&
+      laneReady(),
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
@@ -173,6 +183,7 @@ export default function ItemDetail() {
     enabled:
       !!auth.user() &&
       !!item.data?.id &&
+      params.type !== "movie" &&
       laneReady() &&
       !!syncCtx.data?.isShared &&
       !!syncCtx.data?.listId,
@@ -330,6 +341,11 @@ export default function ItemDetail() {
   const onTap = (ep: EpisodeRow) => toggleMut.mutate(ep);
   const onCascade = (ep: EpisodeRow) => cascadeMut.mutate(ep);
 
+  // Films have no episodes: the left column becomes a seen-toggle + rich
+  // TMDB metadata (MoviePanel) instead of the progress bar + episode list.
+  // Keyed off the URL type so it's synchronous + reload-stable.
+  const isMovie = () => params.type === "movie";
+
   const dtClass =
     "font-mono text-mini uppercase tracking-wider text-text-muted";
 
@@ -377,7 +393,7 @@ export default function ItemDetail() {
       <div class="flex flex-col md:flex-row md:items-start">
         {/* Section 01 — Episode-Listing */}
         <div class="md:w-2/3">
-          <BentoModule label="Episoden" number="01">
+          <BentoModule label={isMovie() ? "Film" : "Episoden"} number="01">
             <Show
               when={item.data}
               fallback={
@@ -385,6 +401,10 @@ export default function ItemDetail() {
               }
             >
               {(itemData) => (
+                <Show
+                  when={!isMovie()}
+                  fallback={<MoviePanel item={itemData()} />}
+                >
                 <>
                   <ProgressBar
                     watched={episodes.data?.watched ?? 0}
@@ -430,6 +450,7 @@ export default function ItemDetail() {
                     </Show>
                   </Show>
                 </>
+                </Show>
               )}
             </Show>
           </BentoModule>
@@ -472,9 +493,10 @@ export default function ItemDetail() {
                   </dl>
 
                   {/* Sync toggle — only when opened with a list context
-                      (list-scoped route or link-state). The SyncToggle self-
-                      gates on isShared && memberCount > 1. */}
-                  <Show when={listItemId()}>
+                      (list-scoped route or link-state) AND episodic. Films
+                      track a binary seen-state in item_history, not per-episode
+                      watches, so episode-sync doesn't apply. */}
+                  <Show when={!isMovie() && listItemId()}>
                     {(li) => (
                       <SyncToggle
                         listItemId={li()}
@@ -897,6 +919,174 @@ function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
         </p>
       </Show>
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Film detail (no episodes → seen-toggle + rich TMDB metadata)
+// ──────────────────────────────────────────────────────────────────────
+
+const DT_CLASS = "font-mono text-mini uppercase tracking-wider text-text-muted";
+
+/** German full-date label for a film's release ("15. März 2024"). UTC-midnight
+ *  ISO renders on the correct local day for DE (+TZ); see format.ts note. */
+function releaseLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** One right-aligned fact row, matching the Details column's dl rhythm. */
+function Fact(props: { label: string; value: string }) {
+  return (
+    <div class="flex items-baseline justify-between gap-3">
+      <dt class={`${DT_CLASS} shrink-0`}>{props.label}</dt>
+      <dd class="min-w-0 text-right text-text">{props.value}</dd>
+    </div>
+  );
+}
+
+/** The seen-toggle — echoes the episode-tick optic: a full-bleed tappable row
+ *  with the accent dot on the right that fills when seen. Label flips so a
+ *  single binary reads unambiguously (episodes keep a static label + dot, but
+ *  here there's no episode number to anchor the state). */
+function MovieSeenRow(props: { seen: boolean; onToggle: () => void }) {
+  return (
+    <div class="-mx-5">
+      <button
+        type="button"
+        onClick={props.onToggle}
+        aria-pressed={props.seen}
+        aria-label={
+          props.seen ? "Als ungesehen markieren" : "Als gesehen markieren"
+        }
+        class="group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-surface"
+      >
+        <span class="min-w-0 flex-1 text-body text-text">
+          {props.seen ? "Gesehen" : "Als gesehen markieren"}
+        </span>
+        <span
+          aria-hidden
+          class={`size-2.5 shrink-0 rounded-full transition-colors ${
+            props.seen
+              ? "bg-accent"
+              : "bg-transparent ring-1 ring-border group-hover:ring-text-muted"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Left-column body for a film. Seen-toggle at the top (item_history), then
+ * the rich TMDB metadata (overview, director, cast, runtime, genres, rating)
+ * — deliberately here and not in the right "Details" column, which for a
+ * film would otherwise read empty.
+ *
+ * Details are fetched live from TMDB (not stored): credits don't change, so
+ * TanStack's cache + a day-long staleTime is enough and items stays lean.
+ */
+function MoviePanel(props: { item: ItemDetails }) {
+  const auth = useAuth();
+  const queryClient = useQueryClient();
+
+  const seen = createQuery(() => ({
+    ...movieSeenOptions(auth.user()!, props.item.id),
+    enabled: !!auth.user(),
+  }));
+
+  const details = createQuery(() => ({
+    queryKey: ["tmdb-movie", props.item.sourceId] as const,
+    queryFn: () => fetchTmdbMovieDetails(props.item.sourceId),
+    enabled: props.item.source === "tmdb" && !!props.item.sourceId,
+    staleTime: 1000 * 60 * 60 * 24,
+  }));
+
+  const seenMut = createMutation(() => ({
+    mutationFn: (next: boolean) =>
+      setItemSeen({ user: auth.user()!, itemId: props.item.id, seen: next }),
+    onMutate: async (next) => {
+      const key = movieSeenKey(props.item.id);
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<boolean>(key);
+      queryClient.setQueryData(key, next);
+      return { prev, key };
+    },
+    onError: (_e, _n, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: movieSeenKey(props.item.id),
+      });
+    },
+  }));
+
+  const isSeen = () => seen.data ?? false;
+
+  return (
+    <>
+      <MovieSeenRow seen={isSeen()} onToggle={() => seenMut.mutate(!isSeen())} />
+
+      <Show when={props.item.source === "tmdb"}>
+        <Show
+          when={details.data}
+          fallback={
+            <p class="mt-6 text-body text-text-muted">
+              {details.isLoading
+                ? "Lade Filmdaten …"
+                : "Keine Zusatzinfos verfügbar."}
+            </p>
+          }
+        >
+          {(d) => (
+            <div class="mt-6 space-y-6 border-t border-border pt-6">
+              <Show when={d().overview}>
+                {(text) => (
+                  <p class="max-w-prose text-body leading-relaxed text-text">
+                    {text()}
+                  </p>
+                )}
+              </Show>
+
+              <dl class="space-y-3 text-body">
+                <Show when={d().directors.length > 0}>
+                  <Fact label="Regie" value={d().directors.join(", ")} />
+                </Show>
+                <Show when={d().runtime}>
+                  {(rt) => <Fact label="Laufzeit" value={`${rt()} Min.`} />}
+                </Show>
+                <Show when={d().genres.length > 0}>
+                  <Fact label="Genres" value={d().genres.join(" · ")} />
+                </Show>
+                <Show when={d().releaseDate}>
+                  {(rd) => (
+                    <Fact
+                      label={
+                        new Date(rd()) > new Date() ? "Kinostart" : "Erschienen"
+                      }
+                      value={releaseLabel(rd())}
+                    />
+                  )}
+                </Show>
+              </dl>
+
+              <Show when={d().cast.length > 0}>
+                <div class="border-t border-border pt-5">
+                  <div class={`${DT_CLASS} mb-2`}>Besetzung</div>
+                  <p class="text-body leading-relaxed text-text">
+                    {d().cast.join(" · ")}
+                  </p>
+                </div>
+              </Show>
+            </div>
+          )}
+        </Show>
+      </Show>
+    </>
   );
 }
 
