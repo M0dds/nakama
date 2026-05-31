@@ -2,7 +2,9 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand (Tagesstatus):** Phasen 1-8 **+ Sync-Instanzen + die Politur-Session sind alle in lokalem `main`** — `chore/misc-tweaks` wurde gemerged (`main` == `0fb8e17`, Branch zeigt auf denselben Commit, Diff leer). Inhalt der Politur-Session (jetzt in `main`): theme-folgendes Favicon, Navbar-Bubble als liquid Transform-Morph (+ Back-Recoil), `Segmented` teilt diesen Morph, Sync-Flip als Modal-Dialog (`SyncConfirmDialog`), **Reset in synced Liste fan-outet für alle** (Migration `20260531160000`), „Was kommt"-Cards Overshoot-Spring, diverse Hover/Caption-Fixes (Logbuch + Kalender-Tag-Pane an der Column-Guide), Kalender-Episodennummer entakzentuiert. Build grün, Tree clean, alle 12 Migrationen in `supabase/migrations/` getrackt. **`origin` ist NICHT aktuell:** lokales `main` ist `origin/main` ~160 Commits voraus (nie gepusht). Nächster Schritt: `origin`-Push-Strategie klären (§Offene Punkte), dann die vier großen Themen. Migration `20260530170000` (Einladungs-RPCs display_name) — Status weiter prüfen, war zuvor offen.
+**Stand (Tagesstatus):** Phasen 1-8 + Sync-Instanzen + Politur-Session + **Thema 1a (TMDB-Serien)** sind alle in lokalem `main`. Alles wird **direkt auf `main` committet** (User-delegiert, atomare Commits; kein Feature-Branch-Flow in dieser Phase). **`origin` ist NICHT aktuell:** lokales `main` ist `origin/main` ~172 Commits voraus — **bewusst nicht gepusht** (User: „mergen ok, nur nicht pushen"; es gibt nichts zu mergen, alles liegt auf `main`). Build grün, Tree clean, **13 Migrationen** in `supabase/migrations/` getrackt (alle gefahren bis auf evtl. `20260530170000` — Status weiter prüfen, war zuvor offen).
+
+**Letzte Session (TMDB-Serien, Thema 1a — fertig):** zweite Medienquelle TMDB browser-side (`tmdb.ts`), quellen-agnostische Suche (`search.ts` + Medientyp-Filter-Leiste im AddSheet), echte Staffeln (Episode-Dispatch nach `source`, Staffel-Gliederung in `ItemDetail`), Continue-Watching staffel-bewusst gemacht (Bug: `next_episode` ignorierte `season_number` → Migration `20260531180000`), „Neue Folge(n)"-Badge nur bei getrackten Listen + korrekte Mehrzahl (Episoden- statt Item-Zählung), date-only Air-Dates ohne erfundene Uhrzeit (`airDateHasClock`), diverse UI-Politur (Ghost-Select, Confirm-Angleich, `typeInitial`-Platzhalter). **Als Nächstes (mit frischem Kontext): Thema 1b (Filme + Status-UI), dann 1c (Spiele/Steam), bzw. Themen 2-4 — siehe §Offene Punkte.**
 
 > **Wegweiser (eine Quelle je Sache):** Feature-Inventar pro Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** · durable Architektur + Fallen (inkl. Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher.
 
@@ -321,6 +323,37 @@ export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpiso
 const MAX_EPISODES = 2000
 ```
 
+`src/lib/tmdb.ts` (Thema 1a — Serien):
+
+```typescript
+// TMDB browser-side (setzt CORS-Header, anders als Steam). Auth = v4 "API Read
+// Access Token" (Bearer) aus VITE_TMDB_TOKEN (.env.local, *.local gitignored).
+// Ohne Token: still deaktiviert (warnOnce), AniList trägt die Suche weiter.
+// LANG = "de-DE" → deutsche Titel/Folgennamen wo vorhanden.
+export async function searchTmdbSeries(q, signal?): Promise<MediaResult[]>
+// /search/tv → normalisierte MediaResults (source "tmdb", type "series").
+export async function fetchTmdbSeriesEpisodes(sourceId): Promise<TmdbEpisode[]>
+// /tv/{id} (Staffeln) → je Staffel /tv/{id}/season/{n}. ECHTE Staffeln
+// (season_number ≥ 1; Specials/S0 raus). realTitle() strippt generische
+// "Folge N"/"Episode N"-Platzhalter → null. AIR-DATE IST DATE-ONLY (kein Time;
+// gespeichert als UTC-Mitternacht → UI zeigt KEINE Uhrzeit, s. §Gotchas).
+const MAX_EPISODES = 2000; const MAX_SEASONS = 60;
+```
+
+`src/lib/search.ts` (Thema 1a — quellen-agnostische Suche):
+
+```typescript
+export type MediaSource = "anilist" | "tmdb" | "steam";
+export interface MediaResult { source; sourceId; type; title; year; coverUrl; format }
+// Der provider-agnostische Boundary, mit dem das AddSheet redet. Der Medientyp-
+// FILTER (MEDIA_FILTERS im AddSheet) wählt EINEN typ; searchMedia routet typ-
+// gezielt zur Quelle (anime/manga→AniList mit MediaType-filter, series→TMDB,
+// movie/game→[] bis 1b/1c) — kein fan-out/interleave (Filter soll un-mischen).
+export async function searchMedia(q, type: MediaType, signal?): Promise<MediaResult[]>
+// addItemToList (queries/items.ts) liest result.source → items.source (nicht
+// mehr hardcoded "anilist"). Gleiche Quelle+sourceId = ein items-Row.
+```
+
 `src/lib/jikan.ts` + `src/lib/mangadex.ts`:
 
 ```typescript
@@ -405,6 +438,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
 | **Sync-Instanzen** | ✓ **in `main`** (gemerged). Fortschritt global pro User bis Sync → Instanz ab 0; Reads/Writes lane-branchen (global `IS NULL` / Instanz `= LI`); Un-Sync = Union-Merge zurück ins Globale. List-scoped Item-Route `/lists/:shortCode/item/:type/:slug` (reload-fest). Kalender + Logbuch **read-only** (keine Ticks/Links — ersetzt Phase-6-Quick-Ticks). **Mitseher-Auge nur in geteilten Listen** (Mitglieder *dieser* Liste). **Reset in synced Liste fächert für alle** (Migration `20260531160000`). `is_shared`-Reconcile (Liste wird wieder privat). „Fortsetzen" zeigt aktive Instanzen als eigene Einträge (Listenname-Label). |
 | **Politur-Session** | ✓ **in `main`** (`chore/misc-tweaks` gemerged) — theme-folgendes Favicon, **liquid Navbar-Bubble** (Transform-Morph translateX+scaleX, snappy Bell-Easing, kein Settle-Stopp) + Back-Satellit-Recoil (WAAPI one-shot, `composite:"add"`), `Segmented` teilt denselben Morph (Form bleibt eckig — liquid lebt in der Bewegung), **Sync-Flip als Modal-`SyncConfirmDialog`** (statt Inline-Confirm), „Was kommt"-Cards Overshoot-Spring, Hover-Layer an der Column-Guide (Logbuch + Kalender-Tag-Pane), Kalender-Episodennummer entakzentuiert. |
+| **Thema 1a · Serien (TMDB)** | ✓ **in `main`** — 2. Quelle TMDB (`tmdb.ts`, browser-side, `VITE_TMDB_TOKEN`), quellen-agnostische Suche (`search.ts` + Medientyp-Filter im AddSheet), echte Staffeln + Staffel-Gliederung, Continue-Watching staffel-bewusst (Migr. `20260531180000`), date-only Air-Dates ohne erfundene Zeit, Badge episoden-gezählt + tracking-gated. Filme (1b) + Spiele (1c) noch offen — §Offene Punkte. |
 
 ---
 
@@ -417,7 +451,10 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Nächste große Themen (vom User priorisiert — vor Umsetzung Detail-Design + bei Schema/Screens fragen)
 
-1. **Serien · Filme · Spiele integrieren.** Bisher nur AniList (Anime/Manga). Neue Quellen-Adapter: **TMDB** (Serien mit Staffeln/Folgen + Filme), **IGDB** (Spiele; braucht Twitch-OAuth → vermutlich serverseitig/Edge-Function, nicht rein browser-side wie AniList). Serien laufen über denselben Episode-Pfad; **Filme/Spiele haben keine Folgen → Status-Control** (geplant/läuft/gesehen) über die `item_history`-Tabelle (war schon als „Geplant" gelistet, jetzt der Trigger). Touchpoints: Search in `AddSheet`, `items.source/type`, `episodes`-Befüllung für Serien, neues Status-UI auf der Item-Seite.
+1. **Serien · Filme · Spiele integrieren.**
+   - **1a · Serien (TMDB) — ✓ ERLEDIGT (in `main`).** Browser-side TMDB-Client (`src/lib/tmdb.ts`, Bearer-Token `VITE_TMDB_TOKEN` in `.env.local`), quellen-agnostischer Such-Aggregator (`src/lib/search.ts` → `searchMedia(q, type)` routet typ-gezielt zur Quelle), Medientyp-Filter-Leiste im AddSheet (Anime/Manga/Serie live · Film/Spiel disabled), echte Staffeln (Episode-Dispatch nach `source` in `episodes.ts`, Staffel-Gliederung in `ItemDetail`), Continue-Watching staffel-bewusst (Migration `20260531180000`), date-only Air-Dates ohne erfundene Uhrzeit (`airDateHasClock`). Details siehe §Data-Layer (tmdb.ts/search.ts) + §Gotchas.
+   - **1b · Filme (TMDB) — offen, als Nächstes.** Gleiche Quelle, aber **folgenlos → Status-Control** (geplant/gesehen) über `item_history`. Die Tabelle existiert (`status text check in ('watching','completed','dropped')`, `unique(user_id,item_id)`) — **kein `'planned'`!** Falls „Geplant" gewünscht: `ALTER` der CHECK-Constraint (Schema-Frage). `items.type='movie'` + `source='tmdb'` sind in der CHECK schon erlaubt → keine items-Migration. Touchpoints: Film-Suche in `tmdb.ts` (`/search/movie` oder `/search/multi`), Film-Filter-Label aktivieren (AddSheet `MEDIA_FILTERS` `disabled` weg), Status-UI auf der Item-Seite (am `EpisodesEmpty`-Zweig, `episodes.ts:404`), neue `src/lib/queries/status.ts` (item_history read/write).
+   - **1c · Spiele (Steam) — offen.** Steam-Store-Endpoints (`store.steampowered.com/api/storesearch` + `/appdetails`, kein API-Key, kein OAuth) — **aber CORS-geblockt → braucht einen Supabase Edge-Function-Proxy** (Deno). `items.source` braucht **Migration** (`'steam'` fehlt in der CHECK; `'igdb'` wäre erlaubt, nehmen wir aber nicht). Status-UI aus 1b wird wiederverwendet. (SteamDB.info selbst geht NICHT — Cloudflare/kein API.)
 2. **„Weitere laden" → Seiten/Swap statt Append.** Zwei Stellen: (a) **Fortsetzen** (Home) soll die 4 gezeigten zu den *nächsten* 4 **swappen** (Paging), nicht die Liste verlängern. (b) **Episodenliste** (`ItemDetail`/`LoadMore`) soll bei langen Serien (One Piece, Naruto …) **seitenweise** blättern statt eine endlose Scroll-Liste zu wachsen. Berührt `episodesQueryOptions` (limit→Seiten-Fenster) + HEALTH **A5** (4-5 Round-Trips). Liquid halten (Page-Swap könnte animieren).
 3. **First-Login-Einrichtung.** Beim allerersten Login *vor* der Startseite ein Setup-Fenster: Anzeigename + Profilbild + Theme wählen. Bausteine existieren (`EditableDisplayName`, `EditableAvatar`/`AvatarCropDialog`, `ThemeSwitcher` aus `profile.ts`) → in einen Setup-Flow bündeln. Braucht ein **„onboarded"-Flag** (DB-Spalte auf `profiles`, z.B. `onboarded_at` — Schema-Frage!) + einen Route-Guard, der bis dahin auf `/setup` lenkt.
 4. **Onboarding-Tooltips.** Geführte Einführung über die `Tooltip`-Primitive, **nur beim ersten Login**, **überspringbar**. Teilt die First-Login-Erkennung mit Thema 3 (gemeinsames Flag). Reihenfolge/Skip-State persistieren.
@@ -425,7 +462,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 ### Geplant, nicht akut
 
 - **Phase 9 — Deploy/Hosting.** PWA-Manifest steht in `vite.config.ts`; DB-Verifikation (Logbook-Migrationen gegen Live-DB abgleichen + als Nakama-Migrationen tracken). Nach den vier Themen.
-- **Status-Control für Movies/Games** (`item_history`-Table) — jetzt Teil von Thema 1 (TMDB/IGDB).
+- **Status-Control für Movies/Games** (`item_history`-Table) — jetzt Teil von Thema 1b/1c (Filme/Spiele).
 - **Newest-Episode-Title-Lag.** Jikan/MAL + AniList `streamingEpisodes` hinken 1-3 Wochen hinter Air-Date; UI zeigt „Name der Folge ist noch nicht bekannt"-Fallback bis zum nächsten 12 h Stale-Refresh. Quellen-Issue.
 - **Manga-Kapitel-Titel.** MangaDex-Coverage patchy für lizenzierte Serien (One Piece ~6 EN-Titel insgesamt). Best-effort akzeptiert.
 - **Long-anime PostgREST-Cap.** `GAP_QUERY_LIMIT=5000`; bei 5000+ Folgen (extrem selten) fehlt das letzte Drittel.
@@ -482,7 +519,7 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **AniList Cover-URL-Naming-Falle:** API-Feld `coverImage.large` liefert `/cover/medium/` URL (~230 px), nicht `/cover/large/` (~430 px). Letzteres im API-Feld `extraLarge`. Search holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time um.
 - **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript narrowed.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
-- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern (Falle: der User kopiert leicht den Erklärtext mit — SQL klar abgrenzen). Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000`, delete_account `20260530160000`, invitation_names_prefer_display `20260530170000` (**Status prüfen — war zuvor offen**), **Sync-Instanzen `20260531100000` (gefahren), home_sync_instances `20260531120000` (gefahren), unshare_when_solo `20260531140000` (gefahren), reset_progress_fanout `20260531160000` (gefahren — synced Reset fächert für alle Mitglieder), continue_watching_seasons `20260531180000` (**NEU — staffel-bewusste „nächste Folge" + next_season + new_episode_count statt has_new_episode; drop+recreate home_continue_watching. Status: zu fahren**)** = 13 Files. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas Files in Timestamp-Reihenfolge.
+- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern (Falle: der User kopiert leicht den Erklärtext mit — SQL klar abgrenzen). Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000`, delete_account `20260530160000`, invitation_names_prefer_display `20260530170000` (**Status prüfen — war zuvor offen**), **Sync-Instanzen `20260531100000` (gefahren), home_sync_instances `20260531120000` (gefahren), unshare_when_solo `20260531140000` (gefahren), reset_progress_fanout `20260531160000` (gefahren — synced Reset fächert für alle Mitglieder), continue_watching_seasons `20260531180000` (gefahren — staffel-bewusste „nächste Folge" + next_season + new_episode_count statt has_new_episode; drop+recreate home_continue_watching)** = 13 Files. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas Files in Timestamp-Reihenfolge.
 
 - **Sync-Instanzen (durable Modell).** Fortschritt ist **global pro User** (`episode_watches.list_item_id IS NULL`), BIS ein `list_item` gesynct wird (`sync_enabled=true`) → eigene **Instanz** (`list_item_id = LI`), startet bei 0. **Jede `episode_watches`-Leseabfrage MUSS die Lane filtern** — global `.is("list_item_id", null)` oder Instanz `.eq("list_item_id", LI)`; ohne den expliziten `IS NULL` lecken Instanz-Zeilen in globale Flächen, sobald Instanzen existieren. Writes laufen über `set_episode_watch` / `mark_episodes_watched_upto` / `reset_progress` mit optionalem `_list_item_id` — der RPC branchet server-side (null/nicht-gesynct → global, kein Fan-out; gesynct → Instanz + Fan-out an Mitglieder). Un-Sync = `unsync_item` (Union der Instanz ins Globale jedes Mitglieds, dann Instanz löschen). Die alten `*_synced`/`reset_item_progress`/`backfill_*` RPCs bleiben für Logbook unberührt. Item-Seite: globale Route `/item/...` vs. list-scoped `/lists/:shortCode/item/...`; `instanceLI = syncEnabled ? listItemId : null`; `laneReady`-Gate verhindert kurzes Anzeigen der falschen Lane.
 
@@ -493,6 +530,14 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **Logbuch + Kalender sind reine read-only Indikatoren.** Keine Ticks, keine Verlinkungen — getickt wird nur auf der Item-Seite (wo die Lane eindeutig ist). Logbuch-Sätze sind statischer Text (kein `<A>`), `missed` ohne „Abhaken"-Button; Kalender-Tag-Pane ohne Link + ohne Mitseher-Auge (nur eigener Punkt).
 
 - **Auto-Sync-RPCs statt Listen-Kontext (Phase 7).** Die geteilte Live-DB trägt `toggle_episode_synced(_item_id, _episode_id, _watched)` als *Auto-Sync*-Variante (Logbook `20260528180000`): sie fächert über ALLE Sync-ON-Listen mit dem Item auf, kein `list_item.id` im Call. Der Cascade hatte kein Auto-Sync-Twin — `mark_episodes_watched` fächert nur für ein explizit übergebenes `_list_item_id`. Nakamas Item-Page/Kalender sind kontextfrei, daher Migration `20260530120000`: neuer `mark_episodes_watched_synced(_item_id, _up_to_episode_id)` (Twin) + sicherheitshalber Re-Assert von `toggle_episode_synced` in der Auto-Sync-Form (drop+create, falls die geteilte DB noch die alte Signatur trug). **Falle:** named-param RPC-Calls brechen, wenn die Live-Funktion andere Parameter-NAMEN bei gleichen Typen hat — `create or replace` kann Param-Namen nicht ändern, es braucht `drop function` zuerst.
+
+### Multi-Source / TMDB-Serien (Thema 1a)
+
+- **`items.type`/`source` CHECK-Constraints (Logbook-Core-Schema `20260527102000`).** `type in ('anime','manga','series','movie','game','music')` — series/movie/game **schon erlaubt**, keine Migration. `source in ('anilist','tmdb','tvmaze','igdb','manual')` — `tmdb` erlaubt, **`steam` NICHT** (1c braucht dafür eine Migration). `item_history.status in ('watching','completed','dropped')` — **kein `'planned'`** (1b-Frage).
+- **TMDB = browser-side (CORS ok), Steam = NICHT.** TMDB setzt CORS-Header → direkter `fetch` wie AniList. Steam-Store-Endpoints blocken CORS hart → **Edge-Function-Proxy nötig** (1c). „SteamDB.info" ist Cloudflare-geschützt + ohne API → unbrauchbar; Steams *eigene* Store-Endpoints sind die Quelle.
+- **Multi-Season-Episodenmodell.** TMDB-Serien haben echte Staffeln; `episode_number` springt pro Staffel zurück (S2E1). Die `episodes`-Unique ist `(item_id, season_number, episode_number)` → kein Konflikt. **Jede „nächste Folge"/„Fortschritt"-Logik MUSS nach `(season_number, episode_number)` ordnen, nie nur `episode_number`** — sonst kollabieren die Staffeln (war der `home_continue_watching`-Bug: `min(episode_number)` über alle Staffeln → Müll; gefixt via `distinct on … order by season, episode` + `next_season` im RPC, Migration `20260531180000`). Ebenso: Episodentitel-Lookups auf `(item, season, episode)` keyen, nicht nur `episode_number` (sonst falscher Staffel-Titel). AniList ist immer Staffel 1, daher fiel das vorher nie auf.
+- **Date-only Air-Dates (TMDB) ⇒ keine Uhrzeit zeigen.** TMDB liefert für Folgen nur ein DATUM (kein Time), gespeichert als UTC-Mitternacht. In lokaler +TZ rendert das als erfundenes „02:00". `airDateHasClock(type)` (format.ts) = nur `anime` (AniList `airingAt` ist präzise); series sind date-only → Zeit unterdrückt (gated in ItemDetail-Tag, Home `DayTag`, Kalender-Tag-Pane: `hasAirTime(iso) && airDateHasClock(type)`). **Der Tag selbst ist TMDBs Ursprungs-Datum (US)** und kann von der regionalen (DE-)Veröffentlichung um 1 Tag abweichen — aus `air_date` nicht ableitbar. Latente Tag-Verschiebung nur für Nutzer **westlich** von UTC (UTC-Mitternacht-Parse); für DE-Nutzer stimmt der Tag. Falls je international: date-only via UTC-Komponenten interpretieren.
+- **„Neue Folge(n)"-Badge zählt Episoden, nicht Items, + nur bei Tracking.** `findItemsWithNewEpisodes` (lists.ts) gibt `Map<listItemId, count>` (released-ungesehen in 14 Tagen); `aggregateNewCounts` summiert Episoden → Plural korrekt bei Same-Day-Batch-Release auf EINEM Item. Labels (`newCountLabel`, `newEpisodeLabel`, `newReleaseLabel(type, count)`) zeigen nur Singular/Plural, **keine Zahl**. Archiv-Listen (`tracks_home` off) zeigen das Badge NICHT (Overview gated, Detail reicht `tracksHome` durch). `home_continue_watching.new_episode_count` nutzt dieselbe 14-Tage-Definition → Fortsetzen + Liste konsistent.
 
 ---
 

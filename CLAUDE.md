@@ -2,7 +2,7 @@
 
 **Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user.
 
-**Stand (Kurzfassung):** Phasen 1-8 **+ Sync-Instanzen + die Politur-Session sind alle in lokalem `main`** (`chore/misc-tweaks` wurde gemerged). `origin` ist nicht aktuell (lokales `main` ist `origin/main` ~160 Commits voraus, nichts gepusht). Als Nächstes: Push-Strategie klären, dann **vier große Themen** (Serien/Filme/Spiele · „Weitere laden"→Paging · First-Login-Setup · Onboarding-Tooltips). **Der vollständige Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Stand, §Status, §Offene Punkte.** Hier NICHT duplizieren — sonst driftet's auseinander.
+**Stand (Kurzfassung):** Phasen 1-8 + Sync-Instanzen + Politur-Session **+ Thema 1a (TMDB-Serien)** sind alle in lokalem `main`. Arbeit geht direkt auf `main` (User-delegiert, atomare Commits). `origin` ist bewusst nicht aktuell (`main` ist `origin/main` ~172 Commits voraus — „mergen ok, nur nicht pushen"). Als Nächstes (frischer Kontext): **Thema 1b Filme + Status-UI**, dann 1c Spiele/Steam, bzw. Themen 2-4 (Paging · First-Login-Setup · Onboarding-Tooltips). **Der vollständige Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Stand, §Status, §Offene Punkte.** Hier NICHT duplizieren — sonst driftet's auseinander.
 
 **Design tokens** live in `src/index.css` (CSS vars + Tailwind v4 `@theme inline`). Names mirror the handshake (`--bg`, `--accent`, `--text-mini`, etc.). Storage keys are prefixed `nakama:*` (NOT `logbook:*`).
 
