@@ -9,7 +9,7 @@ import { ChevronDown, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
-import { fetchTmdbMovieDetails } from "@/lib/tmdb";
+import { fetchTmdbMovieDetails, type TmdbCastMember } from "@/lib/tmdb";
 import { itemQueryOptions, type ItemDetails } from "@/lib/queries/items";
 import {
   movieSeenKey,
@@ -489,6 +489,9 @@ export default function ItemDetail() {
                       <dt class={dtClass}>Typ</dt>
                       <dd class="text-text">{typeLabel(data().type)}</dd>
                     </div>
+                    <Show when={isMovie()}>
+                      <MovieFacts item={data()} />
+                    </Show>
                     <Show when={metaString(data().metadata, "format")}>
                       {(fmt) => (
                         <div class="flex items-baseline justify-between gap-3">
@@ -941,16 +944,6 @@ function EpisodesEmpty(props: { fetchable: boolean; type: string }) {
 
 const DT_CLASS = "font-mono text-mini uppercase tracking-wider text-text-muted";
 
-/** German full-date label for a film's release ("15. März 2024"). UTC-midnight
- *  ISO renders on the correct local day for DE (+TZ); see format.ts note. */
-function releaseLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 /** One right-aligned fact row, matching the Details column's dl rhythm. */
 function Fact(props: { label: string; value: string }) {
   return (
@@ -968,8 +961,21 @@ function Fact(props: { label: string; value: string }) {
 function MovieSeenRow(props: {
   seen: boolean;
   watchers: CoWatcher[];
+  releaseDate: string | null;
   onToggle: () => void;
 }) {
+  // Day-bucket tag, same wording as the episode rows — but "Demnächst" only
+  // inside a 2-week window (a film 8 months out shouldn't read as imminent).
+  // Past releases get no tag, just the date. Films are date-only → no time.
+  const tag = () => {
+    if (!props.releaseDate) return null;
+    const offset = dayOffset(props.releaseDate);
+    if (offset === 0) return "Heute";
+    if (offset === 1) return "Morgen";
+    if (offset > 1 && offset <= 14) return "Demnächst";
+    return null;
+  };
+
   return (
     <div class="-mx-5">
       <button
@@ -984,6 +990,17 @@ function MovieSeenRow(props: {
         <span class="min-w-0 flex-1 text-body text-text">
           {props.seen ? "Gesehen" : "Als gesehen markieren"}
         </span>
+        {/* Release date + day-tag — same cluster as an episode row's air date. */}
+        <Show when={props.releaseDate}>
+          <div class="flex shrink-0 items-baseline gap-3 font-mono text-mini uppercase tracking-wider tabular-nums">
+            <Show when={tag()}>
+              <span class="text-accent">{tag()}</span>
+            </Show>
+            <span class="text-right text-text-muted">
+              {dateLabel(props.releaseDate!)}
+            </span>
+          </div>
+        </Show>
         {/* Mitseher eye + seen dot — same right cluster as an episode row. */}
         <div class="flex shrink-0 items-center gap-2">
           <CoWatcherMark watchers={props.watchers} />
@@ -1001,11 +1018,24 @@ function MovieSeenRow(props: {
   );
 }
 
+/** Shared TMDB movie-details query — both the left panel (overview + cast) and
+ *  the right Details column (facts) read it under the same key, so TanStack
+ *  serves both from one fetch. Credits don't change → a day-long staleTime. */
+function movieDetailsQueryOptions(source: string, sourceId: string) {
+  return {
+    queryKey: ["tmdb-movie", sourceId] as const,
+    queryFn: () => fetchTmdbMovieDetails(sourceId),
+    enabled: source === "tmdb" && !!sourceId,
+    staleTime: 1000 * 60 * 60 * 24,
+  };
+}
+
 /**
- * Left-column body for a film. Seen-toggle at the top (item_history), then
- * the rich TMDB metadata (overview, director, cast, runtime, genres, rating)
- * — deliberately here and not in the right "Details" column, which for a
- * film would otherwise read empty.
+ * Left-column body for a film. Seen-toggle at the top (item_history), then the
+ * "meaty" TMDB material that earns the column's width: the description (with
+ * tagline) and the cast with headshots + character names. The short facts
+ * (Regie, Laufzeit, Genres, Kinostart, FSK) live in the right Details column
+ * instead — they read as facts, like a series' Typ/Format/Quelle.
  *
  * Details are fetched live from TMDB (not stored): credits don't change, so
  * TanStack's cache + a day-long staleTime is enough and items stays lean.
@@ -1032,12 +1062,9 @@ function MoviePanel(props: {
       !!auth.user() && !!props.item.id && props.isShared && !!props.listId,
   }));
 
-  const details = createQuery(() => ({
-    queryKey: ["tmdb-movie", props.item.sourceId] as const,
-    queryFn: () => fetchTmdbMovieDetails(props.item.sourceId),
-    enabled: props.item.source === "tmdb" && !!props.item.sourceId,
-    staleTime: 1000 * 60 * 60 * 24,
-  }));
+  const details = createQuery(() =>
+    movieDetailsQueryOptions(props.item.source, props.item.sourceId),
+  );
 
   const seenMut = createMutation(() => ({
     mutationFn: (next: boolean) =>
@@ -1066,6 +1093,7 @@ function MoviePanel(props: {
       <MovieSeenRow
         seen={isSeen()}
         watchers={coWatchers.data ?? []}
+        releaseDate={details.data?.releaseDate ?? null}
         onToggle={() => seenMut.mutate(!isSeen())}
       />
 
@@ -1082,42 +1110,37 @@ function MoviePanel(props: {
         >
           {(d) => (
             <div class="mt-6 space-y-6 border-t border-border pt-6">
-              <Show when={d().overview}>
-                {(text) => (
-                  <p class="max-w-prose text-body leading-relaxed text-text">
-                    {text()}
-                  </p>
-                )}
+              <Show when={d().tagline || d().overview}>
+                <div class="space-y-2">
+                  <Show when={d().tagline}>
+                    {(line) => (
+                      <p class="text-body-lg italic text-text-muted">
+                        {line()}
+                      </p>
+                    )}
+                  </Show>
+                  <Show when={d().overview}>
+                    {(text) => (
+                      <p class="text-body leading-relaxed text-text">
+                        {text()}
+                      </p>
+                    )}
+                  </Show>
+                </div>
               </Show>
-
-              <dl class="space-y-3 text-body">
-                <Show when={d().directors.length > 0}>
-                  <Fact label="Regie" value={d().directors.join(", ")} />
-                </Show>
-                <Show when={d().runtime}>
-                  {(rt) => <Fact label="Laufzeit" value={`${rt()} Min.`} />}
-                </Show>
-                <Show when={d().genres.length > 0}>
-                  <Fact label="Genres" value={d().genres.join(" · ")} />
-                </Show>
-                <Show when={d().releaseDate}>
-                  {(rd) => (
-                    <Fact
-                      label={
-                        new Date(rd()) > new Date() ? "Kinostart" : "Erschienen"
-                      }
-                      value={releaseLabel(rd())}
-                    />
-                  )}
-                </Show>
-              </dl>
 
               <Show when={d().cast.length > 0}>
                 <div class="border-t border-border pt-5">
-                  <div class={`${DT_CLASS} mb-2`}>Besetzung</div>
-                  <p class="text-body leading-relaxed text-text">
-                    {d().cast.join(" · ")}
-                  </p>
+                  <div class={`${DT_CLASS} mb-3`}>Besetzung</div>
+                  {/* Auto-FIT grid: empty trailing columns collapse, so the
+                      cards stretch via 1fr to fill the row edge-to-edge (equal
+                      padding to both column edges). 5rem floor sets how many
+                      fit before wrapping; a partial last row stays left-aligned.
+                      (auto-fill would leave phantom columns → a gap at the
+                      right edge.) */}
+                  <ul class="grid grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] gap-x-4 gap-y-5">
+                    <For each={d().cast}>{(c) => <CastRow member={c} />}</For>
+                  </ul>
                 </div>
               </Show>
             </div>
@@ -1125,6 +1148,73 @@ function MoviePanel(props: {
         </Show>
       </Show>
     </>
+  );
+}
+
+/** One cast card — a portrait headshot (2:3, like a filmstrip frame) with name
+ *  + character beneath. Cards sit in a flex-wrap row, so they fill a line and
+ *  wrap to the next. Initial-letter fallback when TMDB has no photo. */
+function CastRow(props: { member: TmdbCastMember }) {
+  return (
+    <li>
+      <div class="aspect-[2/3] w-full overflow-hidden rounded-xs border border-border bg-surface">
+        <Show
+          when={props.member.profileUrl}
+          fallback={
+            <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+              {props.member.name.charAt(0)}
+            </div>
+          }
+        >
+          <img
+            ref={fadeOnLoad}
+            src={props.member.profileUrl!}
+            alt=""
+            class="size-full object-cover"
+            loading="lazy"
+          />
+        </Show>
+      </div>
+      <p class="mt-1.5 line-clamp-2 text-body leading-tight text-text">
+        {props.member.name}
+      </p>
+      <Show when={props.member.character}>
+        {(role) => (
+          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+            {role()}
+          </p>
+        )}
+      </Show>
+    </li>
+  );
+}
+
+/** Movie facts for the right Details column — Regie/Laufzeit/Genres/Kinostart/
+ *  FSK. Reads the same shared movie-details cache as the left MoviePanel, so
+ *  no second fetch. */
+function MovieFacts(props: { item: ItemDetails }) {
+  const details = createQuery(() =>
+    movieDetailsQueryOptions(props.item.source, props.item.sourceId),
+  );
+  return (
+    <Show when={details.data}>
+      {(d) => (
+        <>
+          <Show when={d().directors.length > 0}>
+            <Fact label="Regie" value={d().directors.join(", ")} />
+          </Show>
+          <Show when={d().runtime}>
+            {(rt) => <Fact label="Laufzeit" value={`${rt()} Min.`} />}
+          </Show>
+          <Show when={d().genres.length > 0}>
+            <Fact label="Genres" value={d().genres.join(" · ")} />
+          </Show>
+          <Show when={d().certification}>
+            {(fsk) => <Fact label="FSK" value={fsk()} />}
+          </Show>
+        </>
+      )}
+    </Show>
   );
 }
 

@@ -167,35 +167,70 @@ export async function searchTmdbMovies(
  *  best-effort (null/[] when TMDB doesn't have them). Fetched live (not stored
  *  in the DB) — credits don't change, so TanStack's cache + a long staleTime
  *  is enough, and the items table stays lean. */
+export interface TmdbCastMember {
+  name: string;
+  character: string | null;
+  profileUrl: string | null; // headshot, or null when TMDB has none
+}
+
 export interface TmdbMovieDetails {
   overview: string | null;
+  tagline: string | null;
   runtime: number | null; // minutes
   /** German release if TMDB has a DE entry (theatrical preferred), else the
    *  primary release (usually the earliest/US date). ISO 8601, UTC midnight. */
   releaseDate: string | null;
+  /** German age rating (FSK), e.g. "16" — from the DE release_dates entry. */
+  certification: string | null;
   genres: string[];
   directors: string[];
-  cast: string[]; // top-billed names, in billing order
+  cast: TmdbCastMember[]; // top-billed, in billing order
 }
 
 interface RawMovieDetail {
   overview: string | null;
+  tagline?: string | null;
   runtime: number | null;
   release_date: string | null;
   genres?: Array<{ name: string }>;
   credits?: {
     crew?: Array<{ job: string; name: string }>;
-    cast?: Array<{ name: string; order: number }>;
+    cast?: Array<{
+      name: string;
+      character: string | null;
+      order: number;
+      profile_path: string | null;
+    }>;
   };
   release_dates?: {
     results?: Array<{
       iso_3166_1: string;
-      release_dates?: Array<{ type: number; release_date: string }>;
+      release_dates?: Array<{
+        type: number;
+        release_date: string;
+        certification?: string;
+      }>;
     }>;
   };
 }
 
 const MAX_CAST = 8;
+
+// Headshots are small (next to a name) → w185 is plenty and light.
+const PROFILE_BASE = "https://image.tmdb.org/t/p/w185";
+function profileUrl(path: string | null | undefined): string | null {
+  return path ? `${PROFILE_BASE}${path}` : null;
+}
+
+/** German age rating (FSK), if TMDB has one in the DE release_dates entry.
+ *  Certification rides per release_date row; we take the first non-empty one. */
+function germanCertification(raw: RawMovieDetail): string | null {
+  const de = raw.release_dates?.results?.find((r) => r.iso_3166_1 === "DE");
+  const cert = (de?.release_dates ?? [])
+    .map((d) => d.certification?.trim())
+    .find((c) => c);
+  return cert || null;
+}
 
 /** The German release date, if TMDB carries a DE entry. TMDB's flat
  *  `release_date` is the "primary" (often the earliest, i.e. the US date) — a
@@ -234,14 +269,20 @@ export async function fetchTmdbMovieDetails(
   const cast = [...(d.credits?.cast ?? [])]
     .sort((a, b) => a.order - b.order)
     .slice(0, MAX_CAST)
-    .map((c) => c.name);
+    .map((c) => ({
+      name: c.name,
+      character: c.character?.trim() || null,
+      profileUrl: profileUrl(c.profile_path),
+    }));
 
   return {
     overview: d.overview?.trim() || null,
+    tagline: d.tagline?.trim() || null,
     runtime: d.runtime && d.runtime > 0 ? d.runtime : null,
     releaseDate:
       germanReleaseDate(d) ??
       (d.release_date ? new Date(d.release_date).toISOString() : null),
+    certification: germanCertification(d),
     genres: (d.genres ?? []).map((g) => g.name),
     directors,
     cast,
