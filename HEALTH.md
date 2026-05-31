@@ -8,7 +8,7 @@ Working document. Lies nach handshake.md. **Offene Findings stehen oben**; der B
 
 Volle Begründung je Finding steht in der Session die es aufdeckte (`git log` rund um den HEALTH.md-Initialcommit).
 
-- **A5** — `episodesQueryOptions` macht 4-5 Round-Trips pro Item-Page-Load. Noch nicht angefasst.
+- **A5** — `episodesQueryOptions` macht 4-5 Round-Trips pro Item-Page-Load. Noch nicht angefasst — **bei Thema 2 mitnehmen** (Episodenliste auf seitenweises Paging umbauen → guter Moment, die Query-Round-Trips zu straffen). Siehe handshake §Offene Punkte „Nächste große Themen" #2.
 - **C8** — `console.error` an 12+ Stellen ohne Telemetry. **Deferred bis Hosting steht** (Phase 9) — ohne shared User-Base bringt ein Telemetry-Layer nichts.
 - **D1** — `Math.min(...nums)` Spread bei großen Bundles (theoretisch, kein realer Case). Keine Action geplant.
 - **D2** — Inkonsistente Timer-Typen (`number | null` vs `ReturnType<typeof setTimeout>`). Kosmetisch.

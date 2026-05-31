@@ -2,7 +2,7 @@
 
 **Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user.
 
-**Stand (Kurzfassung):** Phasen 1-8 in `main`; Sync-Instanzen-Feature komplett auf Branch `feat/sync-instances` (noch nicht gemerged, im Dev-Server abgenommen). **Der vollständige Phasen-/Feature-Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Status, §Offene Punkte und §Gotchas → „Sync-Instanzen".** Hier NICHT duplizieren — sonst driftet's auseinander.
+**Stand (Kurzfassung):** Phasen 1-8 **+ Sync-Instanzen in lokalem `main`**. Darüber eine Politur-Session auf Branch `chore/misc-tweaks` (13 Commits, noch nicht gemerged). `origin` ist nicht aktuell (nichts gepusht). Als Nächstes: `chore/misc-tweaks` → `main` mergen, Push-Strategie klären, dann **vier große Themen** (Serien/Filme/Spiele · „Weitere laden"→Paging · First-Login-Setup · Onboarding-Tooltips). **Der vollständige Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Stand, §Status, §Offene Punkte.** Hier NICHT duplizieren — sonst driftet's auseinander.
 
 **Design tokens** live in `src/index.css` (CSS vars + Tailwind v4 `@theme inline`). Names mirror the handshake (`--bg`, `--accent`, `--text-mini`, etc.). Storage keys are prefixed `nakama:*` (NOT `logbook:*`).
 
