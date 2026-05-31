@@ -632,8 +632,9 @@ function EpisodeList(props: {
       {/* Index over groups (their position is stable across a tick — only an
           episode's `watched` flips), so the season blocks don't remount on
           every toggle; the inner For keys rows by reference so just the tapped
-          one updates. */}
-      <div class="-mx-5">
+          one updates. mt-5 keeps the first "Staffel" label off the progress
+          bar above it (the flat list gets that gap from the first row's py-3). */}
+      <div class="-mx-5 mt-5">
         <Index each={groups()}>
           {(g, i) => (
             <div class={i > 0 ? "mt-7" : ""}>
