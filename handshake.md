@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-8 durch, alles in `main`. Build grün (`tsc -b && vite build`), Tree clean, keine offenen Branches. 7 Migrationen angewendet; **Migration `20260530170000` (Einladungs-RPCs auf display_name-bevorzugt) liegt vor und muss noch gefahren werden.** **Nichts nach `origin` gepusht — alles lokal; vor Deploy Push-Strategie klären.** Nächster Schritt: Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
+**Stand:** Phasen 1-8 in `main`. **Sync-Instanzen-Feature komplett auf Branch `feat/sync-instances` (NICHT nach `main` gemerged) — im Dev-Server abgenommen, Build grün, Tree clean.** Modell: Fortschritt ist **global pro User**, BIS ein `list_item` **gesynct** wird → eigene **Instanz ab 0**; Reads+Writes branchen `episode_watches.list_item_id IS NULL` (global) vs. `= LI` (Instanz), Un-Sync merged die Instanz per Union zurück ins Globale. Logbuch + Kalender sind reine **read-only Indikatoren** (keine Ticks, keine Links); **Mitseher-Auge nur in geteilten Listen** (Mitglieder *dieser* Liste); **geteilte Liste wird wieder privat**, sobald nur Ersteller + keine offene Einladung übrig. **3 Sync-Migrationen gefahren:** `20260531100000` sync_instances, `20260531120000` home_sync_instances, `20260531140000` unshare_when_solo. **`20260530170000` (Einladungs-RPCs display_name) — Status prüfen, war zuvor offen.** **Nichts nach `origin` gepusht — alles lokal.** Nächster Schritt: **`feat/sync-instances` → `main` mergen + `origin`-Push-Strategie klären**, dann Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
 
 ---
 
@@ -203,26 +203,25 @@ export const episodesQueryKey = (type, slug) => ["episodes", type, slug] as cons
 // Concrete keys sind [...episodesQueryKey, limit] — invalidations targeten
 // den Prefix und clearen alle Paginations auf einmal.
 
-export function episodesQueryOptions(user, type, slug, limit = 26)
+export function episodesQueryOptions(user, type, slug, limit = 26, instanceListItemId = null)
 // Resolves Item via (type, slug), dann lazy fetch + 12 h stale gate
 // (items.metadata.episodesFetchedAt). Returns { episodes, total, watched,
-// fetchable }. Latest `limit` episodes desc. Head-count queries past
-// PostgREST's 1000-row cap.
+// fetchable }. SYNC-INSTANZEN: instanceListItemId=null liest die globale Lane
+// (list_item_id IS NULL), gesetzt liest die Instanz (= LI). Lane ist Teil des
+// queryKeys → getrennte Caches; Prefix-Invalidierung deckt beide.
 
-export async function toggleEpisode({ itemId, episodeId, watched })
-// Phase 7: routet durch toggle_episode_synced RPC (Auto-Sync) — schreibt
-// eigene Row + fächert über ALLE Sync-ON-Listen mit dem Item auf, KEIN
-// Listen-Kontext nötig. Solo = nur eigene Row. Kein .select() (idempotent,
-// 0-rows mehrdeutig — HEALTH B2).
-export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId })
-// Phase 7: Long-press cascade durch NEUEN mark_episodes_watched_synced RPC
-// (Auto-Sync-Twin von toggle_episode_synced). Das alte 3-arg
-// mark_episodes_watched bleibt unberührt (Logbook nutzt es weiter).
-export async function resetItemProgress(itemId)
-// reset_item_progress RPC. Set-based delete server-side.
+export async function toggleEpisode({ itemId, episodeId, watched, listItemId? })
+// set_episode_watch RPC: optionaler listItemId, der SERVER branchet — null /
+// nicht-gesynct → globale NULL-Zeile (kein Fan-out); gesynct → Instanz-Zeile +
+// Fan-out an Listen-Mitglieder. Kein .select() (idempotent, HEALTH B2).
+export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId, listItemId? })
+// mark_episodes_watched_upto RPC (Cascade-Twin, gleiche Lane-Regel).
+export async function resetItemProgress(itemId, listItemId?)
+// reset_progress RPC. Set-based delete; globale Lane oder eine Instanz.
+// (Die alten *_synced / reset_item_progress RPCs bleiben für Logbook unberührt.)
 
 // Title-Enrichment Gates (Rationale: §Gotchas → Daten/RLS):
-const TITLE_ENRICHMENT_VERSION = 3  // bumpen erzwingt one-time backfill
+const TITLE_ENRICHMENT_VERSION = 4  // bumpen erzwingt one-time backfill
 const GAP_QUERY_LIMIT = 5000        // bypass PostgREST 1000-row default; bulk-upsert, nie per-row-Loop
 ```
 
@@ -234,19 +233,23 @@ export const continueWatchingKey = (userId) => ["home", "continue", userId]
 export const upcomingEpisodesKey = (userId) => ["home", "upcoming", userId]
 export const recentlyTickedKey = (userId) => ["home", "logbook", userId]
 
-export function continueWatchingOptions(user)  // continue_watching RPC + Jikan-since-last-watch flag
+export function continueWatchingOptions(user)  // home_continue_watching RPC (Sync-Instanzen):
+//   globale Fortsetzen-Einträge (list_item_id IS NULL) + je ein Eintrag pro
+//   aktiver Sync-Instanz (listItemId/listShortCode/listName, Label „⟳ Liste").
+//   slug + has_new_episode kommen inline aus dem RPC (kein slugMap / kein
+//   home_new_releases mehr im continue-Pfad).
 export function upcomingEpisodesOptions(user)  // 14-Tage-Fenster aus tracked_home Listen
 export function recentlyTickedOptions(user)    // watch + list_add + missed + ownership_transfer
+//   (home_watch_bundles + missed lesen nur die globale Lane, list_item_id IS NULL)
 
 // LogbookEvent ist DISCRIMINATED UNION über 4 Kinds (Welle-2):
 //   kind: "watch"              → minEpisode, maxEpisode, episodeCount (SESSION_GAP_MS = 6h)
 //   kind: "list_add"           → listId, listShortCode, listName
-//   kind: "missed"             → episodeId (Quick-Tick-Ziel), episodeNumber; ts = air_date.
+//   kind: "missed"             → episodeId, episodeNumber; ts = air_date.
 //                                Neueste released-aber-ungetickte Folge pro getracktem Item
-//                                (MISSED_DAYS = 14), NUR für Items mit ≥1 Watch (begonnen).
-//                                isSelf immer false. Caller-eigener Watch-State explizit
-//                                gefiltert (episode_watches RLS spannt Co-Member). UI:
-//                                „Abhaken"-Button → markEpisodesWatchedUpTo (Catch-up).
+//                                (MISSED_DAYS = 14, globale Lane), NUR für Items mit ≥1 Watch.
+//                                isSelf immer false. UI: reiner Indikator „X ist
+//                                erschienen" — KEIN Quick-Tick mehr (Logbuch read-only).
 //   kind: "ownership_transfer" → listId, listShortCode, listName, recipientName, recipientIsMe.
 //                                Listen-zentriert (kein Item). Aus list_ownership_transfers.
 // Typen-Split: BaseLogbookEvent (eventId, ts, actorUserId, actorName, actorAvatarUrl, isSelf)
@@ -398,6 +401,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **7-Reste** | ✓ done (in `main`) — Logbuch-Welle-2 (`missed`, nur begonnene Items, + `ownership_transfer`), Co-Member-Avatare im Feed, Toast-System (`toast.tsx` + `Toaster`) + Trigger, ErrorBoundary, `MovePointerSensor` |
 | **8 · Polish** | ✓ done — Cover/Avatar-Fade-in (`fadeOnLoad`), Skeleton-States (`Skeleton`), Theme-Switch-Crossfade (`@layer base`). Route-Transitions bewusst verworfen (Tab-Tool cuttet hart, Apple-Linse) |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
+| **Sync-Instanzen** | ✓ Frontend done, **auf Branch `feat/sync-instances` (NICHT in `main`)**, im Dev-Server abgenommen. Fortschritt global pro User bis Sync → Instanz ab 0; Reads/Writes lane-branchen (global `IS NULL` / Instanz `= LI`); Un-Sync = Union-Merge zurück ins Globale. List-scoped Item-Route `/lists/:shortCode/item/:type/:slug` (reload-fest). Kalender + Logbuch **read-only** (keine Ticks/Links — ersetzt Phase-6-Quick-Ticks). **Mitseher-Auge nur in geteilten Listen** (Mitglieder *dieser* Liste). Sync-Toggle = Inline-Confirm, frische Instanz statt Backfill. `is_shared`-Reconcile (Liste wird wieder privat). „Fortsetzen" zeigt aktive Instanzen als eigene Einträge (Listenname-Label). |
 
 ---
 
@@ -405,8 +409,10 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Jetzt
 
-1. **Phase 9 — Deploy/Hosting.** ZUERST mit dem User die `origin`-Push-Strategie klären (Branch/Remote) — **nichts ist gepusht, alles lokal.** Dann: PWA-Manifest steht in `vite.config.ts`; DB-Verifikation (Logbook-Migrationen gegen Live-DB abgleichen + als Nakama-Migrationen tracken).
-2. Kleine UX-Polish-Wünsche zwischendrin atomar abarbeiten — so kamen Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing, der Phase-8-Polish rein.
+1. **`feat/sync-instances` → `main` mergen.** Feature ist im Dev-Server abgenommen, Build grün, Tree clean, alle Migrationen gefahren. Beim Merge: diese handshake.md ist schon aktualisiert; CLAUDE.md-Stand prüfen.
+2. **`origin`-Push-Strategie klären** (Branch/Remote) — **nichts ist gepusht, alles lokal.** Outward-facing, nur auf explizite Zustimmung.
+3. **Phase 9 — Deploy/Hosting.** PWA-Manifest steht in `vite.config.ts`; DB-Verifikation (Logbook-Migrationen gegen Live-DB abgleichen + als Nakama-Migrationen tracken).
+4. Kleine UX-Polish-Wünsche zwischendrin atomar abarbeiten — so kamen Drag-Reorder, Pin-to-Top, RowActions-Merge, „Neue Folge"-Badge, Sharing, Phase-8-Polish, die Sync-Instanzen rein.
 
 ### Geplant, nicht akut
 
@@ -467,7 +473,15 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 - **AniList Cover-URL-Naming-Falle:** API-Feld `coverImage.large` liefert `/cover/medium/` URL (~230 px), nicht `/cover/large/` (~430 px). Letzteres im API-Feld `extraLarge`. Search holt extraLarge, `highResCover()` schwenkt Legacy-DB-URLs render-time um.
 - **Discriminated Union für Logbuch-Events.** `LogbookEvent = WatchBundle | ListAddEvent` mit `kind` als Discriminator. Solid's `<Show>` narrowed nicht; im JSX `{ev.kind === "watch" ? <WatchSentence ev={ev}/> : <ListAddSentence ev={ev}/>}` damit TypeScript narrowed.
 - **Optimistic Writes ohne `.select()` lügen** wenn RLS still blockt (0 rows, kein Error). Pattern: nach `update` zurück selektieren, wenn 0 → `error: "blocked"` rollback.
-- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern. Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000` (public `avatars`-Bucket + Storage-RLS), delete_account `20260530160000` (SECURITY DEFINER, blockt bei eigenen geteilten Listen), invitation_names_prefer_display `20260530170000` (**noch nicht gefahren**) = 8 Files. Erste 7 angewendet. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas sieben Files in Timestamp-Reihenfolge.
+- **Migrationen** fährt der User manuell im Supabase SQL-Editor. Bei neuer Migration im Chat ankündigen + den SQL liefern (Falle: der User kopiert leicht den Erklärtext mit — SQL klar abgrenzen). Seit 2026-05-29 in `supabase/migrations/` getrackt: Phase-3-5-Catch-up `20260528200000`, Home-RPCs `20260529120000`, Pin-RPCs `20260529130000`, Auto-Sync-Cascade `20260530120000`, Realtime-Sharing-Tables `20260530140000`, Avatar-Storage `20260530150000`, delete_account `20260530160000`, invitation_names_prefer_display `20260530170000` (**Status prüfen — war zuvor offen**), **Sync-Instanzen `20260531100000` (gefahren), home_sync_instances `20260531120000` (gefahren), unshare_when_solo `20260531140000` (gefahren)** = 11 Files. Logbook-Era-Schema lebt weiter in dessen Repo; eine frische Nakama-DB = Logbook-Migrationen zuerst, dann Nakamas Files in Timestamp-Reihenfolge.
+
+- **Sync-Instanzen (durable Modell).** Fortschritt ist **global pro User** (`episode_watches.list_item_id IS NULL`), BIS ein `list_item` gesynct wird (`sync_enabled=true`) → eigene **Instanz** (`list_item_id = LI`), startet bei 0. **Jede `episode_watches`-Leseabfrage MUSS die Lane filtern** — global `.is("list_item_id", null)` oder Instanz `.eq("list_item_id", LI)`; ohne den expliziten `IS NULL` lecken Instanz-Zeilen in globale Flächen, sobald Instanzen existieren. Writes laufen über `set_episode_watch` / `mark_episodes_watched_upto` / `reset_progress` mit optionalem `_list_item_id` — der RPC branchet server-side (null/nicht-gesynct → global, kein Fan-out; gesynct → Instanz + Fan-out an Mitglieder). Un-Sync = `unsync_item` (Union der Instanz ins Globale jedes Mitglieds, dann Instanz löschen). Die alten `*_synced`/`reset_item_progress`/`backfill_*` RPCs bleiben für Logbook unberührt. Item-Seite: globale Route `/item/...` vs. list-scoped `/lists/:shortCode/item/...`; `instanceLI = syncEnabled ? listItemId : null`; `laneReady`-Gate verhindert kurzes Anzeigen der falschen Lane.
+
+- **`location.state` (Solid Router) überlebt einen Hard Reload** — es liegt auf `history.state`. Ein dort abgelegter Snapshot (z.B. `syncEnabled` als Pre-Load-Hint) kann also **veraltet** sein; eine Live-Query (syncCtx) muss via `liveValue ?? stateHint` Vorrang haben, NICHT `stateHint ?? liveValue` (sonst gewinnt ein stale `false` auch nach Reload).
+
+- **Mitseher-Auge = Shared-List-only + Privacy.** `coWatchersOptions` ist auf EINE Liste scoped (`listMemberIdsOf`, nicht „alle Co-Member") und wird nur gemountet, wenn das Item über eine **geteilte** Liste geöffnet ist (`isShared` + `listId`). Private Liste / globale Item-Seite / Kalender → **kein Auge** (ein privater Tracker darf den Stand anderer nie verraten). Lane-matched wie die Episode-Reads.
+
+- **Logbuch + Kalender sind reine read-only Indikatoren.** Keine Ticks, keine Verlinkungen — getickt wird nur auf der Item-Seite (wo die Lane eindeutig ist). Logbuch-Sätze sind statischer Text (kein `<A>`), `missed` ohne „Abhaken"-Button; Kalender-Tag-Pane ohne Link + ohne Mitseher-Auge (nur eigener Punkt).
 
 - **Auto-Sync-RPCs statt Listen-Kontext (Phase 7).** Die geteilte Live-DB trägt `toggle_episode_synced(_item_id, _episode_id, _watched)` als *Auto-Sync*-Variante (Logbook `20260528180000`): sie fächert über ALLE Sync-ON-Listen mit dem Item auf, kein `list_item.id` im Call. Der Cascade hatte kein Auto-Sync-Twin — `mark_episodes_watched` fächert nur für ein explizit übergebenes `_list_item_id`. Nakamas Item-Page/Kalender sind kontextfrei, daher Migration `20260530120000`: neuer `mark_episodes_watched_synced(_item_id, _up_to_episode_id)` (Twin) + sicherheitshalber Re-Assert von `toggle_episode_synced` in der Auto-Sync-Form (drop+create, falls die geteilte DB noch die alte Signatur trug). **Falle:** named-param RPC-Calls brechen, wenn die Live-Funktion andere Parameter-NAMEN bei gleichen Typen hat — `create or replace` kann Param-Namen nicht ändern, es braucht `drop function` zuerst.
 
