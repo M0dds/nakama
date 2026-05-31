@@ -739,7 +739,15 @@ function DayPaneRow(props: { ev: CalendarEvent }) {
   const textClass = () => (props.ev.released ? "text-text" : "text-text-muted");
 
   return (
-    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+    <li class="group/row relative isolate after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+      {/* Hover fill — inset 1px on the LEFT so it stops at the column guide
+          (the day-pane is the right column, same as the Logbuch feed), bleeds
+          right to the viewport edge. isolate + -z-10 keeps it behind the
+          content but in front of the guide. */}
+      <span
+        aria-hidden
+        class="pointer-events-none absolute inset-y-0 left-px right-0 -z-10 bg-surface opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover/row:opacity-100"
+      />
       {/* Pure indicator row — no link, no tick. Just shows what airs and
           whether it's been seen (own dot + co-member eye). */}
       <div class="flex items-center gap-3 px-5">
