@@ -192,8 +192,12 @@ function ConfirmStrip(props: {
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // Own wrapper with gap-2 so the confirm matches the aside confirms
+  // (ResetItemButton/DeleteListButton/LeaveListButton) exactly — size-6
+  // buttons, size-3.5 icons, gap-2 — instead of inheriting the action
+  // cluster's tighter gap-1.
   return (
-    <>
+    <span class="inline-flex items-center gap-2">
       <span
         class="font-mono text-mini uppercase tracking-wider text-text-muted"
         aria-live="polite"
@@ -210,9 +214,9 @@ function ConfirmStrip(props: {
           props.onConfirm();
         }}
         aria-label={props.confirmAria}
-        class="inline-flex size-7 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
+        class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        <Check class="size-4" strokeWidth={2.5} aria-hidden />
+        <Check class="size-3.5" strokeWidth={2.5} aria-hidden />
       </button>
       <button
         type="button"
@@ -221,10 +225,10 @@ function ConfirmStrip(props: {
           props.onCancel();
         }}
         aria-label="Abbrechen"
-        class="inline-flex size-7 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
+        class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
       >
-        <X class="size-4" strokeWidth={2} aria-hidden />
+        <X class="size-3.5" strokeWidth={2} aria-hidden />
       </button>
-    </>
+    </span>
   );
 }
