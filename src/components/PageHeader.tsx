@@ -24,7 +24,10 @@ import { ChevronLeft } from "lucide-solid";
  * the heading's line-height so it doesn't push the kicker row.
  *
  * Header is full-bleed by design; page content sits in its own reading-width
- * wrapper below it.
+ * wrapper below it. The bottom rule is a 100vw breakout line (not a border-b)
+ * so it still spans BOTH viewport edges when the content frame is capped on
+ * ultrawide screens — the header sits centered in that frame, so a centered
+ * 100vw line reaches the edges. Mirrors the ColumnGuide's full-bleed intent.
  */
 export function PageHeader(props: {
   kicker?: JSX.Element;
@@ -43,7 +46,7 @@ export function PageHeader(props: {
   };
 
   return (
-    <header class="flex items-end justify-between border-b border-rule px-5 pb-3 pt-6">
+    <header class="relative flex items-end justify-between px-5 pb-3 pt-6">
       <div>
         <div class="flex items-center gap-2">
           <span
@@ -76,6 +79,15 @@ export function PageHeader(props: {
           text baseline is identical between "Liste löschen" trigger and
           "Wirklich löschen? ✓ ✗" confirm — no shift, no jump. */}
       <div class="inline-flex h-6 items-center">{props.aside}</div>
+
+      {/* Full-bleed bottom rule — escapes the capped content frame so it
+          reaches both viewport edges (the header is centered in the frame, so
+          a centered 100vw line spans edge-to-edge). body { overflow-x: clip }
+          absorbs the scrollbar-width overshoot. */}
+      <div
+        aria-hidden
+        class="pointer-events-none absolute bottom-0 left-1/2 h-px w-screen -translate-x-1/2 bg-rule"
+      />
     </header>
   );
 }

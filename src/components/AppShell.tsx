@@ -1,6 +1,7 @@
 import { createSignal, Show, type ParentProps } from "solid-js";
 import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
+import { ContentFrame } from "@/components/ContentFrame";
 import { ToastProvider } from "@/lib/toast";
 
 /**
@@ -60,6 +61,7 @@ export function AppShell(props: ParentProps) {
       <div class="mx-auto w-full max-w-[var(--content-max)] pb-[94px]">
         {props.children}
       </div>
+      <ContentFrame />
       <BottomNav onAddClick={openAdd} addSheetOpen={addVisible()} />
       <Show when={addMounted()}>
         <AddSheet visible={addVisible()} onClose={closeAdd} />

@@ -29,12 +29,15 @@
    ========================================================================= */
 
 /* ─── 1 · DEFAULT — Standard (Japan minimalism, vermillion accent) ──────── */
-/* Layout — max readable content width. Wide viewports get side gutters so the
-   content doesn't sprawl edge-to-edge; the full-bleed instrument rule
-   (ColumnGuide) still spans the whole screen, re-aligned to the content's
-   2/3 boundary. Theme-independent → its own :root block. */
+/* Layout — max content WIDTH (a fixed length, height-independent on purpose:
+   two equally-wide viewports get identical content regardless of their height,
+   so a 16:10 panel isn't punished vs a 16:9 of the same width). Viewports up to
+   this width fill edge-to-edge; wider ones get side gutters. The ContentFrame
+   hairlines mark the cap, so a gutter reads as a deliberate frame rather than
+   stray padding — which is why the cap can be generous without looking broken.
+   Own :root block since it's theme-independent. */
 :root {
-  --content-max: 1440px;
+  --content-max: 1728px;
 }
 
 :root,
@@ -297,6 +300,11 @@ body {
   font-weight: 400;
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  /* Full-bleed chrome (the PageHeader rule) uses a 100vw breakout. `clip`
+     swallows the sub-pixel / scrollbar-width overshoot so it never adds a
+     horizontal scrollbar, without becoming a scroll container (so `position:
+     fixed` chrome like the ColumnGuide is unaffected). */
+  overflow-x: clip;
   transition:
     background-color 200ms ease,
     color 200ms ease;
@@ -347,4 +355,13 @@ body {
 .grain-layer {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
+}
+
+/* Hide the scrollbar on horizontally-scrollable strips (e.g. the game
+   screenshot thumbnail row) while keeping scroll/drag working. */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* WebKit */
 }
