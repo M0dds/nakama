@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand (Tagesstatus):** Phasen 1-8 **+ Sync-Instanzen sind in lokalem `main`** (sync-instances wurde gemerged — die frühere „nur auf feat/sync-instances"-Notiz war veraltet). Darüber liegt eine **Politur-Session auf Branch `chore/misc-tweaks` (13 Commits, NICHT nach `main` gemerged)**: theme-folgendes Favicon, Navbar-Bubble als liquid Transform-Morph (+ Back-Recoil), `Segmented` teilt diesen Morph, Sync-Flip als Modal-Dialog (`SyncConfirmDialog`), **Reset in synced Liste fan-outet für alle** (Migration `20260531160000`), „Was kommt"-Cards Overshoot-Spring, diverse Hover/Caption-Fixes (Logbuch + Kalender-Tag-Pane an der Column-Guide), Kalender-Episodennummer entakzentuiert. **`origin` ist NICHT aktuell:** lokales `main` ist `origin/main` voraus, und `chore/misc-tweaks` ist noch nicht in `main`. Nächste Schritte: `chore/misc-tweaks` → `main` mergen, `origin`-Push-Strategie klären (§Offene Punkte), dann die vier großen Themen. Migration `20260530170000` (Einladungs-RPCs display_name) — Status weiter prüfen, war zuvor offen.
+**Stand (Tagesstatus):** Phasen 1-8 **+ Sync-Instanzen + die Politur-Session sind alle in lokalem `main`** — `chore/misc-tweaks` wurde gemerged (`main` == `0fb8e17`, Branch zeigt auf denselben Commit, Diff leer). Inhalt der Politur-Session (jetzt in `main`): theme-folgendes Favicon, Navbar-Bubble als liquid Transform-Morph (+ Back-Recoil), `Segmented` teilt diesen Morph, Sync-Flip als Modal-Dialog (`SyncConfirmDialog`), **Reset in synced Liste fan-outet für alle** (Migration `20260531160000`), „Was kommt"-Cards Overshoot-Spring, diverse Hover/Caption-Fixes (Logbuch + Kalender-Tag-Pane an der Column-Guide), Kalender-Episodennummer entakzentuiert. Build grün, Tree clean, alle 12 Migrationen in `supabase/migrations/` getrackt. **`origin` ist NICHT aktuell:** lokales `main` ist `origin/main` ~160 Commits voraus (nie gepusht). Nächster Schritt: `origin`-Push-Strategie klären (§Offene Punkte), dann die vier großen Themen. Migration `20260530170000` (Einladungs-RPCs display_name) — Status weiter prüfen, war zuvor offen.
 
 > **Wegweiser (eine Quelle je Sache):** Feature-Inventar pro Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** · durable Architektur + Fallen (inkl. Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher.
 
@@ -404,7 +404,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **8 · Polish** | ✓ done — Cover/Avatar-Fade-in (`fadeOnLoad`), Skeleton-States (`Skeleton`), Theme-Switch-Crossfade (`@layer base`). Route-Transitions bewusst verworfen (Tab-Tool cuttet hart, Apple-Linse) |
 | **9 · PWA + Hosting** | teilweise — Manifest in `vite.config.ts`, Deploy ausstehend |
 | **Sync-Instanzen** | ✓ **in `main`** (gemerged). Fortschritt global pro User bis Sync → Instanz ab 0; Reads/Writes lane-branchen (global `IS NULL` / Instanz `= LI`); Un-Sync = Union-Merge zurück ins Globale. List-scoped Item-Route `/lists/:shortCode/item/:type/:slug` (reload-fest). Kalender + Logbuch **read-only** (keine Ticks/Links — ersetzt Phase-6-Quick-Ticks). **Mitseher-Auge nur in geteilten Listen** (Mitglieder *dieser* Liste). **Reset in synced Liste fächert für alle** (Migration `20260531160000`). `is_shared`-Reconcile (Liste wird wieder privat). „Fortsetzen" zeigt aktive Instanzen als eigene Einträge (Listenname-Label). |
-| **Politur-Session** | auf Branch `chore/misc-tweaks` (NICHT in `main`) — theme-folgendes Favicon, **liquid Navbar-Bubble** (Transform-Morph translateX+scaleX, snappy Bell-Easing, kein Settle-Stopp) + Back-Satellit-Recoil (WAAPI one-shot, `composite:"add"`), `Segmented` teilt denselben Morph (Form bleibt eckig — liquid lebt in der Bewegung), **Sync-Flip als Modal-`SyncConfirmDialog`** (statt Inline-Confirm), „Was kommt"-Cards Overshoot-Spring, Hover-Layer an der Column-Guide (Logbuch + Kalender-Tag-Pane), Kalender-Episodennummer entakzentuiert. |
+| **Politur-Session** | ✓ **in `main`** (`chore/misc-tweaks` gemerged) — theme-folgendes Favicon, **liquid Navbar-Bubble** (Transform-Morph translateX+scaleX, snappy Bell-Easing, kein Settle-Stopp) + Back-Satellit-Recoil (WAAPI one-shot, `composite:"add"`), `Segmented` teilt denselben Morph (Form bleibt eckig — liquid lebt in der Bewegung), **Sync-Flip als Modal-`SyncConfirmDialog`** (statt Inline-Confirm), „Was kommt"-Cards Overshoot-Spring, Hover-Layer an der Column-Guide (Logbuch + Kalender-Tag-Pane), Kalender-Episodennummer entakzentuiert. |
 
 ---
 
@@ -412,8 +412,8 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Jetzt — Git / Merge
 
-1. **`chore/misc-tweaks` → `main` mergen.** Die Politur-Session (13 Commits, siehe §Stand) ist abgenommen, Build grün, Tree clean, Migration `20260531160000` gefahren (User-bestätigt). Diese handshake.md + CLAUDE.md sind aktualisiert.
-2. **`origin`-Push-Strategie klären.** Lokales `main` ist `origin/main` voraus (sync-instances + frühere Arbeit nie gepusht); `chore/misc-tweaks` ebenfalls nur lokal. Outward-facing — nur auf explizite Zustimmung.
+1. ~~`chore/misc-tweaks` → `main` mergen~~ — **erledigt.** Politur-Session ist in `main` (`main` == `0fb8e17`, Diff zum Branch leer). Build grün, Tree clean, Migration `20260531160000` gefahren (User-bestätigt).
+2. **`origin`-Push-Strategie klären.** Lokales `main` ist `origin/main` ~160 Commits voraus (sync-instances + Politur + frühere Arbeit nie gepusht). Outward-facing — nur auf explizite Zustimmung.
 
 ### Nächste große Themen (vom User priorisiert — vor Umsetzung Detail-Design + bei Schema/Screens fragen)
 
