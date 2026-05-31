@@ -33,16 +33,18 @@ function backTarget(pathname: string): string | null {
  * Liquid sliding accent indicator: a single absolute-positioned span lives
  * inside the pill (behind the buttons) and "rests" on whichever button
  * carries the [data-accent] attribute (NavButton sets it when isActive).
- * On a route change the indicator stretches into a capsule spanning
- * OLD → NEW, then contracts to the destination. That two-phase motion
- * is what makes the accent feel like mercury instead of a hard slide.
+ * On a route change the indicator elongates toward the destination — the
+ * leading edge (in the travel direction) races ahead while the trailing
+ * edge lags, then the tail catches up and it contracts onto the target. One
+ * continuous WAAPI timeline (see place()); that stretch-and-contract is what
+ * makes the accent feel like mercury instead of a hard slide.
  *
  * The bubble is ALWAYS rendered (not conditionally) so we never lose the
- * transition-able element across path changes — the geometry just gets
- * patched in place via `style`. Opacity gates whether it's visible (0 on
- * detail routes that don't match any tab; 1 once a target is measured).
+ * animatable element across path changes — the resting geometry gets patched
+ * in place via `style` and the slide is a WAAPI overlay on top. Opacity gates
+ * whether it's visible (0 on detail routes that don't match any tab; 1 once a
+ * target is measured).
  */
-const SETTLE_MS = 100; // capsule lingers this long before contracting
 
 interface IndicatorBox {
   left: number;
@@ -126,7 +128,7 @@ export function BottomNav(props: {
   const [bubble, setBubble] = createSignal<IndicatorBox | null>(null);
   // Mutable refs that persist across reactive runs without triggering them.
   let prevRest: IndicatorBox | null = null;
-  let settleTimer: number | null = null;
+  let slideAnim: Animation | undefined;
   // First placement should snap (no transition from 0/0/0/0). After that
   // we enable transitions for the next render.
   const [animated, setAnimated] = createSignal(false);
@@ -166,7 +168,9 @@ export function BottomNav(props: {
       },
       { transform: "translateX(0) scale(1, 1)", offset: 1 },
     ];
-    const opts: KeyframeAnimationOptions = { duration: 440 };
+    // composite:"add" so the recoil layers ON TOP of any in-flight slide
+    // transform (e.g. list→lists fires both) instead of clobbering it.
+    const opts: KeyframeAnimationOptions = { duration: 440, composite: "add" };
     backAnims.forEach((a) => a.cancel());
     backAnims = [backBtnEl?.animate(frames, opts), bubbleEl?.animate(frames, opts)].filter(
       Boolean,
@@ -174,10 +178,6 @@ export function BottomNav(props: {
   };
 
   const place = () => {
-    if (settleTimer !== null) {
-      window.clearTimeout(settleTimer);
-      settleTimer = null;
-    }
     if (!pillEl) return;
     const el = pillEl.querySelector<HTMLElement>("[data-accent]");
     if (!el) return; // no active tab on this route — bubble stays put
@@ -189,30 +189,60 @@ export function BottomNav(props: {
       height: el.offsetHeight,
     };
     const prev = prevRest;
+    // Resting geometry is ALWAYS the target box; the slide is a WAAPI overlay
+    // on top (the bubble has no CSS transition on left/width to race it).
+    setBubble(target);
 
-    if (prev && prev.left !== target.left) {
-      // Phase 1 — stretch into a capsule spanning the old and new buttons.
-      const leftEdge = Math.min(prev.left, target.left);
-      const rightEdge = Math.max(
-        prev.left + prev.width,
-        target.left + target.width,
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (animated() && prev && prev.left !== target.left && bubbleEl && !reduce) {
+      // Liquid morph as a pure TRANSFORM overlay (translateX + scaleX) on the
+      // resting target box — GPU-composited, so no layout-thread jank, and it
+      // composites cleanly with the press recoil (both composite:"add"). The
+      // bubble maps back to its previous box at t=0, bulges wider at the
+      // midpoint (the leading edge ahead of the trailing one → mercury
+      // stretch), then settles to identity (= the target box) at t=1.
+      //
+      // The easings are the crux: segment 1 ACCELERATES (ease-in) and segment
+      // 2 DECELERATES (ease-out), so velocity is at its PEAK through the
+      // midpoint — one continuous surge. (A symmetric ease-out→ease-in pair
+      // dropped to ~zero velocity at the waypoint and read as two jerky
+      // steps.) LEAD/TRAIL set each edge's progress at the midpoint, swapped
+      // by direction so whichever edge leads the travel gets LEAD.
+      const cx = target.left + target.width / 2;
+      const pL = prev.left;
+      const pR = prev.left + prev.width;
+      const tL = target.left;
+      const tR = target.left + target.width;
+      const goingRight = tL > pL;
+      const LEAD = 0.85;
+      const TRAIL = 0.3;
+      const midL = pL + (tL - pL) * (goingRight ? TRAIL : LEAD);
+      const midR = pR + (tR - pR) * (goingRight ? LEAD : TRAIL);
+      const tf = (l: number, r: number) =>
+        `translateX(${(l + r) / 2 - cx}px) scaleX(${(r - l) / target.width})`;
+      // Velocity profile: snappy departure + snappy settle, peak through the
+      // midpoint. seg1 leaves rest with real speed (y1/x1 ≈ 0.5) and ramps
+      // hard to a high mid velocity (x2→1); seg2 mirrors it — high start
+      // (x1→0), gentle-but-present stop. The earlier 0→peak→0 pair read as
+      // sluggish at both ends.
+      slideAnim?.cancel();
+      slideAnim = bubbleEl.animate(
+        [
+          { transform: tf(pL, pR), easing: "cubic-bezier(0.3, 0.15, 0.9, 0.5)" },
+          { transform: tf(midL, midR), offset: 0.5, easing: "cubic-bezier(0.1, 0.5, 0.7, 0.85)" },
+          { transform: "translateX(0) scaleX(1)", offset: 1 },
+        ],
+        { duration: 300, composite: "add" },
       );
-      setBubble({
-        left: leftEdge,
-        top: target.top,
-        width: rightEdge - leftEdge,
-        height: target.height,
-      });
-      // Phase 2 — contract to the destination.
-      settleTimer = window.setTimeout(() => setBubble(target), SETTLE_MS);
-    } else {
-      // First appearance OR same position — snap (no stretch).
-      setBubble(target);
     }
+
     prevRest = target;
 
-    // Enable transitions for subsequent renders. We do this on the next
-    // frame so the initial snap-to-target isn't itself animated.
+    // Enable animation for subsequent renders. Next frame so the initial
+    // snap-to-target isn't itself animated.
     if (!animated()) {
       requestAnimationFrame(() => setAnimated(true));
     }
@@ -232,7 +262,7 @@ export function BottomNav(props: {
     window.addEventListener("resize", onResize);
     onCleanup(() => {
       window.removeEventListener("resize", onResize);
-      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      slideAnim?.cancel();
     });
   });
 
@@ -283,14 +313,13 @@ export function BottomNav(props: {
           }`}
           style={{
             // Opacity is delayed 100 ms so the arrow only appears once the
-            // bubble has started settling on the new (back-button) target —
-            // otherwise the white-on-light arrow would briefly float over a
-            // backgroundless slot before the accent fills in. 100 ms matches
-            // SETTLE_MS so the fade-in starts exactly as Phase 2 (contract)
-            // kicks off; full opacity lands around t=300 ms, when the bubble
-            // is settled. Symmetric in close: the arrow fades together with
-            // the bubble leaving its slot. The press recoil is a one-shot
-            // WAAPI animation (pulseBack) — not a CSS transition here.
+            // bubble's slide morph has begun settling on the back-button slot
+            // — otherwise the white-on-light arrow would briefly float over a
+            // backgroundless slot before the accent fills in. Full opacity
+            // lands around t=300 ms, when the bubble has arrived. Symmetric in
+            // close: the arrow fades together with the bubble leaving its slot.
+            // The press recoil is a one-shot WAAPI animation (pulseBack) — not
+            // a CSS transition here.
             transition: "opacity 200ms var(--ease-quart) 100ms",
           }}
         >
@@ -312,13 +341,12 @@ export function BottomNav(props: {
             width: `${bubble()?.width ?? 0}px`,
             height: `${bubble()?.height ?? 0}px`,
             opacity: bubble() ? 1 : 0,
-            // Geometry rides the 200 ms liquid flow; the press recoil is a
-            // one-shot WAAPI transform (pulseBack) that composites on top and
-            // returns to none on finish. No transition on the very first
-            // placement (snap to target).
-            transition: animated()
-              ? "left 200ms ease-out, top 200ms ease-out, width 200ms ease-out, height 200ms ease-out, opacity 200ms ease-out"
-              : "none",
+            // The slide morph + the press recoil are BOTH WAAPI overlays
+            // (place() animates left/width; pulseBack animates transform),
+            // composited on top of this resting geometry. So CSS only owns
+            // the opacity fade — no transition on left/width to race the
+            // WAAPI slide.
+            transition: "opacity 200ms ease-out",
           }}
         />
 
