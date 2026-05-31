@@ -308,7 +308,10 @@ export async function fetchAniListEpisodes(
     // have most chapters removed from MD. We get what we can; missing
     // chapters keep title=null and the UI surfaces the standard fallback
     // for them.
-    const mdTitles = await fetchMangaDexChapterTitles(id, fallbackTitle);
+    const { titles: mdTitles } = await fetchMangaDexChapterTitles(
+      id,
+      fallbackTitle,
+    );
 
     return {
       episodes: range(Math.min(count, MAX_EPISODES)).map((n) => ({

@@ -265,15 +265,22 @@ async function backfillTitles(
   opts: {
     label: string;
     airedOnly: boolean;
-    fetchTitles: () => Promise<{ titles: Map<number, string>; malId: number | null }>;
+    fetchTitles: () => Promise<{
+      titles: Map<number, string>;
+      malId: number | null;
+      /** False when the source paged short on a transient failure (429/5xx/
+       *  network) — propagated to `ok` so the version gate stays open and the
+       *  next visit retries instead of locking in a partial title set. */
+      complete: boolean;
+    }>;
   },
 ): Promise<EnrichResult> {
   try {
     const gaps = await selectTitleGaps(item.id, opts.airedOnly);
     if (gaps.length === 0) return { ok: true, malId: null };
-    const { titles, malId } = await opts.fetchTitles();
+    const { titles, malId, complete } = await opts.fetchTitles();
     if (titles.size > 0) await writeTitles(item.id, gaps, titles);
-    return { ok: true, malId };
+    return { ok: complete, malId };
   } catch (err) {
     console.error(`${opts.label} title backfill failed`, err);
     return { ok: false, malId: null };
@@ -298,8 +305,9 @@ function enrichAnime(item: ItemForFetch): Promise<EnrichResult> {
         const ali = await fetchAniListEpisodes(item.sourceId, "anime");
         malId = ali.malId;
       }
-      if (malId == null) return { titles: new Map(), malId: null };
-      return { titles: await fetchJikanEpisodeTitles(malId), malId };
+      if (malId == null) return { titles: new Map(), malId: null, complete: true };
+      const { titles, complete } = await fetchJikanEpisodeTitles(malId);
+      return { titles, malId, complete };
     },
   });
 }
@@ -320,8 +328,11 @@ function enrichManga(item: ItemForFetch): Promise<EnrichResult> {
         .maybeSingle();
       const title =
         typeof itemRow?.title === "string" ? (itemRow.title as string) : null;
-      const titles = await fetchMangaDexChapterTitles(Number(item.sourceId), title);
-      return { titles, malId: null };
+      const { titles, complete } = await fetchMangaDexChapterTitles(
+        Number(item.sourceId),
+        title,
+      );
+      return { titles, malId: null, complete };
     },
   });
 }
