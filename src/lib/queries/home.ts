@@ -193,13 +193,13 @@ export function upcomingEpisodesOptions(user: User) {
     queryFn: async (): Promise<UpcomingItem[]> => {
       const itemIds = await trackedItemIds();
       if (itemIds.length === 0) return [];
-      // Episodes (next 14 days) + unreleased movies (any future date),
+      // Episodes (next 14 days) + unreleased movies & games (any future date),
       // merged and sorted soonest-first into one "Was kommt" stream.
-      const [eps, movies] = await Promise.all([
+      const [eps, dated] = await Promise.all([
         fetchUpcomingEpisodes(itemIds),
-        fetchUpcomingMovies(itemIds),
+        fetchUpcomingDated(itemIds),
       ]);
-      return [...eps, ...movies].sort((a, b) =>
+      return [...eps, ...dated].sort((a, b) =>
         a.airDate.localeCompare(b.airDate),
       );
     },
@@ -346,12 +346,12 @@ async function fetchUpcomingEpisodes(
   });
 }
 
-/** Unreleased movies in the tracked lists, by their (German) release date.
- *  Movies are episode-less: the date lives in items.metadata.releaseDate
- *  (stamped on add / backfilled on the detail page from TMDB's DE release).
- *  No upper window — a film stays in "Was kommt" until it's out, then drops
- *  off (start = local midnight today, so a release today still counts). */
-async function fetchUpcomingMovies(
+/** Unreleased episode-less items in the tracked lists, by their release date.
+ *  Movies (TMDB DE release) and games (Steam release) are episode-less: the
+ *  date lives in items.metadata.releaseDate (stamped on add / backfilled on the
+ *  detail page). No upper window — an item stays in "Was kommt" until it's out,
+ *  then drops off (start = local midnight today, so a release today counts). */
+async function fetchUpcomingDated(
   itemIds: string[],
 ): Promise<UpcomingItem[]> {
   if (itemIds.length === 0) return [];
@@ -363,10 +363,10 @@ async function fetchUpcomingMovies(
     .from("items")
     .select("id, title, type, slug, cover_url, metadata")
     .in("id", itemIds)
-    .eq("type", "movie")
+    .in("type", ["movie", "game"])
     .gte("metadata->>releaseDate", start.toISOString());
   if (error) {
-    console.error("upcoming movies query failed", error);
+    console.error("upcoming dated-items query failed", error);
     return [];
   }
 
