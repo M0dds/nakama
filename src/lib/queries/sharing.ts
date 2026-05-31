@@ -425,6 +425,60 @@ export function coWatchersOptions(
   };
 }
 
+export const movieCoWatchersKey = (itemId: string) =>
+  ["movie-co-watchers", itemId] as const;
+
+/**
+ * Co-watchers for ONE film, scoped to ONE shared list: who among that list's
+ * members (besides the caller) has marked the film seen, and when. Films are
+ * episode-less, so this reads item_history (status='completed') instead of
+ * episode_watches, and returns a flat CoWatcher[] (no per-episode keying).
+ *
+ * Same shared-list-only privacy as the episode eye: mount only when the film
+ * is opened through a shared list, and read only THAT list's members. There's
+ * no lane (films have no sync instances), so it always reads the single
+ * item_history row per member. The RLS policy item_history_select_co
+ * (shares_list_with) is what lets co-members' rows be visible at all.
+ */
+export function movieCoWatchersOptions(
+  user: User,
+  itemId: string,
+  listId: string,
+) {
+  return {
+    queryKey: [...movieCoWatchersKey(itemId), listId] as const,
+    staleTime: 30_000,
+    queryFn: async (): Promise<CoWatcher[]> => {
+      const memberIds = await listMemberIdsOf(listId, user.id);
+      if (memberIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from("item_history")
+        .select("user_id, updated_at")
+        .eq("item_id", itemId)
+        .eq("status", "completed")
+        .in("user_id", memberIds);
+      if (error) {
+        console.error("movie co-watchers lookup failed", error);
+        return [];
+      }
+      const rows = (data ?? []) as { user_id: string; updated_at: string }[];
+      if (rows.length === 0) return [];
+
+      const profs = await profilesById(unique(rows.map((r) => r.user_id)));
+      return rows.map((r) => {
+        const p = profs.get(r.user_id);
+        return {
+          userId: r.user_id,
+          name: p?.name ?? "Jemand",
+          avatarUrl: p?.avatarUrl ?? null,
+          timeLabel: relTime(r.updated_at),
+        };
+      });
+    },
+  };
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Mutations
 // ──────────────────────────────────────────────────────────────────────────

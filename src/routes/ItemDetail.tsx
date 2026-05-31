@@ -28,6 +28,7 @@ import {
 import {
   coWatchersOptions,
   listItemByContextOptions,
+  movieCoWatchersOptions,
   syncContextOptions,
   type CoWatcher,
 } from "@/lib/queries/sharing";
@@ -225,6 +226,12 @@ export default function ItemDetail() {
         ["co-watchers"],
       ],
     },
+    {
+      // Films: a co-member marking this film seen updates the eye + the
+      // caller's own seen-state flows the same way (own write also fires here).
+      table: "item_history",
+      invalidates: [["movie-co-watchers"], ["movie-seen"]],
+    },
   ]);
 
   // ── Mutations ─────────────────────────────────────────────────────────
@@ -403,7 +410,13 @@ export default function ItemDetail() {
               {(itemData) => (
                 <Show
                   when={!isMovie()}
-                  fallback={<MoviePanel item={itemData()} />}
+                  fallback={
+                    <MoviePanel
+                      item={itemData()}
+                      listId={syncCtx.data?.listId ?? null}
+                      isShared={!!syncCtx.data?.isShared}
+                    />
+                  }
                 >
                 <>
                   <ProgressBar
@@ -952,7 +965,11 @@ function Fact(props: { label: string; value: string }) {
  *  with the accent dot on the right that fills when seen. Label flips so a
  *  single binary reads unambiguously (episodes keep a static label + dot, but
  *  here there's no episode number to anchor the state). */
-function MovieSeenRow(props: { seen: boolean; onToggle: () => void }) {
+function MovieSeenRow(props: {
+  seen: boolean;
+  watchers: CoWatcher[];
+  onToggle: () => void;
+}) {
   return (
     <div class="-mx-5">
       <button
@@ -967,14 +984,18 @@ function MovieSeenRow(props: { seen: boolean; onToggle: () => void }) {
         <span class="min-w-0 flex-1 text-body text-text">
           {props.seen ? "Gesehen" : "Als gesehen markieren"}
         </span>
-        <span
-          aria-hidden
-          class={`size-2.5 shrink-0 rounded-full transition-colors ${
-            props.seen
-              ? "bg-accent"
-              : "bg-transparent ring-1 ring-border group-hover:ring-text-muted"
-          }`}
-        />
+        {/* Mitseher eye + seen dot — same right cluster as an episode row. */}
+        <div class="flex shrink-0 items-center gap-2">
+          <CoWatcherMark watchers={props.watchers} />
+          <span
+            aria-hidden
+            class={`size-2.5 rounded-full transition-colors ${
+              props.seen
+                ? "bg-accent"
+                : "bg-transparent ring-1 ring-border group-hover:ring-text-muted"
+            }`}
+          />
+        </div>
       </button>
     </div>
   );
@@ -989,13 +1010,26 @@ function MovieSeenRow(props: { seen: boolean; onToggle: () => void }) {
  * Details are fetched live from TMDB (not stored): credits don't change, so
  * TanStack's cache + a day-long staleTime is enough and items stays lean.
  */
-function MoviePanel(props: { item: ItemDetails }) {
+function MoviePanel(props: {
+  item: ItemDetails;
+  listId: string | null;
+  isShared: boolean;
+}) {
   const auth = useAuth();
   const queryClient = useQueryClient();
 
   const seen = createQuery(() => ({
     ...movieSeenOptions(auth.user()!, props.item.id),
     enabled: !!auth.user(),
+  }));
+
+  // Mitseher — only when the film is opened through a SHARED list, only that
+  // list's members. Mirrors the episode eye's privacy gate (RLS +
+  // item_history_select_co make co-members' rows visible at all).
+  const coWatchers = createQuery(() => ({
+    ...movieCoWatchersOptions(auth.user()!, props.item.id, props.listId ?? ""),
+    enabled:
+      !!auth.user() && !!props.item.id && props.isShared && !!props.listId,
   }));
 
   const details = createQuery(() => ({
@@ -1029,7 +1063,11 @@ function MoviePanel(props: { item: ItemDetails }) {
 
   return (
     <>
-      <MovieSeenRow seen={isSeen()} onToggle={() => seenMut.mutate(!isSeen())} />
+      <MovieSeenRow
+        seen={isSeen()}
+        watchers={coWatchers.data ?? []}
+        onToggle={() => seenMut.mutate(!isSeen())}
+      />
 
       <Show when={props.item.source === "tmdb"}>
         <Show
