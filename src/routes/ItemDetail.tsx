@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { useLocation, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -599,21 +599,70 @@ function EpisodeList(props: {
   onTap: (ep: EpisodeRow) => void;
   onCascade: (ep: EpisodeRow) => void;
 }) {
-  return (
-    <ul class="-mx-5">
-      <For each={props.rows}>
-        {(ep) => (
-          <EpisodeListRow
-            ep={ep}
-            itemType={props.itemType}
-            watchers={props.coWatchers[ep.id] ?? []}
-            onTap={() => props.onTap(ep)}
-            onCascade={() => props.onCascade(ep)}
-          />
-        )}
-      </For>
-    </ul>
+  // Multi-season works (TMDB series) carry real season numbers; AniList
+  // anime/manga are flat (always season 1). When more than season 1 shows up,
+  // group by season with a labeled divider — otherwise the episode numbering
+  // silently resets (…S2E1 right after S1E10) with no visible boundary. Rows
+  // arrive season-desc / episode-desc, so consecutive same-season runs are
+  // already contiguous; we just slice them.
+  const multiSeason = () => props.rows.some((r) => r.seasonNumber > 1);
+  const groups = () => groupBySeason(props.rows);
+
+  const row = (ep: EpisodeRow) => (
+    <EpisodeListRow
+      ep={ep}
+      itemType={props.itemType}
+      watchers={props.coWatchers[ep.id] ?? []}
+      onTap={() => props.onTap(ep)}
+      onCascade={() => props.onCascade(ep)}
+    />
   );
+
+  return (
+    <Show
+      when={multiSeason()}
+      fallback={
+        <ul class="-mx-5">
+          <For each={props.rows}>{row}</For>
+        </ul>
+      }
+    >
+      {/* Index over groups (their position is stable across a tick — only an
+          episode's `watched` flips), so the season blocks don't remount on
+          every toggle; the inner For keys rows by reference so just the tapped
+          one updates. */}
+      <div class="-mx-5">
+        <Index each={groups()}>
+          {(g, i) => (
+            <div class={i > 0 ? "mt-7" : ""}>
+              <div class="px-5 pb-2 font-mono text-mini uppercase tracking-wider text-text-muted">
+                Staffel {g().season}
+              </div>
+              <ul>
+                <For each={g().rows}>{row}</For>
+              </ul>
+            </div>
+          )}
+        </Index>
+      </div>
+    </Show>
+  );
+}
+
+/** Slice season-desc/episode-desc rows into contiguous same-season groups. */
+function groupBySeason(
+  rows: EpisodeRow[],
+): { season: number; rows: EpisodeRow[] }[] {
+  const groups: { season: number; rows: EpisodeRow[] }[] = [];
+  for (const ep of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.season === ep.seasonNumber) {
+      last.rows.push(ep);
+    } else {
+      groups.push({ season: ep.seasonNumber, rows: [ep] });
+    }
+  }
+  return groups;
 }
 
 const LONG_PRESS_MS = 500;
