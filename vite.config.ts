@@ -36,4 +36,18 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    // Steam's store endpoints block CORS, so the browser can't call them
+    // directly. In dev we proxy through Vite (no deploy needed); in prod a
+    // Supabase Edge Function forwards the same path (see supabase/functions/
+    // steam-proxy + src/lib/steam.ts). changeOrigin rewrites the Host header
+    // so Steam serves the request as if it came from its own origin.
+    proxy: {
+      "/steam-store": {
+        target: "https://store.steampowered.com",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/steam-store/, ""),
+      },
+    },
+  },
 });

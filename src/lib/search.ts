@@ -2,9 +2,9 @@
  * Unified media search — the provider-agnostic boundary the AddSheet talks to.
  * The AddSheet's media-type filter picks ONE type at a time, and `searchMedia`
  * routes to the single source that owns it: AniList for anime/manga, TMDB for
- * series (movies next), Steam for games (next). Routing by type — rather than
- * querying everything and interleaving — keeps results un-mixed (the whole
- * point of the filter) and avoids hitting providers the user didn't ask for.
+ * series + movies, Steam for games. Routing by type — rather than querying
+ * everything and interleaving — keeps results un-mixed (the whole point of the
+ * filter) and avoids hitting providers the user didn't ask for.
  *
  * `addItemToList` (queries/items.ts) reads `result.source` to stamp items.source
  * — that's why the field is part of the normalized shape rather than implicit.
@@ -12,6 +12,7 @@
 
 import { searchAniList } from "@/lib/anilist";
 import { searchTmdbSeries, searchTmdbMovies } from "@/lib/tmdb";
+import { searchSteamGames } from "@/lib/steam";
 import type { MediaType } from "@/lib/queries/home";
 
 export type MediaSource = "anilist" | "tmdb" | "steam";
@@ -33,9 +34,8 @@ export interface MediaResult {
   releaseDate?: string | null;
 }
 
-/** Search the single source that owns `type`. Returns [] for types whose
- *  source isn't wired yet (movie → TMDB movies, game → Steam) — the AddSheet
- *  disables those filter labels, so this is just a forward-safe default. */
+/** Search the single source that owns `type`. The default [] is just a
+ *  forward-safe fallback for an unknown type — all five are wired. */
 export async function searchMedia(
   q: string,
   type: MediaType,
@@ -56,8 +56,9 @@ export async function searchMedia(
       return searchTmdbSeries(q, signal);
     case "movie":
       return searchTmdbMovies(q, signal);
+    case "game":
+      return searchSteamGames(q, signal);
     default:
-      // game — source (Steam) not implemented yet.
       return [];
   }
 }

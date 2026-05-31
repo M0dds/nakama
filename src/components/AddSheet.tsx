@@ -20,16 +20,15 @@ import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
 
-/** Media-type filter for the search panel. anime/manga (AniList) + series
- *  (TMDB) and movies (TMDB) are live; game (Steam) comes next, so its label
- *  shows but is disabled — present so the set reads complete, not yet wired
- *  so it can't add source-less items. */
+/** Media-type filter for the search panel. All five are live: anime/manga
+ *  (AniList), series + movies (TMDB), games (Steam, via the dev proxy / Edge
+ *  Function — see src/lib/steam.ts). */
 const MEDIA_FILTERS: { value: MediaType; label: string; disabled?: boolean }[] = [
   { value: "anime", label: "Anime" },
   { value: "manga", label: "Manga" },
   { value: "series", label: "Serie" },
   { value: "movie", label: "Film" },
-  { value: "game", label: "Spiel", disabled: true },
+  { value: "game", label: "Spiel" },
 ];
 
 /**
