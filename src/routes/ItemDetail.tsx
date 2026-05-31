@@ -5,11 +5,16 @@ import {
   createQuery,
   useQueryClient,
 } from "@tanstack/solid-query";
-import { ChevronDown, Loader2 } from "lucide-solid";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { fetchTmdbMovieDetails, type TmdbCastMember } from "@/lib/tmdb";
+import {
+  fetchSteamGameDetails,
+  steamHiResCover,
+  type SteamScreenshot,
+} from "@/lib/steam";
 import {
   itemQueryOptions,
   setItemReleaseDate,
@@ -353,10 +358,14 @@ export default function ItemDetail() {
   const onTap = (ep: EpisodeRow) => toggleMut.mutate(ep);
   const onCascade = (ep: EpisodeRow) => cascadeMut.mutate(ep);
 
-  // Films have no episodes: the left column becomes a seen-toggle + rich
-  // TMDB metadata (MoviePanel) instead of the progress bar + episode list.
-  // Keyed off the URL type so it's synchronous + reload-stable.
+  // Films + games have no episodes: the left column becomes a binary
+  // seen/played-toggle + rich metadata (MoviePanel via TMDB, GamePanel via
+  // Steam) instead of the progress bar + episode list. Keyed off the URL type
+  // so it's synchronous + reload-stable. `isBinary` gathers both episode-less
+  // types where they behave identically (no sync toggle, no episode fetch).
   const isMovie = () => params.type === "movie";
+  const isGame = () => params.type === "game";
+  const isBinary = () => isMovie() || isGame();
 
   const dtClass =
     "font-mono text-mini uppercase tracking-wider text-text-muted";
@@ -411,7 +420,7 @@ export default function ItemDetail() {
             the ColumnGuide handles the vertical split). */}
         <div class="order-2 border-t border-rule md:order-1 md:w-2/3 md:border-t-0">
           <BentoModule
-            label={isMovie() ? "Film" : "Episoden"}
+            label={isGame() ? "Spiel" : isMovie() ? "Film" : "Episoden"}
             number="01"
             mobileNumber="02"
           >
@@ -423,13 +432,21 @@ export default function ItemDetail() {
             >
               {(itemData) => (
                 <Show
-                  when={!isMovie()}
+                  when={!isBinary()}
                   fallback={
-                    <MoviePanel
-                      item={itemData()}
-                      listId={syncCtx.data?.listId ?? null}
-                      isShared={!!syncCtx.data?.isShared}
-                    />
+                    isGame() ? (
+                      <GamePanel
+                        item={itemData()}
+                        listId={syncCtx.data?.listId ?? null}
+                        isShared={!!syncCtx.data?.isShared}
+                      />
+                    ) : (
+                      <MoviePanel
+                        item={itemData()}
+                        listId={syncCtx.data?.listId ?? null}
+                        isShared={!!syncCtx.data?.isShared}
+                      />
+                    )
                   }
                 >
                 <>
@@ -497,8 +514,13 @@ export default function ItemDetail() {
               {(data) => (
                 <>
                   <Cover
-                    coverUrl={data().coverUrl}
+                    coverUrl={
+                      isGame()
+                        ? steamHiResCover(data().coverUrl)
+                        : data().coverUrl
+                    }
                     fallbackLetter={typeInitial(data().type)}
+                    wide={isGame()}
                   />
                   <dl class="space-y-3 border-t border-border pt-5 text-body">
                     <div class="flex items-baseline justify-between gap-3">
@@ -507,6 +529,9 @@ export default function ItemDetail() {
                     </div>
                     <Show when={isMovie()}>
                       <MovieFacts item={data()} />
+                    </Show>
+                    <Show when={isGame()}>
+                      <GameFacts item={data()} />
                     </Show>
                     <Show when={metaString(data().metadata, "format")}>
                       {(fmt) => (
@@ -525,10 +550,10 @@ export default function ItemDetail() {
                   </dl>
 
                   {/* Sync toggle — only when opened with a list context
-                      (list-scoped route or link-state) AND episodic. Films
-                      track a binary seen-state in item_history, not per-episode
-                      watches, so episode-sync doesn't apply. */}
-                  <Show when={!isMovie() && listItemId()}>
+                      (list-scoped route or link-state) AND episodic. Films +
+                      games track a binary state in item_history, not
+                      per-episode watches, so episode-sync doesn't apply. */}
+                  <Show when={!isBinary() && listItemId()}>
                     {(li) => (
                       <SyncToggle
                         listItemId={li()}
@@ -560,29 +585,41 @@ export default function ItemDetail() {
  * the cover is the visual anchor by virtue of being the only image on the
  * page, not by chrome.
  */
-function Cover(props: { coverUrl: string | null; fallbackLetter: string }) {
+function Cover(props: {
+  coverUrl: string | null;
+  fallbackLetter: string;
+  /** Landscape source (Steam game header) → fill the full column width.
+   *  Portrait posters stay height-capped so they don't swallow the screen. */
+  wide?: boolean;
+}) {
+  // No forced aspect — the image keeps its NATURAL ratio (no crop):
+  //  • wide (landscape): w-full fills the column edge-to-edge, h-auto keeps
+  //    the ratio. The column is now framed/capped so "full width" is bounded.
+  //  • poster (portrait): w-auto + max-w-full + max-h scale it DOWN to fit,
+  //    bounding it by HEIGHT (a poster at full column width would be enormous).
+  // Border sits on the <img> so it hugs the picture, not a wider box.
   return (
-    <div class="mb-5 aspect-[2/3] w-full max-w-[220px] overflow-hidden border border-border bg-bg">
-      <Show
-        when={props.coverUrl}
-        fallback={
-          <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-            {props.fallbackLetter}
-          </div>
-        }
-      >
-        {/* Up to 220 px wide, so the stored `/cover/medium/` URL (~230 px
-            native) tips into pixelated territory on retina. highResCover
-            swaps in `/cover/large/` (~430 px) — same host. */}
-        <img
-          ref={fadeOnLoad}
-          src={highResCover(props.coverUrl)!}
-          alt=""
-          class="size-full object-cover"
-          loading="lazy"
-        />
-      </Show>
-    </div>
+    <Show
+      when={props.coverUrl}
+      fallback={
+        <div class="mb-5 flex aspect-[2/3] w-full max-w-[220px] items-center justify-center border border-border bg-bg font-mono text-mini text-text-muted">
+          {props.fallbackLetter}
+        </div>
+      }
+    >
+      {/* highResCover swaps an AniList `/cover/medium/` URL for `/cover/large/`
+          (~430 px) so a poster stays crisp; non-AniList URLs (TMDB, Steam)
+          pass through untouched. */}
+      <img
+        ref={fadeOnLoad}
+        src={highResCover(props.coverUrl)!}
+        alt=""
+        class={`mb-5 block h-auto border border-border bg-bg ${
+          props.wide ? "w-full" : "max-h-[460px] w-auto max-w-full"
+        }`}
+        loading="lazy"
+      />
+    </Show>
   );
 }
 
@@ -970,19 +1007,24 @@ function Fact(props: { label: string; value: string }) {
   );
 }
 
-/** The seen-toggle — echoes the episode-tick optic: a full-bleed tappable row
- *  with the accent dot on the right that fills when seen. Label flips so a
- *  single binary reads unambiguously (episodes keep a static label + dot, but
- *  here there's no episode number to anchor the state). */
-function MovieSeenRow(props: {
-  seen: boolean;
+/** The binary status-toggle — echoes the episode-tick optic: a full-bleed
+ *  tappable row with the accent dot on the right that fills when done. Label
+ *  flips so a single binary reads unambiguously (episodes keep a static label +
+ *  dot, but here there's no episode number to anchor the state). `verb` is the
+ *  German past participle ("gesehen" for films, "gespielt" for games) — the
+ *  done-label is its capitalized form, the toggle reads "Als {verb} markieren". */
+function BinaryStatusRow(props: {
+  done: boolean;
+  verb: "gesehen" | "gespielt";
   watchers: CoWatcher[];
   releaseDate: string | null;
   onToggle: () => void;
 }) {
+  const doneLabel = () =>
+    props.verb.charAt(0).toUpperCase() + props.verb.slice(1); // "Gesehen"/"Gespielt"
   // Day-bucket tag, same wording as the episode rows — but "Demnächst" only
-  // inside a 2-week window (a film 8 months out shouldn't read as imminent).
-  // Past releases get no tag, just the date. Films are date-only → no time.
+  // inside a 2-week window (a release 8 months out shouldn't read as imminent).
+  // Past releases get no tag, just the date. Date-only → no time.
   const tag = () => {
     if (!props.releaseDate) return null;
     const offset = dayOffset(props.releaseDate);
@@ -997,14 +1039,16 @@ function MovieSeenRow(props: {
       <button
         type="button"
         onClick={props.onToggle}
-        aria-pressed={props.seen}
+        aria-pressed={props.done}
         aria-label={
-          props.seen ? "Als ungesehen markieren" : "Als gesehen markieren"
+          props.done
+            ? `Als un${props.verb} markieren`
+            : `Als ${props.verb} markieren`
         }
         class="group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-surface"
       >
         <span class="min-w-0 flex-1 text-body text-text">
-          {props.seen ? "Gesehen" : "Als gesehen markieren"}
+          {props.done ? doneLabel() : `Als ${props.verb} markieren`}
         </span>
         {/* Release date + day-tag — same cluster as an episode row's air date. */}
         <Show when={props.releaseDate}>
@@ -1017,13 +1061,13 @@ function MovieSeenRow(props: {
             </span>
           </div>
         </Show>
-        {/* Mitseher eye + seen dot — same right cluster as an episode row. */}
+        {/* Mitseher eye + status dot — same right cluster as an episode row. */}
         <div class="flex shrink-0 items-center gap-2">
           <CoWatcherMark watchers={props.watchers} />
           <span
             aria-hidden
             class={`size-2.5 rounded-full transition-colors ${
-              props.seen
+              props.done
                 ? "bg-accent"
                 : "bg-transparent ring-1 ring-border group-hover:ring-text-muted"
             }`}
@@ -1122,8 +1166,9 @@ function MoviePanel(props: {
 
   return (
     <>
-      <MovieSeenRow
-        seen={isSeen()}
+      <BinaryStatusRow
+        done={isSeen()}
+        verb="gesehen"
         watchers={coWatchers.data ?? []}
         releaseDate={details.data?.releaseDate ?? null}
         onToggle={() => seenMut.mutate(!isSeen())}
@@ -1264,6 +1309,281 @@ function MovieFacts(props: { item: ItemDetails }) {
           </Show>
           <Show when={d().certification}>
             {(fsk) => <Fact label="FSK" value={fsk()} />}
+          </Show>
+        </>
+      )}
+    </Show>
+  );
+}
+
+/** Shared Steam game-details query — the left panel (description) and the right
+ *  Details column (facts) read it under one key, so TanStack serves both from a
+ *  single fetch. Store data rarely changes → a day-long staleTime. */
+function steamDetailsQueryOptions(source: string, sourceId: string) {
+  return {
+    queryKey: ["steam-game", sourceId] as const,
+    queryFn: () => fetchSteamGameDetails(sourceId),
+    enabled: source === "steam" && !!sourceId,
+    staleTime: 1000 * 60 * 60 * 24,
+  };
+}
+
+/**
+ * Left-column body for a game — the episode-less, Steam-backed twin of
+ * MoviePanel. Played-toggle at the top (item_history, binary, reusing the same
+ * movieSeen* machinery), then the short store description. Facts (Entwickler,
+ * Publisher, Genres, Release, Metacritic) live in the right Details column.
+ *
+ * Details are fetched live from Steam (via the proxy), not stored — same
+ * rationale as films. The release date is backfilled into items.metadata once
+ * resolved (Steam search carries no date) so "Was kommt" can surface an
+ * upcoming game, mirroring MoviePanel.
+ */
+function GamePanel(props: {
+  item: ItemDetails;
+  listId: string | null;
+  isShared: boolean;
+}) {
+  const auth = useAuth();
+  const queryClient = useQueryClient();
+
+  const played = createQuery(() => ({
+    ...movieSeenOptions(auth.user()!, props.item.id),
+    enabled: !!auth.user(),
+  }));
+
+  const coWatchers = createQuery(() => ({
+    ...movieCoWatchersOptions(auth.user()!, props.item.id, props.listId ?? ""),
+    enabled:
+      !!auth.user() && !!props.item.id && props.isShared && !!props.listId,
+  }));
+
+  const details = createQuery(() =>
+    steamDetailsQueryOptions(props.item.source, props.item.sourceId),
+  );
+
+  // Backfill the ISO release date into items.metadata once Steam resolves it
+  // (only when the store string parsed to a real date — fuzzy "Q2 2025" stays
+  // null). Fire-and-forget, once. Same pattern as MoviePanel.
+  let backfilled = false;
+  createEffect(() => {
+    const rel = details.data?.releaseDate;
+    if (!rel || backfilled) return;
+    const current = (props.item.metadata as Record<string, unknown> | null)
+      ?.releaseDate;
+    if (current === rel) return;
+    backfilled = true;
+    setItemReleaseDate(props.item.id, props.item.metadata, rel)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["home"] }))
+      .catch(() => {});
+  });
+
+  const playedMut = createMutation(() => ({
+    mutationFn: (next: boolean) =>
+      setItemSeen({ user: auth.user()!, itemId: props.item.id, seen: next }),
+    onMutate: async (next) => {
+      const key = movieSeenKey(props.item.id);
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<boolean>(key);
+      queryClient.setQueryData(key, next);
+      return { prev, key };
+    },
+    onError: (_e, _n, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.prev);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: movieSeenKey(props.item.id),
+      });
+    },
+  }));
+
+  const isPlayed = () => played.data ?? false;
+
+  return (
+    <>
+      <Show when={props.item.source === "steam"}>
+        <Show
+          when={details.data}
+          fallback={
+            <p class="text-body text-text-muted">
+              {details.isLoading
+                ? "Lade Spieldaten …"
+                : "Keine Zusatzinfos verfügbar."}
+            </p>
+          }
+        >
+          {(d) => (
+            <div class="space-y-6">
+              <Show when={d().screenshots.length > 0}>
+                <ScreenshotGallery shots={d().screenshots} />
+              </Show>
+              <Show when={d().description}>
+                {(text) => (
+                  <p class="text-body leading-relaxed text-text">{text()}</p>
+                )}
+              </Show>
+            </div>
+          )}
+        </Show>
+      </Show>
+
+      {/* Played-toggle below the content: for a game the binary state is
+          secondary to the screenshots + description. A top divider sets it
+          apart as the actionable footer of the panel. */}
+      <div class="mt-6 border-t border-border">
+        <BinaryStatusRow
+          done={isPlayed()}
+          verb="gespielt"
+          watchers={coWatchers.data ?? []}
+          releaseDate={details.data?.releaseDate ?? null}
+          onToggle={() => playedMut.mutate(!isPlayed())}
+        />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Screenshot gallery for the game panel — a large hero image with a thumbnail
+ * strip beneath, flanked by prev/next arrows. Arrows step the selection
+ * (clamped at the ends); clicking a thumbnail jumps to it. The active thumb
+ * scrolls into view so the strip follows the selection. The hero re-mounts on
+ * change (keyed Show) so fadeOnLoad fades each new shot in.
+ */
+function ScreenshotGallery(props: { shots: SteamScreenshot[] }) {
+  const [sel, setSel] = createSignal(0);
+  const thumbEls: (HTMLButtonElement | undefined)[] = [];
+
+  const count = () => props.shots.length;
+  const go = (i: number) => {
+    const next = Math.max(0, Math.min(count() - 1, i));
+    setSel(next);
+    thumbEls[next]?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  };
+
+  return (
+    <div class="space-y-2">
+      {/* Hero — keyed so each selection re-mounts the img → fadeOnLoad fires. */}
+      <div class="relative aspect-video w-full overflow-hidden border border-border bg-bg">
+        <Show when={props.shots[sel()]} keyed>
+          {(shot) => (
+            <img
+              ref={fadeOnLoad}
+              src={shot.full}
+              alt=""
+              class="absolute inset-0 size-full object-cover"
+            />
+          )}
+        </Show>
+      </div>
+
+      {/* Thumbnail strip flanked by arrows. Hidden when there's only one shot. */}
+      <Show when={count() > 1}>
+        <div class="flex items-center gap-2">
+          <GalleryArrow
+            dir="prev"
+            disabled={sel() === 0}
+            onClick={() => go(sel() - 1)}
+          />
+          <div class="flex min-w-0 flex-1 gap-2 overflow-x-auto scrollbar-none">
+            <Index each={props.shots}>
+              {(shot, i) => (
+                <button
+                  ref={(el) => (thumbEls[i] = el)}
+                  type="button"
+                  onClick={() => go(i)}
+                  aria-label={`Screenshot ${i + 1}`}
+                  aria-pressed={sel() === i}
+                  class={`relative aspect-video w-20 shrink-0 overflow-hidden border transition-opacity [transition-timing-function:var(--ease-quart)] ${
+                    sel() === i
+                      ? "border-accent"
+                      : "border-border opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  <img
+                    src={shot().thumb}
+                    alt=""
+                    class="absolute inset-0 size-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              )}
+            </Index>
+          </div>
+          <GalleryArrow
+            dir="next"
+            disabled={sel() === count() - 1}
+            onClick={() => go(sel() + 1)}
+          />
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/** Prev/next arrow for the screenshot strip — hard-cornered icon button, muted
+ *  at the ends. Matches the app's icon-button language (rounded-xs). */
+function GalleryArrow(props: {
+  dir: "prev" | "next";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      aria-label={props.dir === "prev" ? "Vorheriges Bild" : "Nächstes Bild"}
+      class="inline-flex size-8 shrink-0 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text disabled:pointer-events-none disabled:opacity-30"
+    >
+      {props.dir === "prev" ? (
+        <ChevronLeft class="size-4" strokeWidth={1.75} aria-hidden />
+      ) : (
+        <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
+      )}
+    </button>
+  );
+}
+
+/** Game facts for the right Details column — Entwickler/Publisher/Genres/
+ *  Release/Metacritic. Reads the same shared Steam-details cache as the left
+ *  GamePanel, so both render from one fetch. */
+function GameFacts(props: { item: ItemDetails }) {
+  const details = createQuery(() =>
+    steamDetailsQueryOptions(props.item.source, props.item.sourceId),
+  );
+  return (
+    <Show when={details.data}>
+      {(d) => (
+        <>
+          <Show when={d().developers.length > 0}>
+            <Fact label="Entwickler" value={d().developers.join(", ")} />
+          </Show>
+          <Show when={d().publishers.length > 0}>
+            <Fact label="Publisher" value={d().publishers.join(", ")} />
+          </Show>
+          <Show when={d().genres.length > 0}>
+            <Fact label="Genres" value={d().genres.join(" · ")} />
+          </Show>
+          {/* Release: prefer the parsed full date (with year); else the raw
+              store string ("Q2 2025", "Demnächst"). Label flips on coming_soon. */}
+          <Show when={d().releaseDate || d().releaseDateRaw}>
+            <Fact
+              label={d().comingSoon ? "Erscheint" : "Erschienen"}
+              value={
+                d().releaseDate
+                  ? releaseLabel(d().releaseDate!)
+                  : d().releaseDateRaw!
+              }
+            />
+          </Show>
+          <Show when={d().metacritic !== null}>
+            <Fact label="Metacritic" value={String(d().metacritic)} />
           </Show>
         </>
       )}
