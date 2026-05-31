@@ -587,7 +587,17 @@ function Logbuch(props: { events: LogbookEvent[] }) {
         <For each={shown()}>
           {(ev) => (
             <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-              <div class="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface">
+              <div class="group/row relative isolate flex items-start gap-3 px-5 py-3">
+                {/* Hover fill as its own layer, inset 1px on the LEFT so it
+                    stops at the column guide (the viewport-fixed 1px line at
+                    the 2/3 boundary, parked behind content) instead of
+                    painting over it. Bleeds right to the viewport edge, where
+                    there's no outline. isolate + -z-10 keeps it behind the
+                    glyph/text but in front of the guide. */}
+                <span
+                  aria-hidden
+                  class="pointer-events-none absolute inset-y-0 left-px right-0 -z-10 bg-surface opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover/row:opacity-100"
+                />
                 <EventGlyph ev={ev} />
                 <div class="min-w-0 flex-1">
                   <p
