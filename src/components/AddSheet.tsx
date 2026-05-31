@@ -189,7 +189,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
 
   const addMutation = createMutation(() => ({
     mutationFn: (source: MediaResult) =>
-      addItemToList({ listId: targetListId(), source }),
+      addItemToList({ listId: targetListId(), source, userId: auth.user()!.id }),
     onSuccess: (_, source) => {
       setAdded((prev) => {
         const next = new Set(prev);
