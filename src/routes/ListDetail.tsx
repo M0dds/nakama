@@ -135,15 +135,20 @@ export default function ListDetail() {
   // are refused — handshake decision: pin-state changes go through the
   // pin click, not the drag.
   const reorderMut = createMutation(() => ({
-    mutationFn: (input: { listId: string; orderedListItemIds: string[] }) =>
+    mutationFn: (input: {
+      listId: string;
+      orderedListItemIds: string[];
+      // Pre-patch snapshot from the drag handler — the optimistic patch runs
+      // inline before mutate, and there is no onMutate, so the old ctx.prev
+      // read was always undefined. Carry it through to roll back on error.
+      prev: ListEntry[];
+    }) =>
       reorderListItems({
         listId: input.listId,
         orderedListItemIds: input.orderedListItemIds,
       }),
-    onError: (_err, _input, ctx) => {
-      const prev = (ctx as { prev?: unknown } | undefined)?.prev;
-      if (prev)
-        queryClient.setQueryData(listItemsQueryKey(params.shortCode), prev);
+    onError: (_err, input) => {
+      queryClient.setQueryData(listItemsQueryKey(params.shortCode), input.prev);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({
@@ -190,11 +195,14 @@ export default function ListDetail() {
           if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
           return a.sortOrder - b.sortOrder;
         });
+      // `all` is the pre-patch snapshot (next is a fresh array) — rollback target.
+      const prev = all;
       queryClient.setQueryData(listItemsQueryKey(params.shortCode), next);
 
       reorderMut.mutate({
         listId,
         orderedListItemIds: nextSection.map((e) => e.listItemId),
+        prev,
       });
     },
   );
