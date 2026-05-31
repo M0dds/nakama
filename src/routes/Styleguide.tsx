@@ -553,8 +553,8 @@ export default function Styleguide() {
           {" "}<code class="font-mono text-mini">opacity-0 pointer-events-none</code>;
           fadet via <code class="font-mono text-mini">group-hover</code> /
           {" "}<code class="font-mono text-mini">focus-within</code> der
-          Parent-Row in 200 ms ease-quart auf. Confirm-States + aktive Pins
-          bleiben sichtbar — sie kommunizieren State, nicht nur Aktion.
+          Parent-Row in 200 ms ease-quart auf. Aktive Pins bleiben permanent
+          sichtbar — sie kommunizieren State, nicht nur Aktion.
         </p>
         <RowActionsMock pinned={pinDemo()} onTogglePin={() => setPinDemo((p) => !p)} />
         <p class="mt-4 text-body text-text-muted">
@@ -567,8 +567,9 @@ export default function Styleguide() {
         <ul class="mt-2 ml-5 list-disc space-y-1 text-body text-text-muted">
           <li>
             <code class="font-mono text-mini">/lists/:shortCode</code>-Rows
-            → bundle gesetzt, voller Cluster. Reset + Entfernen kennen
-            inline-Confirm (zweistufig, gleiche Sprache wie DeleteListButton).
+            → bundle gesetzt, voller Cluster. Reset + Entfernen bestätigen
+            über den <code class="font-mono text-mini">ConfirmDialog</code>
+            (app-weiter Modal, gleiche Sprache wie DeleteListButton).
           </li>
           <li>
             <code class="font-mono text-mini">/lists</code>-Rows → bundle
@@ -584,9 +585,8 @@ export default function Styleguide() {
             — der Rest des Clusters bleibt hover-revealed.
           </li>
           <li>
-            Während ein destructive Confirm läuft, fadet der Pin parallel
-            mit dem Icon→ConfirmStrip-Swap raus — der Prompt besitzt die
-            Aufmerksamkeit der Row.
+            Solange der Confirm-Dialog einer Row offen ist, fadet ihr Pin
+            (+ Drag-Handle) raus — der Modal besitzt die Aufmerksamkeit.
           </li>
         </ul>
         <p class="mt-3 text-mini text-text-muted">
@@ -627,9 +627,9 @@ export default function Styleguide() {
             why="Subnesting frisst Lesbarkeit. Eine 1 px-Linie trennt genauso klar, kostet keinen Raum."
           />
           <AntiCard
-            bad="Modals für Confirmation"
-            good="Inline-Confirm (✓/✗)"
-            why="Modal-Footprint reduzieren. Delete/Leave/Reset/Entfernen alle inline mit Reverse-Action sichtbar."
+            bad="Inline-Confirm (✓/✗)"
+            good="ConfirmDialog (Modal)"
+            why="Inline-Confirms quetschen sich in enge Slots (Header-Aside neben langem Titel, Row-Rand). Delete/Leave/Reset/Entfernen/Übergeben laufen alle über den einen ConfirmDialog — eine Geste, klar lesbar."
           />
           <AntiCard
             bad="Native &lt;select&gt;"

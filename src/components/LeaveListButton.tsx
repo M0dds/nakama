@@ -1,15 +1,16 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Check, LogOut, X } from "lucide-solid";
+import { LogOut } from "lucide-solid";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { listsQueryKey, type ListSummary } from "@/lib/queries/lists";
 import { leaveList } from "@/lib/queries/sharing";
 
 /**
- * Inline-confirm "Liste verlassen" for the PageHeader aside — the member's
- * counterpart to the owner's DeleteListButton (same slot, same vocabulary).
+ * "Liste verlassen" for the PageHeader aside — the member's counterpart to the
+ * owner's DeleteListButton (same slot, same vocabulary, same ConfirmDialog).
  * Shown when the caller is a member but NOT the owner; the owner transfers
  * ownership or deletes instead.
  *
@@ -44,43 +45,24 @@ export function LeaveListButton(props: { listId: string; listName: string }) {
   }));
 
   return (
-    <Show
-      when={confirming()}
-      fallback={
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-        >
-          Liste verlassen
-        </button>
-      }
-    >
-      <span class="inline-flex items-center gap-2">
-        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-          Wirklich verlassen?
-        </span>
-        <button
-          type="button"
-          aria-label="Ja, verlassen"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate()}
-          class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <Check class="size-3.5" strokeWidth={2.5} />
-        </button>
-        <button
-          type="button"
-          aria-label="Abbrechen"
-          onClick={(e) => {
-            e.currentTarget.blur();
-            setConfirming(false);
-          }}
-          class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-        >
-          <X class="size-3.5" strokeWidth={2} />
-        </button>
-      </span>
-    </Show>
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+      >
+        Liste verlassen
+      </button>
+      <ConfirmDialog
+        open={confirming()}
+        kicker="Liste verlassen"
+        title={props.listName}
+        body="Du verlässt diese geteilte Liste. Dein eigener Fortschritt bleibt erhalten; du siehst die Liste danach nicht mehr."
+        confirmLabel="Verlassen"
+        pending={mutation.isPending}
+        onConfirm={() => mutation.mutate()}
+        onClose={() => setConfirming(false)}
+      />
+    </>
   );
 }

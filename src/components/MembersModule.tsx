@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, Crown, Mail, X } from "lucide-solid";
+import { Crown, Mail, X } from "lucide-solid";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
 import { listsQueryKey } from "@/lib/queries/lists";
@@ -20,7 +21,7 @@ import { Button } from "@/components/Button";
  * Mitglieder-Modul (03) on the list-detail page. The sharing surface:
  *   - roster (every member, owner first; "du" marks self, "Ersteller" the owner).
  *     The owner sees a crown icon-button on every co-member's row to hand over
- *     ownership (inline-confirm right in the row).
+ *     ownership (opens the app-wide ConfirmDialog).
  *   - invite-by-@handle (owner only) with inline result feedback
  *   - pending invitations (owner only) with revoke
  *
@@ -125,8 +126,8 @@ export function MembersModule(props: {
     },
   }));
 
-  // ── Ownership transfer (per-row crown, inline-confirm) ─────────────────
-  // Holds the user_id of the member whose row is currently in confirm state.
+  // ── Ownership transfer (per-row crown → ConfirmDialog) ─────────────────
+  // Holds the user_id of the member whose row armed the confirm (null = none).
   const [transferConfirmId, setTransferConfirmId] = createSignal<string | null>(
     null,
   );
@@ -182,53 +183,44 @@ export function MembersModule(props: {
                   <span class={`${dtClass} shrink-0`}>Ersteller</span>
                 </Show>
 
-                {/* Hand over ownership — owner only, on co-members' rows. */}
+                {/* Hand over ownership — owner only, on co-members' rows.
+                    The crown opens the app-wide ConfirmDialog (one instance,
+                    rendered after the roster). */}
                 <Show when={props.isOwner && !m.isMe && m.role !== "owner"}>
-                  <Show
-                    when={transferConfirmId() === m.userId}
-                    fallback={
-                      <button
-                        type="button"
-                        aria-label={`${m.name} zum Ersteller machen`}
-                        title="Eigentum übergeben"
-                        disabled={transferMut.isPending}
-                        onClick={() => setTransferConfirmId(m.userId)}
-                        class="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent disabled:opacity-50"
-                      >
-                        <Crown class="size-3.5" strokeWidth={1.75} />
-                      </button>
-                    }
+                  <button
+                    type="button"
+                    aria-label={`${m.name} zum Ersteller machen`}
+                    title="Eigentum übergeben"
+                    disabled={transferMut.isPending}
+                    onClick={() => setTransferConfirmId(m.userId)}
+                    class="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent disabled:opacity-50"
                   >
-                    <span class="flex shrink-0 items-center gap-2">
-                      <span class="text-mini text-text-muted">Übergeben?</span>
-                      <button
-                        type="button"
-                        aria-label="Ja, übergeben"
-                        disabled={transferMut.isPending}
-                        onClick={() => transferMut.mutate(m.userId)}
-                        class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-                      >
-                        <Check class="size-3.5" strokeWidth={2.5} />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Abbrechen"
-                        onClick={(e) => {
-                          e.currentTarget.blur();
-                          setTransferConfirmId(null);
-                        }}
-                        class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-                      >
-                        <X class="size-3.5" strokeWidth={2} />
-                      </button>
-                    </span>
-                  </Show>
+                    <Crown class="size-3.5" strokeWidth={1.75} />
+                  </button>
                 </Show>
               </li>
             )}
           </For>
         </ul>
       </Show>
+
+      {/* Ownership transfer — one dialog, driven by the row that armed it. */}
+      <ConfirmDialog
+        open={transferConfirmId() !== null}
+        kicker="Eigentum übergeben"
+        title={
+          members.data?.find((m) => m.userId === transferConfirmId())?.name ??
+          ""
+        }
+        body="Dieses Mitglied wird Ersteller der Liste und kann sie verwalten und löschen. Du bleibst normales Mitglied."
+        confirmLabel="Übergeben"
+        pending={transferMut.isPending}
+        onConfirm={() => {
+          const id = transferConfirmId();
+          if (id) transferMut.mutate(id);
+        }}
+        onClose={() => setTransferConfirmId(null)}
+      />
 
       {/* Invite — owner only */}
       <Show when={props.isOwner}>

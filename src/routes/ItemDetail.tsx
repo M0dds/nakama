@@ -73,8 +73,9 @@ const PAGE_SIZE = 26;
  *     ──────────────
  *     Typ / Format / Quelle
  *
- * PageHeader aside carries the inline-confirm "Zurücksetzen" button when
- * the caller has at least one watched episode. Single-tap toggles an
+ * PageHeader aside carries the "Zurücksetzen" button (confirms via the
+ * app-wide ConfirmDialog) when the caller has at least one watched episode.
+ * Single-tap toggles an
  * episode, long-press / right-click cascades up to it; both go through
  * optimistic updates and invalidate on settle to reconcile the true
  * watched count from the server.
@@ -390,6 +391,7 @@ export default function ItemDetail() {
           <Show when={item.data && (episodes.data?.watched ?? 0) > 0}>
             <ResetItemButton
               itemId={item.data!.id}
+              title={item.data!.title}
               type={params.type}
               slug={params.slug}
               listItemId={listItemId()}

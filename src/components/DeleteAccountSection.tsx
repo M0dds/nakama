@@ -1,20 +1,21 @@
 import { createSignal, createMemo, For, Show } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createMutation, createQuery } from "@tanstack/solid-query";
-import { Check, Trash2, X } from "lucide-solid";
+import { Trash2 } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { useToast } from "@/lib/toast";
 import { listsQueryOptions, type ListSummary } from "@/lib/queries/lists";
 import { deleteAccount } from "@/lib/queries/profile";
 import { Button } from "@/components/Button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 /**
  * Danger zone — bottom section of the Konto module. Per the chosen policy,
  * deletion is BLOCKED while the user still owns any list shared with other
  * members: those lists are listed (as links to where transfer/delete live) and
- * the button is disabled. Otherwise it's the app's standard inline-confirm
- * (mirrors DeleteListButton) → delete_account RPC → sign out → /login.
+ * the button is disabled. Otherwise the button opens the app-wide ConfirmDialog
+ * → delete_account RPC → sign out → /login.
  *
  * Blocking is derived from the already-modelled listsQueryOptions (isOwner +
  * memberCount, where memberCount counts self), so no extra query shape.
@@ -80,45 +81,24 @@ export function DeleteAccountSection() {
         </div>
       </Show>
 
-      <Show
-        when={confirming()}
-        fallback={
-          <Button
-            variant="primary"
-            disabled={blocking().length > 0}
-            onClick={() => setConfirming(true)}
-          >
-            <Trash2 class="size-4" strokeWidth={1.75} />
-            Account löschen
-          </Button>
-        }
+      <Button
+        variant="primary"
+        disabled={blocking().length > 0}
+        onClick={() => setConfirming(true)}
       >
-        <span class="inline-flex items-center gap-2">
-          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-            Endgültig löschen?
-          </span>
-          <button
-            type="button"
-            aria-label="Ja, Account löschen"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate()}
-            class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <Check class="size-3.5" strokeWidth={2.5} />
-          </button>
-          <button
-            type="button"
-            aria-label="Abbrechen"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              setConfirming(false);
-            }}
-            class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-          >
-            <X class="size-3.5" strokeWidth={2} />
-          </button>
-        </span>
-      </Show>
+        <Trash2 class="size-4" strokeWidth={1.75} />
+        Account löschen
+      </Button>
+      <ConfirmDialog
+        open={confirming()}
+        kicker="Account löschen"
+        title="Dein Account"
+        body="Dein Profil, deine Listen und dein gesamter Fortschritt werden dauerhaft gelöscht. Das lässt sich nicht rückgängig machen."
+        confirmLabel="Account löschen"
+        pending={mutation.isPending}
+        onConfirm={() => mutation.mutate()}
+        onClose={() => setConfirming(false)}
+      />
     </div>
   );
 }

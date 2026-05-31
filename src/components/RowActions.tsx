@@ -1,8 +1,9 @@
 import { Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { ArrowRightLeft, Check, ListX, RotateCcw, X } from "lucide-solid";
+import { ArrowRightLeft, ListX, RotateCcw, X } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
 import { PinButton } from "@/components/PinButton";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useToast } from "@/lib/toast";
 import {
   episodesQueryKey,
@@ -20,10 +21,11 @@ import { listsQueryKey, removeListItem } from "@/lib/queries/lists";
  *   • /lists/:shortCode rows pass it → full cluster
  *   • /lists rows omit it → only the pin renders
  *
- * Confirm-state ownership stays at the parent row (passed in via the
- * bundle). PinButton reads the same `confirming` signal for its `hidden`
- * prop so it fades out together with the icon swap to ConfirmStrip.
- * Single source of truth, one sync flush.
+ * Reset / remove confirm through the app-wide ConfirmDialog (a modal), not an
+ * inline strip — see ConfirmDialog for why. Confirm-state ownership stays at
+ * the parent row (`confirming` in the bundle): the row drives the dialog, and
+ * PinButton/DragHandle read the same signal for their `hidden` prop so they
+ * fade out while the dialog is armed. Single source of truth, one sync flush.
  */
 export type Confirming = "reset" | "remove" | null;
 
@@ -109,126 +111,82 @@ export function RowActions(props: Props) {
       />
       <Show when={props.destructive}>
         {(getD) => (
-          <div
-            class={`flex items-center gap-1 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] ${
-              isDestructivePinned()
-                ? "opacity-100"
-                : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
-            }`}
-          >
-            <Show
-              when={getD().confirming()}
-              fallback={
-                <>
-                  <Tooltip label="Fortschritt zurücksetzen">
-                    <button
-                      type="button"
-                      onClick={() => getD().setConfirming("reset")}
-                      aria-label={`Fortschritt für ${getD().itemTitle} zurücksetzen`}
-                      class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-text"
-                    >
-                      <RotateCcw class="size-4" strokeWidth={1.75} aria-hidden />
-                    </button>
-                  </Tooltip>
-                  <Tooltip label="In andere Liste verschieben">
-                    <button
-                      type="button"
-                      onClick={() => getD().onRequestMove()}
-                      aria-label={`${getD().itemTitle} verschieben`}
-                      class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-text"
-                    >
-                      <ArrowRightLeft
-                        class="size-4"
-                        strokeWidth={1.75}
-                        aria-hidden
-                      />
-                    </button>
-                  </Tooltip>
-                  <Tooltip label="Aus Liste entfernen">
-                    <button
-                      type="button"
-                      onClick={() => getD().setConfirming("remove")}
-                      aria-label={`${getD().itemTitle} aus Liste entfernen`}
-                      class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-accent"
-                    >
-                      <X class="size-4" strokeWidth={1.75} aria-hidden />
-                    </button>
-                  </Tooltip>
-                </>
-              }
+          <>
+            <div
+              class={`flex items-center gap-1 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] ${
+                isDestructivePinned()
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+              }`}
             >
-              <ConfirmStrip
-                label={
-                  getD().confirming() === "reset" ? "Zurücksetzen?" : "Entfernen?"
-                }
-                confirmAria={
-                  getD().confirming() === "reset"
-                    ? "Fortschritt zurücksetzen bestätigen"
-                    : "Aus Liste entfernen bestätigen"
-                }
-                pending={
-                  getD().confirming() === "reset"
-                    ? resetMut.isPending
-                    : removeMut.isPending
-                }
-                onConfirm={() => {
-                  if (getD().confirming() === "reset") resetMut.mutate();
-                  else removeMut.mutate();
-                }}
-                onCancel={() => getD().setConfirming(null)}
-              />
-            </Show>
-          </div>
+              <Tooltip label="Fortschritt zurücksetzen">
+                <button
+                  type="button"
+                  onClick={() => getD().setConfirming("reset")}
+                  aria-label={`Fortschritt für ${getD().itemTitle} zurücksetzen`}
+                  class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-text"
+                >
+                  <RotateCcw class="size-4" strokeWidth={1.75} aria-hidden />
+                </button>
+              </Tooltip>
+              <Tooltip label="In andere Liste verschieben">
+                <button
+                  type="button"
+                  onClick={() => getD().onRequestMove()}
+                  aria-label={`${getD().itemTitle} verschieben`}
+                  class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-text"
+                >
+                  <ArrowRightLeft
+                    class="size-4"
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                </button>
+              </Tooltip>
+              <Tooltip label="Aus Liste entfernen">
+                <button
+                  type="button"
+                  onClick={() => getD().setConfirming("remove")}
+                  aria-label={`${getD().itemTitle} aus Liste entfernen`}
+                  class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-accent"
+                >
+                  <X class="size-4" strokeWidth={1.75} aria-hidden />
+                </button>
+              </Tooltip>
+            </div>
+
+            {/* Reset / remove both confirm through the app-wide dialog. The
+                row's confirming() picks which copy + which mutation. */}
+            <ConfirmDialog
+              open={getD().confirming() !== null}
+              kicker={
+                getD().confirming() === "remove"
+                  ? "Aus Liste entfernen"
+                  : "Zurücksetzen"
+              }
+              title={getD().itemTitle}
+              body={
+                getD().confirming() === "remove"
+                  ? "Der Titel wird aus dieser Liste entfernt. Dein Fortschritt bleibt erhalten."
+                  : "Dein Fortschritt für diesen Titel wird auf null gesetzt. Das lässt sich nicht rückgängig machen."
+              }
+              confirmLabel={
+                getD().confirming() === "remove" ? "Entfernen" : "Zurücksetzen"
+              }
+              pending={
+                getD().confirming() === "reset"
+                  ? resetMut.isPending
+                  : removeMut.isPending
+              }
+              onConfirm={() => {
+                if (getD().confirming() === "reset") resetMut.mutate();
+                else removeMut.mutate();
+              }}
+              onClose={() => getD().setConfirming(null)}
+            />
+          </>
         )}
       </Show>
     </div>
-  );
-}
-
-function ConfirmStrip(props: {
-  label: string;
-  confirmAria: string;
-  pending: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  // Own wrapper with gap-2 so the confirm matches the aside confirms
-  // (ResetItemButton/DeleteListButton/LeaveListButton) exactly — size-6
-  // buttons, size-3.5 icons, gap-2 — instead of inheriting the action
-  // cluster's tighter gap-1.
-  return (
-    <span class="inline-flex items-center gap-2">
-      <span
-        class="font-mono text-mini uppercase tracking-wider text-text-muted"
-        aria-live="polite"
-      >
-        {props.label}
-      </span>
-      <button
-        type="button"
-        disabled={props.pending}
-        // Blur before the state change so focus-within doesn't keep the
-        // cluster pinned to its now-stale children (same trick Logbook used).
-        onClick={(e) => {
-          e.currentTarget.blur();
-          props.onConfirm();
-        }}
-        aria-label={props.confirmAria}
-        class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        <Check class="size-3.5" strokeWidth={2.5} aria-hidden />
-      </button>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.currentTarget.blur();
-          props.onCancel();
-        }}
-        aria-label="Abbrechen"
-        class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-      >
-        <X class="size-3.5" strokeWidth={2} aria-hidden />
-      </button>
-    </span>
   );
 }

@@ -3,22 +3,36 @@ import { X } from "lucide-solid";
 import { Button } from "@/components/Button";
 
 /**
- * Confirm dialog for flipping an item's sync state. The SyncToggle owns the
- * pending direction; flipping the Segmented opens this modal, which explains
- * the consequence with room to breathe and commits on the primary button.
- * Cancel / backdrop / Escape close it (the toggle snaps back).
+ * The app-wide confirm dialog. Every destructive/consequential action routes
+ * through this instead of an inline two-step "Wirklich? · ✓ / ✗" cluster — the
+ * inline form cramped tight slots (a wrapping title next to it in the
+ * PageHeader aside, a row edge), so we lift the question into a modal with room
+ * to breathe.
  *
- * Mirrors MoveItemDialog's mechanics so both modals read as the same gesture:
+ * Mechanics mirror MoveItemDialog / the old SyncConfirmDialog so all modals
+ * read as one gesture:
  *   - Two-signal mount/visible (DOM lifetime vs. opacity), double-rAF on open.
- *   - `snap` keeps a copy of the direction + list name for the close cycle, so
- *     the content doesn't collapse the instant the parent nulls `pending`.
+ *   - `snap` keeps a COPY of the textual content for the close cycle, so the
+ *     card doesn't collapse the instant the parent clears the source signal.
  *   - Backdrop dim+blur and card opacity ramp together on the 500 ms curve.
+ *   - Backdrop click / Escape / Cancel all call onClose; primary commits.
+ *
+ * The primary button stays the accent (same as the inline confirms it
+ * replaces) — destructive intent is carried by the copy, not a red button.
  */
-interface Props {
+interface ConfirmContent {
+  /** Mono mini-caps kicker above the title, e.g. "Liste löschen". */
+  kicker: string;
+  /** Heading — usually the subject (list/item/member name). */
+  title: string;
+  /** One short consequence sentence. Optional. */
+  body?: string;
+  /** Primary button label, e.g. "Löschen". */
+  confirmLabel: string;
+}
+
+interface Props extends ConfirmContent {
   open: boolean;
-  /** true = turning sync ON (fresh shared run), false = turning it OFF. */
-  enabling: boolean;
-  listName: string;
   /** Mutation in flight — disables both actions. */
   pending: boolean;
   onConfirm: () => void;
@@ -27,13 +41,10 @@ interface Props {
 
 const ANIM_MS = 500;
 
-export function SyncConfirmDialog(props: Props) {
+export function ConfirmDialog(props: Props) {
   const [mounted, setMounted] = createSignal(false);
   const [visible, setVisible] = createSignal(false);
-  const [snap, setSnap] = createSignal<{
-    enabling: boolean;
-    listName: string;
-  } | null>(null);
+  const [snap, setSnap] = createSignal<ConfirmContent | null>(null);
   let closeTimer: number | null = null;
 
   createEffect(() => {
@@ -42,7 +53,12 @@ export function SyncConfirmDialog(props: Props) {
         window.clearTimeout(closeTimer);
         closeTimer = null;
       }
-      setSnap({ enabling: props.enabling, listName: props.listName });
+      setSnap({
+        kicker: props.kicker,
+        title: props.title,
+        body: props.body,
+        confirmLabel: props.confirmLabel,
+      });
       setMounted(true);
       requestAnimationFrame(() =>
         requestAnimationFrame(() => setVisible(true)),
@@ -78,14 +94,16 @@ export function SyncConfirmDialog(props: Props) {
     });
   });
 
-  const enabling = () => snap()?.enabling ?? props.enabling;
+  // Read from the snap so content survives the close animation; fall back to
+  // live props for the very first frame before the snap effect runs.
+  const content = (): ConfirmContent => snap() ?? props;
 
   return (
     <Show when={mounted()}>
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="sync-confirm-title"
+        aria-labelledby="confirm-dialog-title"
         class="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
         <button
@@ -111,14 +129,14 @@ export function SyncConfirmDialog(props: Props) {
                   class="size-2 shrink-0 rounded-full bg-accent"
                 />
                 <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-                  {enabling() ? "Synchronisieren" : "Sync beenden"}
+                  {content().kicker}
                 </span>
               </div>
               <h2
-                id="sync-confirm-title"
+                id="confirm-dialog-title"
                 class="mt-1 truncate text-heading font-medium tracking-tight text-text"
               >
-                {snap()?.listName ?? ""}
+                {content().title}
               </h2>
             </div>
             <button
@@ -131,11 +149,11 @@ export function SyncConfirmDialog(props: Props) {
             </button>
           </header>
 
-          <p class="px-6 pt-4 text-body text-text-muted">
-            {enabling()
-              ? "Ihr seht diesen Titel von vorne gemeinsam — eine frische, geteilte Spur ab null. Häkchen gelten ab jetzt für alle Mitglieder; dein bisheriger eigener Stand bleibt davon unberührt."
-              : "Der gemeinsame Fortschritt fließt in den Einzelstand jedes Mitglieds zurück — nichts geht verloren — und die geteilte Spur wird aufgelöst."}
-          </p>
+          <Show when={content().body}>
+            {(body) => (
+              <p class="px-6 pt-4 text-body text-text-muted">{body()}</p>
+            )}
+          </Show>
 
           <div class="flex justify-end gap-2 px-6 pb-5 pt-5">
             <Button
@@ -150,7 +168,7 @@ export function SyncConfirmDialog(props: Props) {
               onClick={props.onConfirm}
               disabled={props.pending}
             >
-              {enabling() ? "Synchronisieren" : "Beenden"}
+              {content().confirmLabel}
             </Button>
           </div>
         </div>

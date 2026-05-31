@@ -54,7 +54,7 @@ import { DragHandle } from "@/components/DragHandle";
  *              Mitglieder (03) — sharing module (lands in Phase 7)
  *
  * Heading is the inline-renamable list name. Aside slot carries the
- * inline-confirm DeleteListButton (owner only).
+ * DeleteListButton (owner only); it confirms via the app-wide ConfirmDialog.
  *
  * On a missing/invisible/non-uuid id, the query returns null → we route to
  * the lists overview instead of showing a stale shell.
@@ -287,9 +287,10 @@ export default function ListDetail() {
         aside={
           <Show when={list.data}>
             {/* Owner → "Liste löschen"; any other member → "Liste verlassen".
-                Same aside slot, symmetric inline-confirm. After an ownership
-                transfer the ex-owner flips to "verlassen", the new owner to
-                "löschen" (driven by list.data.isOwner via realtime). */}
+                Same aside slot, both confirm via the app-wide ConfirmDialog.
+                After an ownership transfer the ex-owner flips to "verlassen",
+                the new owner to "löschen" (driven by list.data.isOwner via
+                realtime). */}
             <Show
               when={list.data!.isOwner}
               fallback={

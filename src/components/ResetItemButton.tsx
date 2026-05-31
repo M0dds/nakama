@@ -1,6 +1,7 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Check, RotateCcw, X } from "lucide-solid";
+import { RotateCcw } from "lucide-solid";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useToast } from "@/lib/toast";
 import {
   episodesQueryKey,
@@ -9,25 +10,24 @@ import {
 import { listsQueryKey } from "@/lib/queries/lists";
 
 /**
- * Inline-confirm reset for an item's watch progress. Same shape as
- * DeleteListButton: trigger → "Wirklich zurücksetzen? · ✓ / ✗" in place.
+ * Reset an item's watch progress. The trigger is a plain text button in the
+ * PageHeader aside; tapping it opens the app-wide ConfirmDialog (no longer an
+ * inline "Wirklich? · ✓ / ✗" — that cramped the header next to a wrapping
+ * title on mobile).
+ *
  * Reset clears watch progress for this item in the ACTIVE lane (server-side
  * via reset_progress): the global lane (caller-only) by default, or — when a
  * synced `listItemId` is passed — the whole shared instance, FOR ALL MEMBERS
- * (the RPC fans out). The copy reflects that: `synced` → "Wirklich für alle
- * zurücksetzen?".
+ * (the RPC fans out). The copy reflects that: `synced` → "für alle".
  *
- * Sits in the PageHeader aside slot (h-6 items-center), so both states
- * share the same 24 px band — no baseline shift between trigger and
- * confirm.
- *
- * Takes `itemId` (UUID, what the reset_progress RPC needs), the natural-key
- * pair (`type`, `slug`) for the cache invalidation (keyed on the URL-stable
- * identifier), the optional `listItemId` selecting the lane, and `synced`
+ * Takes `itemId` (UUID, what the reset_progress RPC needs), the item `title`
+ * (dialog heading), the natural-key pair (`type`, `slug`) for cache
+ * invalidation, the optional `listItemId` selecting the lane, and `synced`
  * (purely for the copy — the RPC decides global-vs-instance itself).
  */
 export function ResetItemButton(props: {
   itemId: string;
+  title: string;
   type: string;
   slug: string;
   listItemId?: string | null;
@@ -60,43 +60,28 @@ export function ResetItemButton(props: {
   }));
 
   return (
-    <Show
-      when={confirming()}
-      fallback={
-        <button
-          type="button"
-          onClick={() => setConfirming(true)}
-          class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-        >
-          Zurücksetzen
-        </button>
-      }
-    >
-      <span class="inline-flex items-center gap-2">
-        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-          {props.synced ? "Wirklich für alle zurücksetzen?" : "Wirklich zurücksetzen?"}
-        </span>
-        <button
-          type="button"
-          aria-label="Ja, zurücksetzen"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate()}
-          class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <Check class="size-3.5" strokeWidth={2.5} />
-        </button>
-        <button
-          type="button"
-          aria-label="Abbrechen"
-          onClick={(e) => {
-            e.currentTarget.blur();
-            setConfirming(false);
-          }}
-          class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text"
-        >
-          <X class="size-3.5" strokeWidth={2} />
-        </button>
-      </span>
-    </Show>
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+      >
+        Zurücksetzen
+      </button>
+      <ConfirmDialog
+        open={confirming()}
+        kicker="Zurücksetzen"
+        title={props.title}
+        body={
+          props.synced
+            ? "Der gemeinsame Fortschritt wird für alle Mitglieder auf null gesetzt. Das lässt sich nicht rückgängig machen."
+            : "Dein Fortschritt für diesen Titel wird auf null gesetzt. Das lässt sich nicht rückgängig machen."
+        }
+        confirmLabel="Zurücksetzen"
+        pending={mutation.isPending}
+        onConfirm={() => mutation.mutate()}
+        onClose={() => setConfirming(false)}
+      />
+    </>
   );
 }

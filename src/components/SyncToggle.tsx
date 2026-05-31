@@ -10,7 +10,7 @@ import {
   type SyncContext,
 } from "@/lib/queries/sharing";
 import { Segmented } from "@/components/Segmented";
-import { SyncConfirmDialog } from "@/components/SyncConfirmDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type SyncValue = "on" | "off";
 
@@ -122,10 +122,16 @@ export function SyncToggle(props: {
         </p>
       </div>
 
-      <SyncConfirmDialog
+      <ConfirmDialog
         open={pending() !== null}
-        enabling={pending() === true}
-        listName={ctx.data!.listName}
+        kicker={pending() === true ? "Synchronisieren" : "Sync beenden"}
+        title={ctx.data!.listName}
+        body={
+          pending() === true
+            ? "Ihr seht diesen Titel von vorne gemeinsam — eine frische, geteilte Spur ab null. Häkchen gelten ab jetzt für alle Mitglieder; dein bisheriger eigener Stand bleibt davon unberührt."
+            : "Der gemeinsame Fortschritt fließt in den Einzelstand jedes Mitglieds zurück — nichts geht verloren — und die geteilte Spur wird aufgelöst."
+        }
+        confirmLabel={pending() === true ? "Synchronisieren" : "Beenden"}
         pending={mut.isPending}
         onConfirm={confirm}
         onClose={() => setPending(null)}
