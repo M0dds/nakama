@@ -2,7 +2,9 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand:** Phasen 1-8 in `main`. **Sync-Instanzen-Feature komplett auf Branch `feat/sync-instances` (NICHT nach `main` gemerged) — im Dev-Server abgenommen, Build grün, Tree clean.** Modell: Fortschritt ist **global pro User**, BIS ein `list_item` **gesynct** wird → eigene **Instanz ab 0**; Reads+Writes branchen `episode_watches.list_item_id IS NULL` (global) vs. `= LI` (Instanz), Un-Sync merged die Instanz per Union zurück ins Globale. Logbuch + Kalender sind reine **read-only Indikatoren** (keine Ticks, keine Links); **Mitseher-Auge nur in geteilten Listen** (Mitglieder *dieser* Liste); **geteilte Liste wird wieder privat**, sobald nur Ersteller + keine offene Einladung übrig. **3 Sync-Migrationen gefahren:** `20260531100000` sync_instances, `20260531120000` home_sync_instances, `20260531140000` unshare_when_solo. **`20260530170000` (Einladungs-RPCs display_name) — Status prüfen, war zuvor offen.** **Nichts nach `origin` gepusht — alles lokal.** Nächster Schritt: **`feat/sync-instances` → `main` mergen + `origin`-Push-Strategie klären**, dann Phase 9 (Deploy/Hosting). Feature-Inventar pro Phase → §Status · Offenes → §Offene Punkte · durable Patterns → §Gotchas.
+**Stand (Tagesstatus):** Phasen 1-8 in `main`. **Sync-Instanzen-Feature komplett auf Branch `feat/sync-instances` (NICHT nach `main` gemerged) — im Dev-Server abgenommen, Build grün, Tree clean, alle Migrationen gefahren. Nichts nach `origin` gepusht — alles lokal.** Nächster Schritt: `feat/sync-instances` → `main` mergen, dann `origin`-Push-Strategie klären (§Offene Punkte). Migration `20260530170000` (Einladungs-RPCs display_name) — Status prüfen, war zuvor offen.
+
+> **Wegweiser (eine Quelle je Sache):** Feature-Inventar pro Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** · durable Architektur + Fallen (inkl. Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher.
 
 ---
 
