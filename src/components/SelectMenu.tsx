@@ -17,6 +17,11 @@ export function SelectMenu(props: {
   options: SelectOption[];
   onChange: (id: string) => void;
   ariaLabel?: string;
+  /** Borderless, content-width trigger that reads like a ghost button (hover
+   *  tint, hard corners) instead of a full bordered field — used where the
+   *  picker should weigh about as much as an icon button (AddSheet header).
+   *  The popover keeps its border + a min-width so it stays usable. */
+  ghost?: boolean;
 }) {
   let wrapper: HTMLDivElement | undefined;
   const [open, setOpen] = createSignal(false);
@@ -47,7 +52,11 @@ export function SelectMenu(props: {
         aria-haspopup="listbox"
         aria-expanded={open()}
         aria-label={props.ariaLabel}
-        class="flex w-full items-center justify-between gap-2 rounded-sm border border-border bg-transparent py-2 pl-3 pr-2.5 text-body text-text transition-colors hover:border-text-muted focus:border-accent focus:outline-none"
+        class={
+          props.ghost
+            ? "flex max-w-full items-center gap-1.5 rounded-xs px-2 py-1 text-body text-text transition-colors hover:bg-surface focus:outline-none"
+            : "flex w-full items-center justify-between gap-2 rounded-sm border border-border bg-transparent py-2 pl-3 pr-2.5 text-body text-text transition-colors hover:border-text-muted focus:border-accent focus:outline-none"
+        }
       >
         <span class="truncate">{selected()?.label ?? "—"}</span>
         <ChevronDown
@@ -61,7 +70,9 @@ export function SelectMenu(props: {
       <Show when={open()}>
         <div
           role="listbox"
-          class="absolute inset-x-0 z-30 mt-1 max-h-60 overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-raised"
+          class={`absolute z-30 mt-1 max-h-60 overflow-y-auto rounded-sm border border-border bg-surface p-1 shadow-raised ${
+            props.ghost ? "left-0 min-w-[12rem]" : "inset-x-0"
+          }`}
         >
           <For each={props.options}>
             {(o) => {

@@ -407,6 +407,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             >
               <div class="min-w-0 max-w-[12rem]">
                 <SelectMenu
+                  ghost
                   value={targetListId()}
                   options={listOptions()}
                   onChange={setTargetListId}
@@ -436,7 +437,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           >
             {/* Media-type filter — splits the panel width evenly, sticks to
                 the top so it stays reachable while results scroll under it. */}
-            <div class="sticky top-0 z-10 border-b border-rule bg-bg px-5 py-3">
+            <div class="sticky top-0 z-10 bg-bg px-5 py-3">
               <Segmented
                 fill
                 value={mediaFilter()}
