@@ -7,21 +7,22 @@ import {
 } from "solid-js";
 
 /**
- * Liquid segmented control — mirrors the BottomNav accent-indicator's
- * stretch-and-contract bubble so a switch from "Tracken" to "Archiv"
- * (or any other 2/3-way segment) reads as mercury rather than a teleport.
+ * Liquid segmented control — shares the BottomNav accent-indicator's MOTION so
+ * a switch reads as mercury rather than a teleport. The bubble keeps hard
+ * corners (rounded-xs): only the floating nav is a capsule, the liquid lives
+ * in the motion, not the shape.
  *
- * How it moves:
- *   1. Measure the currently active option's offsetLeft / offsetWidth.
- *   2. If we have a previous position AND it's different from the new one,
- *      first set the bubble to a capsule spanning OLD → NEW (Phase 1 —
- *      stretch). Then, after SETTLE_MS, contract it down to the destination
- *      (Phase 2). Same two-phase choreography as the BottomNav.
- *   3. transition-all is enabled only AFTER the first render, so the
- *      initial measurement snaps in place instead of animating from 0/0.
+ * How it moves (mirrors BottomNav.place()): the resting geometry snaps to the
+ * active option's box; the SLIDE is a one-shot WAAPI transform overlay
+ * (translateX + scaleX) from the previous box → a stretched midpoint (leading
+ * edge ahead of the trailing one) → identity. One continuous timeline with
+ * snappy bell-velocity easings, so the bubble stretches toward the destination
+ * and contracts without the old two-phase settle pause. CSS owns only the
+ * opacity fade. Transitions/animation only AFTER the first render so the
+ * initial measurement snaps in place.
  *
- * Used by ListTrackingToggle (Tracken / Archiv), ThemeSwitcher's mode
- * picker (Hell / Dunkel / System), and the Styleguide's mode-demo.
+ * Used by ListTrackingToggle (Tracken / Archiv), ThemeSwitcher's mode picker
+ * (Hell / Dunkel / System), SyncToggle, and the Styleguide's mode-demo.
  */
 
 interface Box {
@@ -47,27 +48,20 @@ interface SegmentedProps<T extends string> {
   disabled?: boolean;
 }
 
-const SETTLE_MS = 100;
-
 export function Segmented<T extends string>(props: SegmentedProps<T>) {
   let containerEl: HTMLDivElement | undefined;
-  // prevRest + settleTimer are intentionally plain `let`s — they persist
-  // across reactive runs without triggering them.
+  let bubbleEl: HTMLSpanElement | undefined;
+  // prevRest persists across reactive runs without triggering them; slideAnim
+  // is the in-flight slide so a rapid re-fire can cancel it.
   let prevRest: Box | null = null;
-  let settleTimer: number | null = null;
+  let slideAnim: Animation | undefined;
 
   const [bubble, setBubble] = createSignal<Box | null>(null);
   const [animated, setAnimated] = createSignal(false);
 
   const place = () => {
-    if (settleTimer !== null) {
-      window.clearTimeout(settleTimer);
-      settleTimer = null;
-    }
     if (!containerEl) return;
-    const el = containerEl.querySelector<HTMLElement>(
-      '[data-active="true"]',
-    );
+    const el = containerEl.querySelector<HTMLElement>('[data-active="true"]');
     if (!el) return;
 
     const target: Box = {
@@ -77,26 +71,40 @@ export function Segmented<T extends string>(props: SegmentedProps<T>) {
       height: el.offsetHeight,
     };
     const prev = prevRest;
+    // Resting geometry is always the target box; the slide is a WAAPI overlay.
+    setBubble(target);
 
-    if (prev && prev.left !== target.left) {
-      // Phase 1 — stretch into a capsule covering OLD + NEW.
-      const leftEdge = Math.min(prev.left, target.left);
-      const rightEdge = Math.max(
-        prev.left + prev.width,
-        target.left + target.width,
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (animated() && prev && prev.left !== target.left && bubbleEl && !reduce) {
+      // Continuous mercury morph — same recipe as BottomNav. Both edges move
+      // from the first frame (leading edge ahead, trailing behind → stretch),
+      // peak velocity through a front-loaded midpoint (0.42), quick settle.
+      const cx = target.left + target.width / 2;
+      const pL = prev.left;
+      const pR = prev.left + prev.width;
+      const tL = target.left;
+      const tR = target.left + target.width;
+      const goingRight = tL > pL;
+      const LEAD = 0.85;
+      const TRAIL = 0.3;
+      const midL = pL + (tL - pL) * (goingRight ? TRAIL : LEAD);
+      const midR = pR + (tR - pR) * (goingRight ? LEAD : TRAIL);
+      const tf = (l: number, r: number) =>
+        `translateX(${(l + r) / 2 - cx}px) scaleX(${(r - l) / target.width})`;
+      slideAnim?.cancel();
+      slideAnim = bubbleEl.animate(
+        [
+          { transform: tf(pL, pR), easing: "cubic-bezier(0.25, 0.5, 0.9, 0.7)" },
+          { transform: tf(midL, midR), offset: 0.42, easing: "cubic-bezier(0.1, 0.45, 0.6, 0.9)" },
+          { transform: "translateX(0) scaleX(1)", offset: 1 },
+        ],
+        { duration: 240, composite: "add" },
       );
-      setBubble({
-        left: leftEdge,
-        top: target.top,
-        width: rightEdge - leftEdge,
-        height: target.height,
-      });
-      // Phase 2 — contract to the destination.
-      settleTimer = window.setTimeout(() => setBubble(target), SETTLE_MS);
-    } else {
-      // First render, same-position re-fire, or resize — snap.
-      setBubble(target);
     }
+
     prevRest = target;
 
     if (!animated()) {
@@ -117,7 +125,7 @@ export function Segmented<T extends string>(props: SegmentedProps<T>) {
     window.addEventListener("resize", onResize);
     onCleanup(() => {
       window.removeEventListener("resize", onResize);
-      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      slideAnim?.cancel();
     });
   });
 
@@ -131,16 +139,18 @@ export function Segmented<T extends string>(props: SegmentedProps<T>) {
       {/* Sliding bubble. Always rendered so the element persists across
           value changes; geometry patches via inline style. */}
       <span
+        ref={bubbleEl!}
         aria-hidden
-        class={`pointer-events-none absolute rounded-xs bg-text ${
-          animated() ? "transition-all duration-200 ease-out" : ""
-        }`}
+        class="pointer-events-none absolute rounded-xs bg-text"
         style={{
           left: `${bubble()?.left ?? 0}px`,
           top: `${bubble()?.top ?? 0}px`,
           width: `${bubble()?.width ?? 0}px`,
           height: `${bubble()?.height ?? 0}px`,
           opacity: bubble() ? 1 : 0,
+          // Slide is a WAAPI transform overlay on this resting geometry; CSS
+          // owns only the opacity fade (no left/width transition to race it).
+          transition: "opacity 200ms ease-out",
         }}
       />
       <For each={props.options}>
