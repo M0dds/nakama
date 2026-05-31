@@ -169,8 +169,12 @@ function WasKommt(props: { items: UpcomingItem[] }) {
         class="flex flex-col gap-3 md:grid"
         style={{
           "grid-template-columns": gridCols(),
+          // Liquid spring (gentle overshoot, ~10%) instead of a plain ease-out
+          // — the active column bulges a hair past 2fr and settles back, so
+          // the accordion reads elastic/mercury like the nav bubble rather
+          // than a flat resize.
           transition:
-            "grid-template-columns 300ms cubic-bezier(0.16, 1, 0.3, 1)",
+            "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)",
         }}
         onMouseLeave={() => {
           // Snap the highlight back to the first card on hover-capable
@@ -210,10 +214,19 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                     }
                   }
                 }}
-                class="group relative flex w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border transition-all duration-300 [transition-timing-function:var(--ease-quart)] focus:outline-none md:h-80"
+                class="group relative flex w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none md:h-80"
                 classList={{
                   "h-80 border-accent bg-accent": active(),
                   "h-44 border-border bg-bg": !active(),
+                }}
+                style={{
+                  // Height (the mobile vertical accordion) springs with the
+                  // same overshoot as the grid; colours just ease out (an
+                  // overshoot on colour would over-saturate the accent fill).
+                  transition:
+                    "height 420ms cubic-bezier(0.22, 1.2, 0.36, 1), " +
+                    "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1), " +
+                    "background-color 260ms cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
               >
                 {/* Cover fills above the caption; bg shows through as the
