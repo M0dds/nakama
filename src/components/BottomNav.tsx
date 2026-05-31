@@ -223,19 +223,19 @@ export function BottomNav(props: {
       const midR = pR + (tR - pR) * (goingRight ? LEAD : TRAIL);
       const tf = (l: number, r: number) =>
         `translateX(${(l + r) / 2 - cx}px) scaleX(${(r - l) / target.width})`;
-      // Velocity profile: snappy departure + snappy settle, peak through the
-      // midpoint. seg1 leaves rest with real speed (y1/x1 ≈ 0.5) and ramps
-      // hard to a high mid velocity (x2→1); seg2 mirrors it — high start
-      // (x1→0), gentle-but-present stop. The earlier 0→peak→0 pair read as
-      // sluggish at both ends.
+      // Velocity profile tuned for SNAP: a hard departure (seg1 start velocity
+      // y1/x1 = 2.0), peak velocity carried through the midpoint (seg1 ends
+      // and seg2 starts steep), and a quick settle. The midpoint is pulled
+      // earlier (0.42) so the surge front-loads — most of the travel is done
+      // early, the tail just settles. Short duration keeps it crisp.
       slideAnim?.cancel();
       slideAnim = bubbleEl.animate(
         [
-          { transform: tf(pL, pR), easing: "cubic-bezier(0.3, 0.15, 0.9, 0.5)" },
-          { transform: tf(midL, midR), offset: 0.5, easing: "cubic-bezier(0.1, 0.5, 0.7, 0.85)" },
+          { transform: tf(pL, pR), easing: "cubic-bezier(0.25, 0.5, 0.9, 0.7)" },
+          { transform: tf(midL, midR), offset: 0.42, easing: "cubic-bezier(0.1, 0.45, 0.6, 0.9)" },
           { transform: "translateX(0) scaleX(1)", offset: 1 },
         ],
-        { duration: 300, composite: "add" },
+        { duration: 240, composite: "add" },
       );
     }
 
