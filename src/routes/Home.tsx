@@ -279,7 +279,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                     {item.title}
                   </h3>
                   <span
-                    class="block font-mono text-mini"
+                    class="block truncate font-mono text-mini"
                     classList={{
                       "text-accent-on/85": active(),
                       "text-text-muted": !active(),
@@ -334,7 +334,7 @@ function DayTag(props: {
       when={props.active}
       fallback={
         <span
-          class="block font-mono text-mini uppercase tracking-wider"
+          class="block truncate font-mono text-mini uppercase tracking-wider"
           classList={{
             "text-accent": offset() <= 1,
             "text-text-muted": offset() > 1,
@@ -344,7 +344,7 @@ function DayTag(props: {
         </span>
       }
     >
-      <span class="block font-mono text-mini uppercase tracking-wider text-accent-on">
+      <span class="block truncate font-mono text-mini uppercase tracking-wider text-accent-on">
         <Show when={keyword()}>
           <span>{keyword()} · </span>
         </Show>
