@@ -135,6 +135,45 @@ export function getThemeMeta(id: ThemeId): ThemeMeta {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];
 }
 
+/** Resolve a mode *preference* to the concrete mode applied to <html>. */
+function resolveMode(pref: ThemeModePref): ThemeMode {
+  if (pref === "system") {
+    return typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
+  return pref;
+}
+
+/**
+ * Favicon — the Nakama brand mark is a simple filled circle. A static file
+ * can't track the active theme (SVG favicons don't read page CSS), so we
+ * repaint the <link rel="icon"> with the resolved accent: once on mount and
+ * after every applyTheme. The colour comes straight from the THEMES registry
+ * (not getComputedStyle) so it's exact and immune to the crossfade window.
+ */
+function paintFavicon(accent: string): void {
+  if (typeof document === "undefined") return;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+    `<circle cx="16" cy="16" r="13" fill="${accent}"/></svg>`;
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.type = "image/svg+xml";
+  link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** Repaint the favicon from the currently persisted theme + mode. Call once on
+ *  mount — applyTheme handles every later switch. */
+export function syncFavicon(): void {
+  paintFavicon(getThemeMeta(readTheme()).swatch[resolveMode(readModePref())].accent);
+}
+
 /**
  * Apply a theme + mode preference to <html>. Persists to localStorage so the
  * choice survives reloads (the no-FOUC script in index.html re-reads it before
@@ -170,14 +209,9 @@ export function applyTheme(id: ThemeId, modePref: ThemeModePref): void {
   localStorage.setItem(STORAGE_KEY_THEME, id);
   localStorage.setItem(STORAGE_KEY_MODE, modePref);
 
-  const resolved =
-    modePref === "system"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      : modePref;
-
+  const resolved = resolveMode(modePref);
   root.classList.toggle("dark", resolved === "dark");
+  paintFavicon(getThemeMeta(id).swatch[resolved].accent);
 }
 
 /** Read the current persisted theme (falls back to default). */
