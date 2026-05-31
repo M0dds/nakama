@@ -19,6 +19,7 @@ import {
   type WatchBundle,
 } from "@/lib/queries/home";
 import {
+  airDateHasClock,
   dateLabel,
   dayOffset,
   episodeCode,
@@ -267,6 +268,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                 <div class="shrink-0 p-3">
                   <DayTag
                     airDate={item.airDate}
+                    type={item.type}
                     isHero={isHero()}
                     active={active()}
                   />
@@ -307,13 +309,16 @@ function WasKommt(props: { items: UpcomingItem[] }) {
 
 function DayTag(props: {
   airDate: string;
+  type: string;
   isHero: boolean;
   active: boolean;
 }) {
   const offset = () => dayOffset(props.airDate);
   const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30. Mai"
   const time = () =>
-    hasAirTime(props.airDate) ? timeLabel(props.airDate) : null;
+    hasAirTime(props.airDate) && airDateHasClock(props.type)
+      ? timeLabel(props.airDate)
+      : null;
   const keyword = () => {
     if (offset() === 0) return props.isHero ? "HEUTE" : "AUCH HEUTE";
     if (offset() === 1) return "MORGEN";

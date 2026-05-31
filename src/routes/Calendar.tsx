@@ -24,6 +24,7 @@ import {
 import {
   addDays,
   addMonths,
+  airDateHasClock,
   formatMonth,
   formatWeekRange,
   fromIsoDay,
@@ -731,7 +732,7 @@ function DayPaneRow(props: { ev: CalendarEvent }) {
   // the item page). Future episodes without a known time keep the "noch nicht
   // erschienen" hint; the dimmed style already marks them as upcoming.
   const metaLine = () =>
-    hasAirTime(props.ev.airDate)
+    hasAirTime(props.ev.airDate) && airDateHasClock(props.ev.type)
       ? `${epLabel()} · ${timeLabel(props.ev.airDate)}`
       : props.ev.released
         ? epLabel()

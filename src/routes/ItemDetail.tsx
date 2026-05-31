@@ -27,6 +27,7 @@ import {
 } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import {
+  airDateHasClock,
   dateLabel,
   dayOffset,
   hasAirTime,
@@ -691,7 +692,7 @@ function EpisodeListRow(props: {
     const offset = dayOffset(props.ep.airDate);
     if (offset === 0 || offset === 1) {
       const base = offset === 0 ? "Heute" : "Morgen";
-      return hasAirTime(props.ep.airDate)
+      return hasAirTime(props.ep.airDate) && airDateHasClock(props.itemType)
         ? `${base} · ${timeLabel(props.ep.airDate)}`
         : base;
     }

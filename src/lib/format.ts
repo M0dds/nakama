@@ -137,6 +137,16 @@ export function hasAirTime(iso: string): boolean {
   return d.getHours() !== 0 || d.getMinutes() !== 0;
 }
 
+/** Whether this media type's air dates carry a real clock time. AniList anime
+ *  store a precise airingAt (→ "Heute · 17:00" is meaningful). TMDB series
+ *  air_dates are DATE-ONLY: we store the date as UTC-midnight, which a local
+ *  +TZ then renders as a fabricated "02:00" — so we suppress the time for them
+ *  and show the day alone. (Manga have no air dates at all.) Combine with
+ *  hasAirTime: `hasAirTime(iso) && airDateHasClock(type)`. */
+export function airDateHasClock(type: string): boolean {
+  return type === "anime";
+}
+
 /** Calendar-day offset (0 = today, 1 = tomorrow). Uses local midnight on
  *  both ends, so an 8am-airing today stays "today" all day regardless of
  *  the current clock time. */
