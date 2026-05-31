@@ -1,6 +1,5 @@
 import { createSignal, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, X } from "lucide-solid";
 import { episodesQueryKey } from "@/lib/queries/episodes";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
@@ -11,6 +10,7 @@ import {
   type SyncContext,
 } from "@/lib/queries/sharing";
 import { Segmented } from "@/components/Segmented";
+import { SyncConfirmDialog } from "@/components/SyncConfirmDialog";
 
 type SyncValue = "on" | "off";
 
@@ -26,10 +26,12 @@ type SyncValue = "on" | "off";
  * members, while the caller's own global progress stays untouched. Turning OFF
  * (unsync_item) merges the instance back into every member's global progress
  * (Auto-Merge) and tears it down. Both are consequential, so a flip doesn't fire
- * immediately: clicking the Segmented previews the direction (bubble slides) and
- * an inline confirm explains the effect; only ✓ commits. Either committed flip
- * changes which lane this item's episode page reads (global ↔ instance), so we
- * invalidate the episodes + co-watcher + list-badge caches on success.
+ * immediately: flipping the Segmented previews the direction (bubble slides) and
+ * opens a confirm DIALOG that explains the effect with room to breathe; only its
+ * primary action commits. Cancel / backdrop / Escape snaps the toggle back.
+ * Either committed flip changes which lane this item's episode page reads
+ * (global ↔ instance), so we invalidate the episodes + co-watcher + list-badge
+ * caches on success.
  */
 export function SyncToggle(props: {
   listItemId: string;
@@ -114,56 +116,20 @@ export function SyncToggle(props: {
             { value: "off", label: "Aus" },
           ]}
         />
-
-        <Show
-          when={pending() !== null}
-          fallback={
-            <p class="mt-2 text-mini text-text-muted">
-              An: ihr seht diesen Titel von vorne gemeinsam — eine frische,
-              geteilte Spur ab null. Häkchen gelten dann für alle Mitglieder;
-              dein eigener Stand bleibt davon unberührt. Beim Ausschalten fließt
-              der gemeinsame Fortschritt in den Einzelstand jedes Mitglieds
-              zurück.
-            </p>
-          }
-        >
-          {/* Inline confirm — explains the consequence of the picked direction,
-              commits on ✓, cancels on ✗ (same vocabulary as ResetItemButton). */}
-          <div class="mt-3">
-            <p class="text-mini text-text-muted">
-              {pending()
-                ? "Frische gemeinsame Spur ab null — dein eigener Stand bleibt erhalten, Häkchen gelten ab jetzt für alle Mitglieder."
-                : "Der gemeinsame Stand fließt in den Einzelstand jedes Mitglieds zurück. Nichts geht verloren."}
-            </p>
-            <div class="mt-2 flex items-center gap-2">
-              <span class="flex-1 font-mono text-mini uppercase tracking-wider text-text-muted">
-                {pending() ? "Synchronisierung starten?" : "Synchronisierung beenden?"}
-              </span>
-              <button
-                type="button"
-                aria-label={pending() ? "Ja, synchronisieren" : "Ja, beenden"}
-                disabled={mut.isPending}
-                onClick={confirm}
-                class="inline-flex size-6 items-center justify-center rounded-xs bg-accent text-accent-on transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                <Check class="size-3.5" strokeWidth={2.5} />
-              </button>
-              <button
-                type="button"
-                aria-label="Abbrechen"
-                disabled={mut.isPending}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  setPending(null);
-                }}
-                class="inline-flex size-6 items-center justify-center rounded-xs border border-border text-text-muted transition-colors hover:bg-surface hover:text-text disabled:opacity-50"
-              >
-                <X class="size-3.5" strokeWidth={2} />
-              </button>
-            </div>
-          </div>
-        </Show>
+        <p class="mt-2 text-mini text-text-muted">
+          Gemeinsam von vorne schauen: Häkchen gelten für alle Mitglieder, dein
+          eigener Stand bleibt davon unberührt.
+        </p>
       </div>
+
+      <SyncConfirmDialog
+        open={pending() !== null}
+        enabling={pending() === true}
+        listName={ctx.data!.listName}
+        pending={mut.isPending}
+        onConfirm={confirm}
+        onClose={() => setPending(null)}
+      />
     </Show>
   );
 }
