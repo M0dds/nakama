@@ -29,6 +29,14 @@
    ========================================================================= */
 
 /* ─── 1 · DEFAULT — Standard (Japan minimalism, vermillion accent) ──────── */
+/* Layout — max readable content width. Wide viewports get side gutters so the
+   content doesn't sprawl edge-to-edge; the full-bleed instrument rule
+   (ColumnGuide) still spans the whole screen, re-aligned to the content's
+   2/3 boundary. Theme-independent → its own :root block. */
+:root {
+  --content-max: 1440px;
+}
+
 :root,
 [data-theme="default"] {
   --bg: #f7f6f3;                /* warm bone canvas */

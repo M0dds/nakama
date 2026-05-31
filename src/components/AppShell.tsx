@@ -52,10 +52,14 @@ export function AppShell(props: ParentProps) {
 
   return (
     <ToastProvider>
-      {/* Add space at the bottom equal to nav height (44 px) + bottom offset
-          (26 px) + breathing (24 px). The pill is `position: fixed` so it
-          doesn't reserve flow space on its own. */}
-      <div class="pb-[94px]">{props.children}</div>
+      {/* Centered, width-capped content frame (--content-max). On wide screens
+          the page no longer sprawls edge-to-edge; the ColumnGuide stays
+          full-bleed and re-aligns to this frame's 2/3 boundary. Bottom padding
+          = nav height (44 px) + offset (26 px) + breathing (24 px); the pill is
+          `position: fixed` so it doesn't reserve flow space itself. */}
+      <div class="mx-auto w-full max-w-[var(--content-max)] pb-[94px]">
+        {props.children}
+      </div>
       <BottomNav onAddClick={openAdd} addSheetOpen={addVisible()} />
       <Show when={addMounted()}>
         <AddSheet visible={addVisible()} onClose={closeAdd} />

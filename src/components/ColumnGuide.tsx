@@ -13,13 +13,24 @@
  * the body background, so headers and modules paint over it where needed.
  * Hidden below the `md` breakpoint — on mobile the columns stack vertically,
  * so a vertical column guide is meaningless.
+ *
+ * `left` tracks the content's 2/3 boundary, not the viewport's: the content
+ * is centered + capped at --content-max (see AppShell), so on a wide screen
+ * 2/3-of-content sits right of 2/3-of-viewport. min() switches at the cap
+ * (% is relative to the viewport here — fixed element):
+ *   narrow (≤ max): 66.6667%        (content fills the viewport)
+ *   wide  (> max):  50% + max/6     (= centered-left edge + ⅔·max)
+ * — while the line itself still bleeds top-to-bottom of the screen.
  */
 export function ColumnGuide() {
   return (
     <div
       aria-hidden
       class="pointer-events-none fixed inset-y-0 hidden w-px bg-rule md:block"
-      style={{ left: "66.6667%", "z-index": -5 }}
+      style={{
+        left: "min(66.6667%, calc(50% + var(--content-max) / 6))",
+        "z-index": -5,
+      }}
     />
   );
 }
