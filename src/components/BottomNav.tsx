@@ -117,6 +117,7 @@ export function BottomNav(props: {
   const goBack = () => {
     const fallback = back();
     if (!fallback) return;
+    pulseBack();
     if (window.history.length > 1) window.history.back();
     else navigate(fallback);
   };
@@ -129,6 +130,48 @@ export function BottomNav(props: {
   // First placement should snap (no transition from 0/0/0/0). After that
   // we enable transitions for the next render.
   const [animated, setAnimated] = createSignal(false);
+  // Press feedback for the back-satellite. Two problems with the old
+  // active:scale-95: (1) the accent FILL is the shared bubble — a sibling
+  // span, not a child of the button — so scaling the button shrank only the
+  // arrow + shadow and left the colour static, reading as disjoint/rigid;
+  // (2) a press-STATE transform is invisible on a quick tap, because
+  // pointerup reverses it before it registers. So we fire a ONE-SHOT recoil
+  // (squash + slight "back"-ward lean, then recover) via WAAPI on BOTH the
+  // button and the bubble — fixed duration, independent of how briefly the
+  // button is held, and visible even when the route keeps the satellite in
+  // the same slot (item→list), where the bubble would otherwise never move.
+  let backBtnEl: HTMLButtonElement | undefined;
+  let bubbleEl: HTMLSpanElement | undefined;
+  let backAnims: Animation[] = [];
+  const pulseBack = () => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Liquid, not a uniform shrink. A flat scale(0.86) reads rigid; mercury
+    // deforms anisotropically and overshoots. So the blob wobbles round →
+    // tall-oval (squashed against the "back" lean) → wide-oval (rebound past
+    // 1) → settles round — the same stretch-and-contract family as the nav
+    // bubble's capsule morph. Per-keyframe easing keeps the velocity organic
+    // (a single easing across all frames is what made it feel choppy).
+    const frames: Keyframe[] = [
+      { transform: "translateX(0) scale(1, 1)", easing: "ease-out" },
+      {
+        transform: "translateX(-3px) scale(0.82, 1.12)",
+        offset: 0.32,
+        easing: "ease-in-out",
+      },
+      {
+        transform: "translateX(1px) scale(1.09, 0.93)",
+        offset: 0.62,
+        easing: "ease-out",
+      },
+      { transform: "translateX(0) scale(1, 1)", offset: 1 },
+    ];
+    const opts: KeyframeAnimationOptions = { duration: 440 };
+    backAnims.forEach((a) => a.cancel());
+    backAnims = [backBtnEl?.animate(frames, opts), bubbleEl?.animate(frames, opts)].filter(
+      Boolean,
+    ) as Animation[];
+  };
 
   const place = () => {
     if (settleTimer !== null) {
@@ -229,12 +272,13 @@ export function BottomNav(props: {
             button against the pill's centerline. */}
         <button
           type="button"
+          ref={backBtnEl!}
           onClick={goBack}
           aria-label="Zurück"
           tabIndex={back() ? 0 : -1}
           aria-hidden={!back()}
           data-accent={back() ? "" : undefined}
-          class={`absolute right-full top-1/2 z-10 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full text-accent-on shadow-floating active:scale-95 ${
+          class={`absolute right-full top-1/2 z-10 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full text-accent-on shadow-floating ${
             back() ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
           style={{
@@ -245,13 +289,9 @@ export function BottomNav(props: {
             // SETTLE_MS so the fade-in starts exactly as Phase 2 (contract)
             // kicks off; full opacity lands around t=300 ms, when the bubble
             // is settled. Symmetric in close: the arrow fades together with
-            // the bubble leaving its slot.
-            //
-            // The transform timing is separate + immediate so the active:
-            // scale-95 click feedback feels snappy (not delayed by the
-            // 100 ms opacity offset).
-            transition:
-              "opacity 200ms var(--ease-quart) 100ms, transform 100ms var(--ease-quart)",
+            // the bubble leaving its slot. The press recoil is a one-shot
+            // WAAPI animation (pulseBack) — not a CSS transition here.
+            transition: "opacity 200ms var(--ease-quart) 100ms",
           }}
         >
           <ArrowLeft class="size-5" strokeWidth={1.75} aria-hidden />
@@ -263,16 +303,22 @@ export function BottomNav(props: {
             inline style; transitions kick in after the first render so the
             initial measurement doesn't animate from 0. */}
         <span
+          ref={bubbleEl!}
           aria-hidden
-          class={`pointer-events-none absolute rounded-full bg-accent ${
-            animated() ? "transition-all duration-200 ease-out" : ""
-          }`}
+          class="pointer-events-none absolute rounded-full bg-accent"
           style={{
             left: `${bubble()?.left ?? 0}px`,
             top: `${bubble()?.top ?? 0}px`,
             width: `${bubble()?.width ?? 0}px`,
             height: `${bubble()?.height ?? 0}px`,
             opacity: bubble() ? 1 : 0,
+            // Geometry rides the 200 ms liquid flow; the press recoil is a
+            // one-shot WAAPI transform (pulseBack) that composites on top and
+            // returns to none on finish. No transition on the very first
+            // placement (snap to target).
+            transition: animated()
+              ? "left 200ms ease-out, top 200ms ease-out, width 200ms ease-out, height 200ms ease-out, opacity 200ms ease-out"
+              : "none",
           }}
         />
 
