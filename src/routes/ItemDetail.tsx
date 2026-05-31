@@ -402,9 +402,17 @@ export default function ItemDetail() {
       <ColumnGuide />
 
       <div class="flex flex-col md:flex-row md:items-start">
-        {/* Section 01 — Episode-Listing */}
-        <div class="md:w-2/3">
-          <BentoModule label={isMovie() ? "Film" : "Episoden"} number="01">
+        {/* Section 01 — Episode-Listing. On mobile it drops BELOW the Details
+            column (so the cover sits at the top): order-2 + a top rule to
+            separate it from the section above; the number flips to 02. From md
+            up it returns to its native first/left slot (01, no top rule —
+            the ColumnGuide handles the vertical split). */}
+        <div class="order-2 border-t border-rule md:order-1 md:w-2/3 md:border-t-0">
+          <BentoModule
+            label={isMovie() ? "Film" : "Episoden"}
+            number="01"
+            mobileNumber="02"
+          >
             <Show
               when={item.data}
               fallback={
@@ -473,9 +481,11 @@ export default function ItemDetail() {
           </BentoModule>
         </div>
 
-        {/* Section 02 — Cover + Details */}
-        <div class="border-t border-rule md:w-1/3 md:border-t-0">
-          <BentoModule label="Details" number="02">
+        {/* Section 02 — Cover + Details. On mobile it leads (order-1, no top
+            rule) so the cover is the first thing seen; the number flips to 01.
+            From md up it returns to the right column (02). */}
+        <div class="order-1 md:order-2 md:w-1/3">
+          <BentoModule label="Details" number="02" mobileNumber="01">
             <Show
               when={item.data}
               fallback={
@@ -1212,6 +1222,16 @@ function CastRow(props: { member: TmdbCastMember }) {
 /** Movie facts for the right Details column — Regie/Laufzeit/Genres/Kinostart/
  *  FSK. Reads the same shared movie-details cache as the left MoviePanel, so
  *  no second fetch. */
+/** German full-date label for a film's release ("15. März 2024"). UTC-midnight
+ *  ISO renders on the correct local day for DE (+TZ); see format.ts note. */
+function releaseLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function MovieFacts(props: { item: ItemDetails }) {
   const details = createQuery(() =>
     movieDetailsQueryOptions(props.item.source, props.item.sourceId),
@@ -1228,6 +1248,17 @@ function MovieFacts(props: { item: ItemDetails }) {
           </Show>
           <Show when={d().genres.length > 0}>
             <Fact label="Genres" value={d().genres.join(" · ")} />
+          </Show>
+          {/* Release date as a fact too (it also sits in the seen-row on the
+              left, but that's easy to miss). Full date with year here; label
+              flips on whether the film is still upcoming. */}
+          <Show when={d().releaseDate}>
+            {(rd) => (
+              <Fact
+                label={new Date(rd()) > new Date() ? "Kinostart" : "Erschienen"}
+                value={releaseLabel(rd())}
+              />
+            )}
           </Show>
           <Show when={d().certification}>
             {(fsk) => <Fact label="FSK" value={fsk()} />}
