@@ -2,9 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand (Tagesstatus):** Phasen 1-8 + Sync-Instanzen + Politur-Session + **Thema 1a (TMDB-Serien)** sind alle in lokalem `main`. Alles wird **direkt auf `main` committet** (User-delegiert, atomare Commits; kein Feature-Branch-Flow in dieser Phase). **`origin` ist NICHT aktuell:** lokales `main` ist `origin/main` ~172 Commits voraus — **bewusst nicht gepusht** (User: „mergen ok, nur nicht pushen"; es gibt nichts zu mergen, alles liegt auf `main`). Build grün, Tree clean, **13 Migrationen** in `supabase/migrations/` getrackt (alle gefahren bis auf evtl. `20260530170000` — Status weiter prüfen, war zuvor offen).
-
-**Letzte Session (TMDB-Serien, Thema 1a — fertig):** zweite Medienquelle TMDB browser-side (`tmdb.ts`), quellen-agnostische Suche (`search.ts` + Medientyp-Filter-Leiste im AddSheet), echte Staffeln (Episode-Dispatch nach `source`, Staffel-Gliederung in `ItemDetail`), Continue-Watching staffel-bewusst gemacht (Bug: `next_episode` ignorierte `season_number` → Migration `20260531180000`), „Neue Folge(n)"-Badge nur bei getrackten Listen + korrekte Mehrzahl (Episoden- statt Item-Zählung), date-only Air-Dates ohne erfundene Uhrzeit (`airDateHasClock`), diverse UI-Politur (Ghost-Select, Confirm-Angleich, `typeInitial`-Platzhalter). **Als Nächstes (mit frischem Kontext): Thema 1b (Filme + Status-UI), dann 1c (Spiele/Steam), bzw. Themen 2-4 — siehe §Offene Punkte.**
+**Stand (Tagesstatus):** Phasen 1-8 + Sync-Instanzen + Politur-Session + **Thema 1a (TMDB-Serien)** alle in lokalem `main`. Alles **direkt auf `main`** (User-delegiert, atomare Commits; kein Feature-Branch-Flow). **`origin` bewusst NICHT aktuell:** `main` ist `origin/main` ~173 Commits voraus — „mergen ok, nur nicht pushen". Build grün, Tree clean, **13 Migrationen** in `supabase/migrations/` (Status je Migration → §Gotchas → Daten/RLS). Feature-Detail je Phase → §Status; Nächstes → §Offene Punkte. **Nächster Schritt: Thema 1b (Filme + Status-UI), dann 1c (Spiele/Steam), bzw. Themen 2-4.**
 
 > **Wegweiser (eine Quelle je Sache):** Feature-Inventar pro Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** · durable Architektur + Fallen (inkl. Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher.
 
@@ -152,232 +150,25 @@ Kurzbeschreibungen — Implementierungsdetails stehen im Source, durable Pattern
 
 ## Data-Layer (TanStack Query)
 
-`src/lib/queries/lists.ts`:
+Jede Feature-Area ist `src/lib/queries/<area>.ts` mit derselben Struktur: typed Query-Keys + `*Options(...)`-Reads + Mutation-Funktionen. **Signaturen stehen im Source** (kurz reinschauen statt hier duplizieren) — hier nur die nicht-offensichtlichen Konventionen + eine Datei-Landkarte. Durable Fallen (Sync-Lanes, Cover-URLs, Bulk-Upsert, Discriminated-Union, Multi-Season) leben in **§Gotchas**.
 
-```typescript
-// Per-list keys indexed by short_code (URL-stable), not UUID. Mutations
-// operate on UUIDs (UPDATE/DELETE filter on lists.id). Cross-cutting
-// writes invalidate the ["list"]-Prefix to cover all open shortCodes.
-export const listsQueryKey = ["lists"] as const;
-export const listQueryKey = (shortCode) => ["list", shortCode] as const;
-export const listItemsQueryKey = (shortCode) => ["list", shortCode, "items"] as const;
+**Query-Key-Konventionen (entscheidend fürs Invalidieren):**
 
-// Reads
-export function listsQueryOptions(user)                  // incl. newCounts aggregation
-export function listQueryOptions(user, shortCode)
-export function listItemsQueryOptions(user, shortCode)   // hasNewEpisode per entry
+- `lists.ts` keys sind nach `short_code` indexiert (URL-stabil), **nicht UUID**; Mutations filtern auf `lists.id`. Cross-cutting Writes invalidieren den `["list"]`-Prefix (deckt alle offenen shortCodes).
+- `episodes.ts`: konkrete Keys sind `[...episodesQueryKey, limit]` + die Sync-Lane → Prefix-Invalidierung clear-t alle Paginations + beide Lanes auf einmal.
+- `sharing.ts` keys sind **Prefixe** (`["list-members", listId]`, `["co-watchers", itemId]` …) damit Realtime ohne Mount-Zeit-id invalidieren kann.
 
-// Lists CRUD
-export async function createList(user, input)            // returns ListSummary mit shortCode
-export async function renameList({ listId, name })
-export async function deleteList(listId)
-export async function setListTracking(user, { listId, enabled })
+**Datei-Landkarte:**
 
-// Pin + reorder (drag-dnd)
-export async function setListPin({ listId, pinned })
-export async function setListItemPin({ listItemId, pinned })
-export async function reorderLists({ orderedIds })
-export async function reorderListItems({ listId, orderedIds })
+- `lists.ts` — Listen-CRUD, Pin/Reorder, per-row Item-Mutations (`removeListItem`/`moveListItem`), **„Neue Folge"-Badge-Engine** (`findItemsWithNewEpisodes`, 14-Tage-Fenster; anime/series → folgen, manga → kapitel; `ListSummary.newCounts` pro Liste, `ListEntry.hasNewEpisode` pro Item).
+- `items.ts` — Item by natural key `(type, slug)` (Items effektiv public). `addItemToList` upsertet `items(source,source_id)` → Trigger setzt slug → `list_items`; liest `result.source` (nicht mehr hardcoded "anilist"); 23505 = schon drin → success.
+- `episodes.ts` — Episoden-Read (resolve via `(type,slug)` + 12 h Stale-Gate + lazy fetch). Writes via `set_episode_watch` / `mark_episodes_watched_upto` / `reset_progress` — **alle lane-branchend** server-side (§Gotchas → Sync-Instanzen). Title-Enrichment: `TITLE_ENRICHMENT_VERSION` (bumpen = one-time backfill), `GAP_QUERY_LIMIT=5000`.
+- `home.ts` — `continueWatchingOptions` (RPC `home_continue_watching`, Sync-Instanzen als eigene Einträge) / `upcomingEpisodesOptions` (14-Tage) / `recentlyTickedOptions`. **`LogbookEvent` ist Discriminated Union über 4 kinds**: `watch` · `list_add` · `missed` (read-only Indikator, nur begonnene Items) · `ownership_transfer`. `ContinueItem.hasNewEpisode` = „while you were away" (≠ List-Badge 14-Tage-Fenster).
+- `sharing.ts` — Membership, Invitations, per-item Sync, Co-Watchers. **App-weite Namensregel** (auch Logbuch/Roster): `display_name` ▸ `@handle` ▸ „Jemand"; self → „Du". `InviteResult = {ok} | {ok:false, error: empty|not_found|self|already_member}`.
+- `profile.ts` — Identität (Display-Name, Avatar-Upload, Theme), Account-Löschen.
+- **Medienquellen** `anilist.ts` · `tmdb.ts` · `jikan.ts` · `mangadex.ts` hinter `search.ts` → `searchMedia(q, type)` (provider-agnostischer Boundary, routet **typ-gezielt** zur Quelle: anime/manga→AniList, series→TMDB, movie/game→`[]` bis 1b/1c; kein fan-out). Quell-spezifische Fallen → §Gotchas → Multi-Source.
 
-// Per-row item mutations
-export async function removeListItem(listItemId)         // delete list_items, item + history bleiben
-export async function moveListItem({ listItemId, targetListId })  // sync_enabled=false reset
-```
-
-**„Neue Folge"-Badge engine:** identisch zu Logbook's `getItemsWithNewEpisodes`: 14-Tage-Fenster, anime/series → folgen, manga → kapitel. `ListSummary.newCounts = { folgen, kapitel }` pro Liste; `ListEntry.hasNewEpisode` pro Item.
-
-`src/lib/queries/items.ts`:
-
-```typescript
-export const itemQueryKey = (type, slug) => ["item", type, slug] as const;
-export function itemQueryOptions(type, slug)
-// Single item by natural key. Items sind effektiv public (jeder logged-in
-// user kann jedes Item sehen). DB trigger items_set_slug_trigger garantiert
-// (type, slug) unique.
-
-export async function addItemToList({ listId, source }): Promise<void>
-// Upsert items(source,source_id) → trigger sets slug → insert list_items.
-// 23505 on list_items unique constraint = already in list → success.
-```
-
-`src/lib/queries/episodes.ts`:
-
-```typescript
-export const episodesQueryKey = (type, slug) => ["episodes", type, slug] as const;
-// Concrete keys sind [...episodesQueryKey, limit] — invalidations targeten
-// den Prefix und clearen alle Paginations auf einmal.
-
-export function episodesQueryOptions(user, type, slug, limit = 26, instanceListItemId = null)
-// Resolves Item via (type, slug), dann lazy fetch + 12 h stale gate
-// (items.metadata.episodesFetchedAt). Returns { episodes, total, watched,
-// fetchable }. SYNC-INSTANZEN: instanceListItemId=null liest die globale Lane
-// (list_item_id IS NULL), gesetzt liest die Instanz (= LI). Lane ist Teil des
-// queryKeys → getrennte Caches; Prefix-Invalidierung deckt beide.
-
-export async function toggleEpisode({ itemId, episodeId, watched, listItemId? })
-// set_episode_watch RPC: optionaler listItemId, der SERVER branchet — null /
-// nicht-gesynct → globale NULL-Zeile (kein Fan-out); gesynct → Instanz-Zeile +
-// Fan-out an Listen-Mitglieder. Kein .select() (idempotent, HEALTH B2).
-export async function markEpisodesWatchedUpTo({ itemId, upToEpisodeId, listItemId? })
-// mark_episodes_watched_upto RPC (Cascade-Twin, gleiche Lane-Regel).
-export async function resetItemProgress(itemId, listItemId?)
-// reset_progress RPC. Set-based delete; globale Lane oder eine Instanz.
-// (Die alten *_synced / reset_item_progress RPCs bleiben für Logbook unberührt.)
-
-// Title-Enrichment Gates (Rationale: §Gotchas → Daten/RLS):
-const TITLE_ENRICHMENT_VERSION = 4  // bumpen erzwingt one-time backfill
-const GAP_QUERY_LIMIT = 5000        // bypass PostgREST 1000-row default; bulk-upsert, nie per-row-Loop
-```
-
-`src/lib/queries/home.ts` (Phase 5):
-
-```typescript
-export const homeQueryKey = ["home"] as const;
-export const continueWatchingKey = (userId) => ["home", "continue", userId]
-export const upcomingEpisodesKey = (userId) => ["home", "upcoming", userId]
-export const recentlyTickedKey = (userId) => ["home", "logbook", userId]
-
-export function continueWatchingOptions(user)  // home_continue_watching RPC (Sync-Instanzen):
-//   globale Fortsetzen-Einträge (list_item_id IS NULL) + je ein Eintrag pro
-//   aktiver Sync-Instanz (listItemId/listShortCode/listName, Label „⟳ Liste").
-//   slug + has_new_episode kommen inline aus dem RPC (kein slugMap / kein
-//   home_new_releases mehr im continue-Pfad).
-export function upcomingEpisodesOptions(user)  // 14-Tage-Fenster aus tracked_home Listen
-export function recentlyTickedOptions(user)    // watch + list_add + missed + ownership_transfer
-//   (home_watch_bundles + missed lesen nur die globale Lane, list_item_id IS NULL)
-
-// LogbookEvent ist DISCRIMINATED UNION über 4 Kinds (Welle-2):
-//   kind: "watch"              → minEpisode, maxEpisode, episodeCount (SESSION_GAP_MS = 6h)
-//   kind: "list_add"           → listId, listShortCode, listName
-//   kind: "missed"             → episodeId, episodeNumber; ts = air_date.
-//                                Neueste released-aber-ungetickte Folge pro getracktem Item
-//                                (MISSED_DAYS = 14, globale Lane), NUR für Items mit ≥1 Watch.
-//                                isSelf immer false. UI: reiner Indikator „X ist
-//                                erschienen" — KEIN Quick-Tick mehr (Logbuch read-only).
-//   kind: "ownership_transfer" → listId, listShortCode, listName, recipientName, recipientIsMe.
-//                                Listen-zentriert (kein Item). Aus list_ownership_transfers.
-// Typen-Split: BaseLogbookEvent (eventId, ts, actorUserId, actorName, actorAvatarUrl, isSelf)
-//   + ItemLogbookEvent (+ itemId, title, type, slug, coverUrl) für die 3 Item-Kinds.
-// actorName: display_name preferred, dann "@username", dann null → UI fällt auf "Jemand"
-//   zurück (app-weite Regel: Anzeigename vor @handle). Self-events: actorName null, UI
-//   rendert "Du". actorAvatarUrl: Co-Member-Gesicht im Feed-Slot (EventGlyph), null für
-//   self + missed. actorProfiles() liefert {name, avatarUrl}.
-
-// ContinueItem.hasNewEpisode: per-Item flag, true wenn LETZTES released
-// air_date > user's letztes watched_at auf diesem Item. UNTERSCHEIDET sich
-// vom List-Row-Badge (14-Tage-Fenster): "while you were away" vs
-// "still has unwatched recent". Chronischer Backlog deliberately silent.
-```
-
-`src/lib/queries/sharing.ts` (Phase 7):
-
-```typescript
-// Membership + invitations + per-item sync + co-watchers. Port von Logbooks
-// src/lib/sharing.ts ins Solid/TanStack-Idiom. Backend-RPCs + RLS liegen schon
-// in der geteilten Supabase-DB (Logbook-Era).
-
-// Reads
-export function listMembersOptions(user, listId)       // Roster: list_members ⋈ profiles (handle + avatarUrl)
-export function myInvitationsOptions(user)             // get_my_invitations RPC — Inbox-Karten + Nav-Badge
-export function listInvitationsOptions(listId)         // get_list_invitations RPC (owner-view)
-export function syncContextOptions(listItemId)         // list_item → list (name, is_shared, memberCount)
-export function coWatchersOptions(user, itemId)        // Record<episodeId, CoWatcher[]> — ein Item
-export function calendarCoWatchersOptions(user)        // dito, fenster-skaliert (air_date-Embed-Filter, kein riesiges IN)
-
-// Mutations
-export async function inviteToList({ listId, username })       // → InviteResult {ok} | {ok:false, error}
-export async function acceptInvitation(id) / declineInvitation(id) / revokeInvitation(id)
-export async function leaveList({ listId, userId })            // delete eigene list_members-Row
-export async function transferOwnership({ listId, newOwnerId })
-export async function setItemSync({ listItemId, enabled })     // update sync_enabled; bei enable backfill_sync_for_list_item
-
-// Query-Keys sind PREFIXE damit Realtime ohne Mount-Zeit-id invalidieren kann:
-//   ["list-members", listId] · ["list-invitations", listId] · ["invitations","mine",userId]
-//   ["sync-context", listItemId] · ["co-watchers", itemId] · ["calendar","co-watchers",userId]
-// → list_invitations/list_members-Events invalidieren die Prefixe ["list-members"] etc.
-
-// CoWatcher = { userId, name (display/@handle/Jemand), avatarUrl, timeLabel }
-// profilesById liefert { name (display ?? @handle), handle (@username|null), avatarUrl } —
-//   ListMember zeigt name primär + handle als Sekundärzeile im Roster.
-// InviteResult = {ok:true} | {ok:false, error: empty|not_found|self|already_member}
-```
-
-`src/lib/anilist.ts`:
-
-```typescript
-// AniList GraphQL — browser-side. CORS open, no API key, 90 req/min.
-export interface AniListResult { sourceId; type; title; year; coverUrl; format }
-export async function searchAniList(q, signal?): Promise<AniListResult[]>
-
-// Cover-URL-Naming-Falle (Details: §Gotchas → Daten/RLS): API-Feld `extraLarge`
-// → /cover/large/ (~430 px). Search holt extraLarge; highResCover() schwenkt
-// Legacy-DB-URLs (~230 px) render-time hoch.
-export function highResCover(url): string | null
-
-export async function fetchAniListEpisodes(sourceId, type): Promise<AniListEpisodesResult>
-// Paginates airingSchedule für Daten, liest streamingEpisodes für Titel.
-// idMal returned für Jikan-Lookup. Manga ruft fetchMangaDexChapterTitles.
-// Stricter Parser: KEIN index+1-Fallback mehr (hatte bei One Piece frühe
-// Folge-Titel überschrieben).
-
-const MAX_EPISODES = 2000
-```
-
-`src/lib/tmdb.ts` (Thema 1a — Serien):
-
-```typescript
-// TMDB browser-side (setzt CORS-Header, anders als Steam). Auth = v4 "API Read
-// Access Token" (Bearer) aus VITE_TMDB_TOKEN (.env.local, *.local gitignored).
-// Ohne Token: still deaktiviert (warnOnce), AniList trägt die Suche weiter.
-// LANG = "de-DE" → deutsche Titel/Folgennamen wo vorhanden.
-export async function searchTmdbSeries(q, signal?): Promise<MediaResult[]>
-// /search/tv → normalisierte MediaResults (source "tmdb", type "series").
-export async function fetchTmdbSeriesEpisodes(sourceId): Promise<TmdbEpisode[]>
-// /tv/{id} (Staffeln) → je Staffel /tv/{id}/season/{n}. ECHTE Staffeln
-// (season_number ≥ 1; Specials/S0 raus). realTitle() strippt generische
-// "Folge N"/"Episode N"-Platzhalter → null. AIR-DATE IST DATE-ONLY (kein Time;
-// gespeichert als UTC-Mitternacht → UI zeigt KEINE Uhrzeit, s. §Gotchas).
-const MAX_EPISODES = 2000; const MAX_SEASONS = 60;
-```
-
-`src/lib/search.ts` (Thema 1a — quellen-agnostische Suche):
-
-```typescript
-export type MediaSource = "anilist" | "tmdb" | "steam";
-export interface MediaResult { source; sourceId; type; title; year; coverUrl; format }
-// Der provider-agnostische Boundary, mit dem das AddSheet redet. Der Medientyp-
-// FILTER (MEDIA_FILTERS im AddSheet) wählt EINEN typ; searchMedia routet typ-
-// gezielt zur Quelle (anime/manga→AniList mit MediaType-filter, series→TMDB,
-// movie/game→[] bis 1b/1c) — kein fan-out/interleave (Filter soll un-mischen).
-export async function searchMedia(q, type: MediaType, signal?): Promise<MediaResult[]>
-// addItemToList (queries/items.ts) liest result.source → items.source (nicht
-// mehr hardcoded "anilist"). Gleiche Quelle+sourceId = ein items-Row.
-```
-
-`src/lib/jikan.ts` + `src/lib/mangadex.ts`:
-
-```typescript
-// Jikan (jikan.moe): MyAnimeList episode titles. Paginated 100/page,
-// 400ms throttle für ~3 req/sec. Returns Map<episodeNumber, title>.
-// Füllt ~95% der Folgen die AniList streamingEpisodes nicht abdeckt
-// (long-running anime wie One Piece, 1100+ Folgen).
-export async function fetchJikanEpisodeTitles(malId): Promise<Map<number, string>>
-const MAX_PAGES = 20  // = 2000 cap, matched anilist.ts
-
-// MangaDex über manga.attributes.links.al → AniList-ID-Bridge.
-export async function fetchMangaDexChapterCount(aniListId, title): Promise<number | null>
-export async function fetchMangaDexChapterTitles(aniListId, title): Promise<Map<number, string>>
-// Coverage VARIABEL: offiziell-lizenzierte Serien (One Piece) haben die
-// meisten Uploads removed → Handvoll Titel. Weeklys (Chainsaw Man) haben
-// Chapter-Einträge aber oft ohne Titel. Best-effort.
-```
-
-**Pattern für neue Feature-Area:**
-
-1. Neue Datei `src/lib/queries/<area>.ts` mit gleicher Struktur (keys + options + mutations)
-2. RPC oder direkter Table-Access (RLS macht das Filtering, kein `user_id`-Filter)
-3. `.select()` nach Mutations zum Detect von silent-RLS-blocks (Logbook-Lektion)
-4. Optimistic-Update-Pattern: `onMutate` snapshot+patch, `onError` rollback, `onSuccess` confirm
+**Pattern für neue Feature-Area:** (1) neue `queries/<area>.ts` (keys + options + mutations); (2) RPC oder direkter Table-Access (RLS filtert, **kein** `user_id`-Filter); (3) `.select()` nach Mutations zum Detect von silent-RLS-blocks (Logbook-Lektion); (4) Optimistic: `onMutate` snapshot+patch / `onError` rollback / `onSuccess` confirm.
 
 ---
 
@@ -447,12 +238,12 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 ### Jetzt — Git / Merge
 
 1. ~~`chore/misc-tweaks` → `main` mergen~~ — **erledigt.** Politur-Session ist in `main` (`main` == `0fb8e17`, Diff zum Branch leer). Build grün, Tree clean, Migration `20260531160000` gefahren (User-bestätigt).
-2. **`origin`-Push-Strategie klären.** Lokales `main` ist `origin/main` ~160 Commits voraus (sync-instances + Politur + frühere Arbeit nie gepusht). Outward-facing — nur auf explizite Zustimmung.
+2. **`origin`-Push-Strategie klären.** Lokales `main` ist `origin/main` ~173 Commits voraus (sync-instances + Politur + frühere Arbeit nie gepusht). Outward-facing — nur auf explizite Zustimmung.
 
 ### Nächste große Themen (vom User priorisiert — vor Umsetzung Detail-Design + bei Schema/Screens fragen)
 
 1. **Serien · Filme · Spiele integrieren.**
-   - **1a · Serien (TMDB) — ✓ ERLEDIGT (in `main`).** Browser-side TMDB-Client (`src/lib/tmdb.ts`, Bearer-Token `VITE_TMDB_TOKEN` in `.env.local`), quellen-agnostischer Such-Aggregator (`src/lib/search.ts` → `searchMedia(q, type)` routet typ-gezielt zur Quelle), Medientyp-Filter-Leiste im AddSheet (Anime/Manga/Serie live · Film/Spiel disabled), echte Staffeln (Episode-Dispatch nach `source` in `episodes.ts`, Staffel-Gliederung in `ItemDetail`), Continue-Watching staffel-bewusst (Migration `20260531180000`), date-only Air-Dates ohne erfundene Uhrzeit (`airDateHasClock`). Details siehe §Data-Layer (tmdb.ts/search.ts) + §Gotchas.
+   - **1a · Serien (TMDB) — ✓ erledigt (in `main`).** Detail → §Status-Zeile *Thema 1a* + §Gotchas → Multi-Source.
    - **1b · Filme (TMDB) — offen, als Nächstes.** Gleiche Quelle, aber **folgenlos → Status-Control** (geplant/gesehen) über `item_history`. Die Tabelle existiert (`status text check in ('watching','completed','dropped')`, `unique(user_id,item_id)`) — **kein `'planned'`!** Falls „Geplant" gewünscht: `ALTER` der CHECK-Constraint (Schema-Frage). `items.type='movie'` + `source='tmdb'` sind in der CHECK schon erlaubt → keine items-Migration. Touchpoints: Film-Suche in `tmdb.ts` (`/search/movie` oder `/search/multi`), Film-Filter-Label aktivieren (AddSheet `MEDIA_FILTERS` `disabled` weg), Status-UI auf der Item-Seite (am `EpisodesEmpty`-Zweig, `episodes.ts:404`), neue `src/lib/queries/status.ts` (item_history read/write).
    - **1c · Spiele (Steam) — offen.** Steam-Store-Endpoints (`store.steampowered.com/api/storesearch` + `/appdetails`, kein API-Key, kein OAuth) — **aber CORS-geblockt → braucht einen Supabase Edge-Function-Proxy** (Deno). `items.source` braucht **Migration** (`'steam'` fehlt in der CHECK; `'igdb'` wäre erlaubt, nehmen wir aber nicht). Status-UI aus 1b wird wiederverwendet. (SteamDB.info selbst geht NICHT — Cloudflare/kein API.)
 2. **„Weitere laden" → Seiten/Swap statt Append.** Zwei Stellen: (a) **Fortsetzen** (Home) soll die 4 gezeigten zu den *nächsten* 4 **swappen** (Paging), nicht die Liste verlängern. (b) **Episodenliste** (`ItemDetail`/`LoadMore`) soll bei langen Serien (One Piece, Naruto …) **seitenweise** blättern statt eine endlose Scroll-Liste zu wachsen. Berührt `episodesQueryOptions` (limit→Seiten-Fenster) + HEALTH **A5** (4-5 Round-Trips). Liquid halten (Page-Swap könnte animieren).
