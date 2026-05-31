@@ -2,6 +2,7 @@ import {
   createEffect,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -12,10 +13,24 @@ import { Check, Loader2, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { searchMedia, type MediaResult } from "@/lib/search";
 import { typeInitial, typeLabel } from "@/lib/format";
+import type { MediaType } from "@/lib/queries/home";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { addItemToList } from "@/lib/queries/items";
 import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
+import { Segmented } from "@/components/Segmented";
+
+/** Media-type filter for the search panel. anime/manga (AniList) + series
+ *  (TMDB) are live; movie/series-movies + game (Steam) come next, so their
+ *  labels show but are disabled — present so the set reads complete, not yet
+ *  wired so they can't add source-less items. */
+const MEDIA_FILTERS: { value: MediaType; label: string; disabled?: boolean }[] = [
+  { value: "anime", label: "Anime" },
+  { value: "manga", label: "Manga" },
+  { value: "series", label: "Serie" },
+  { value: "movie", label: "Film", disabled: true },
+  { value: "game", label: "Spiel", disabled: true },
+];
 
 /**
  * Add/Search sheet — two-piece layout with a liquid morph entrance.
@@ -104,17 +119,33 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
 
   // ── Search ─────────────────────────────────────────────────────────────
   const [query, setQuery] = createSignal("");
+  // Which media type the search targets. Drives which source searchMedia hits
+  // and keeps results un-mixed (the user picks one kind at a time).
+  const [mediaFilter, setMediaFilter] = createSignal<MediaType>("anime");
   const [results, setResults] = createSignal<MediaResult[]>([]);
   const [searching, setSearching] = createSignal(false);
   // The query string the current `results` were fetched for. Lets the empty-
   // state distinguish "haven't searched yet" from "no hits for this term".
   const [lastQuery, setLastQuery] = createSignal("");
 
+  // Switching the type filter clears the old type's hits immediately so a
+  // "Serie" tab never shows lingering anime rows; the search effect below then
+  // re-runs for the new type. `defer` skips the initial run (nothing to clear).
+  createEffect(
+    on(mediaFilter, () => {
+      setResults([]);
+      setLastQuery("");
+    }, { defer: true }),
+  );
+
   let abort: AbortController | null = null;
   let debounceTimer: number | null = null;
 
   createEffect(() => {
     const q = query().trim();
+    // Read the filter so the search re-runs against the new source when the
+    // user switches type mid-query.
+    const type = mediaFilter();
     if (debounceTimer !== null) {
       window.clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -132,7 +163,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       const ctrl = new AbortController();
       abort = ctrl;
       setSearching(true);
-      void searchMedia(q, ctrl.signal).then((rows) => {
+      void searchMedia(q, type, ctrl.signal).then((rows) => {
         if (ctrl.signal.aborted) return;
         setResults(rows);
         setLastQuery(q);
@@ -403,6 +434,17 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               </p>
             }
           >
+            {/* Media-type filter — splits the panel width evenly, sticks to
+                the top so it stays reachable while results scroll under it. */}
+            <div class="sticky top-0 z-10 border-b border-rule bg-bg px-5 py-3">
+              <Segmented
+                fill
+                value={mediaFilter()}
+                onChange={setMediaFilter}
+                options={MEDIA_FILTERS}
+                ariaLabel="Medientyp"
+              />
+            </div>
             <ResultsBody
               query={query()}
               lastQuery={lastQuery()}
@@ -466,7 +508,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               type="text"
               value={query()}
               onInput={(e) => setQuery(e.currentTarget.value)}
-              placeholder="Anime oder Manga suchen …"
+              placeholder={`${typeLabel(mediaFilter())} suchen …`}
               class="min-w-0 flex-1 bg-transparent py-2 text-body text-nav-fg placeholder:text-nav-fg/50 focus:outline-none"
               autocomplete="off"
               spellcheck={false}

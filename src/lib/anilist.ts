@@ -26,9 +26,9 @@ export interface AniListResult {
 const ENDPOINT = "https://graphql.anilist.co";
 
 const SEARCH_QUERY = `
-  query ($q: String) {
+  query ($q: String, $type: MediaType) {
     Page(perPage: 12) {
-      media(search: $q, sort: SEARCH_MATCH, isAdult: false) {
+      media(search: $q, type: $type, sort: SEARCH_MATCH, isAdult: false) {
         id
         type
         format
@@ -80,12 +80,14 @@ export function highResCover(url: string | null): string | null {
   );
 }
 
-/** Search anime + manga by title. Returns [] on network / parse failure so
+/** Search anime + manga by title. `mediaType` narrows to one kind ("ANIME" /
+ *  "MANGA"); omit it to search both. Returns [] on network / parse failure so
  *  callers can render a clean empty state without a separate error path —
  *  the user can just keep typing. */
 export async function searchAniList(
   q: string,
   signal?: AbortSignal,
+  mediaType?: "ANIME" | "MANGA",
 ): Promise<AniListResult[]> {
   let res: Response;
   try {
@@ -95,7 +97,11 @@ export async function searchAniList(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ query: SEARCH_QUERY, variables: { q } }),
+      body: JSON.stringify({
+        query: SEARCH_QUERY,
+        // type omitted → AniList's nullable $type defaults to no filter.
+        variables: { q, type: mediaType },
+      }),
       signal,
     });
   } catch {

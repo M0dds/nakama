@@ -46,6 +46,10 @@ interface SegmentedProps<T extends string> {
   /** Disables every option (used while a related mutation is pending so
    *  the user can't double-click their way into a race). */
   disabled?: boolean;
+  /** Stretch to the container width with every option sharing the space
+   *  equally (flex-1), instead of the default content-width inline pill.
+   *  Used by the AddSheet media-type filter, which spans the panel. */
+  fill?: boolean;
 }
 
 export function Segmented<T extends string>(props: SegmentedProps<T>) {
@@ -134,7 +138,7 @@ export function Segmented<T extends string>(props: SegmentedProps<T>) {
       ref={containerEl!}
       role="tablist"
       aria-label={props.ariaLabel}
-      class="relative inline-flex rounded-sm border border-border p-0.5"
+      class={`relative ${props.fill ? "flex w-full" : "inline-flex"} rounded-sm border border-border p-0.5`}
     >
       {/* Sliding bubble. Always rendered so the element persists across
           value changes; geometry patches via inline style. */}
@@ -168,7 +172,9 @@ export function Segmented<T extends string>(props: SegmentedProps<T>) {
                 if (isDisabled() || isActive()) return;
                 props.onChange(opt.value);
               }}
-              class={`relative z-10 rounded-xs px-3 py-1.5 font-mono text-mini uppercase tracking-wider transition-colors ${
+              class={`relative z-10 rounded-xs py-1.5 font-mono text-mini uppercase tracking-wider transition-colors ${
+                props.fill ? "flex-1 px-2 text-center" : "px-3"
+              } ${
                 isActive()
                   ? "text-bg"
                   : "text-text-muted hover:text-text"
