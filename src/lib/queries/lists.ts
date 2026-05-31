@@ -53,10 +53,12 @@ export interface ListSummary {
   /** Caller's per-user manual sort_order. Higher pin / lower sort_order =
    *  closer to the top within its pin section. */
   sortOrder: number;
-  /** Counts of items with released-but-unwatched episodes/chapters in the
-   *  last NEW_WINDOW_DAYS — drives the "Neue Folge" / "N neue Folgen" badge
-   *  on /lists rows. Manga have no air-date signal, so the kapitel side
-   *  stays 0 until that source lands (Welle-2). */
+  /** Total released-but-unwatched EPISODES/chapters across the list in the
+   *  last NEW_WINDOW_DAYS — drives the "Neue Folge"/"Neue Folgen" badge on
+   *  /lists rows (count is summed per episode, not per item, so a same-day
+   *  batch release reads as plural). Only shown for tracked lists. Manga have
+   *  no air-date signal, so the kapitel side stays 0 until that source lands
+   *  (Welle-2). */
   newCounts: { folgen: number; kapitel: number };
 }
 
@@ -78,6 +80,9 @@ export interface ListEntry {
    *  "Neue Folge" badge in the list-detail row. Per-user — co-members
    *  evaluate the same item independently against their own watches. */
   hasNewEpisode: boolean;
+  /** How many such episodes — drives singular vs plural wording on the badge
+   *  ("Neue Folge" vs "Neue Folgen"). 0 when hasNewEpisode is false. */
+  newEpisodeCount: number;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -168,13 +173,17 @@ interface NewEpisodeEntry {
 const EMPTY_EPISODE_SET: ReadonlySet<string> = new Set();
 
 /**
- * Returns the subset of LIST_ITEM ids that have at least one released-but-
- * unwatched episode inside the new-window, reading EACH entry against its
+ * Maps each LIST_ITEM that has released-but-unwatched episodes inside the
+ * new-window to HOW MANY such episodes it has, reading EACH entry against its
  * correct progress lane (sync-instances model):
  *   - non-synced entry → the caller's GLOBAL watches (`list_item_id IS NULL`)
  *   - synced entry      → that list_item's INSTANCE watches (`list_item_id = LI`)
  * Keyed on listItemId (not itemId) because the same item can appear as both a
  * global and a synced entry across different lists, with different badges.
+ * Entries with zero new episodes are absent from the map (so `map.has(id)` /
+ * `(map.get(id) ?? 0) > 0` is the "has new" test). The count drives singular-
+ * vs-plural wording ("Neue Folge" vs "Neue Folgen") — a single same-day batch
+ * release is several new episodes on ONE item, which an item-count would miss.
  *
  * Round-trips: episodes-in-window, the caller's global watches over them, and
  * — only when some entry is synced — the instance watches in one bulk query.
@@ -184,8 +193,8 @@ const EMPTY_EPISODE_SET: ReadonlySet<string> = new Set();
 async function findItemsWithNewEpisodes(
   userId: string,
   entries: NewEpisodeEntry[],
-): Promise<Set<string>> {
-  if (entries.length === 0) return new Set();
+): Promise<Map<string, number>> {
+  if (entries.length === 0) return new Map();
 
   const itemIds = unique(entries.map((e) => e.itemId));
   const sinceIso = new Date(
@@ -200,10 +209,10 @@ async function findItemsWithNewEpisodes(
     .lte("air_date", nowIso);
   if (epErr) {
     console.error("episodes window query failed", epErr);
-    return new Set();
+    return new Map();
   }
   const eps = (epRows ?? []) as { id: string; item_id: string }[];
-  if (eps.length === 0) return new Set();
+  if (eps.length === 0) return new Map();
   const epIds = eps.map((e) => e.id);
 
   // Recent-episode ids grouped by item, so each entry tests its own item.
@@ -223,7 +232,7 @@ async function findItemsWithNewEpisodes(
     .in("episode_id", epIds);
   if (gErr) {
     console.error("episode_watches global join failed", gErr);
-    return new Set();
+    return new Map();
   }
   const globalWatched = new Set((gRows ?? []).map((w) => w.episode_id as string));
 
@@ -252,33 +261,40 @@ async function findItemsWithNewEpisodes(
     }
   }
 
-  const result = new Set<string>();
+  const result = new Map<string, number>();
   for (const entry of entries) {
     const itemEps = epsByItem.get(entry.itemId);
     if (!itemEps) continue;
     const watched = entry.syncEnabled
       ? instanceWatched.get(entry.listItemId) ?? EMPTY_EPISODE_SET
       : globalWatched;
-    if (itemEps.some((id) => !watched.has(id))) result.add(entry.listItemId);
+    const unwatched = itemEps.reduce(
+      (n, id) => (watched.has(id) ? n : n + 1),
+      0,
+    );
+    if (unwatched > 0) result.set(entry.listItemId, unwatched);
   }
   return result;
 }
 
 /** Aggregate (list_id, listItemId, type) entries into per-list (folgen,
- *  kapitel) counts, filtered to the list_items that qualified as new.
- *  anime/series count as Folgen, manga as Kapitel; movies/games are ignored
- *  (no episode model). Type + listItemId travel alongside so we don't need a
- *  separate items lookup, and the filter keys on listItemId (sync-aware). */
+ *  kapitel) counts — summing the NEW-EPISODE COUNT per qualifying list_item,
+ *  not just the item tally, so the singular/plural wording reflects "more than
+ *  one new episode" even when they sit on a single item (a same-day batch
+ *  release). anime/series count as Folgen, manga as Kapitel; movies/games are
+ *  ignored (no episode model). Type + listItemId travel alongside so we don't
+ *  need a separate items lookup, and the lookup keys on listItemId (sync-aware). */
 function aggregateNewCounts(
   pairs: { list_id: string; listItemId: string; type: string }[],
-  newListItemsSet: Set<string>,
+  newEpisodeCounts: Map<string, number>,
 ): Map<string, { folgen: number; kapitel: number }> {
   const counts = new Map<string, { folgen: number; kapitel: number }>();
   for (const p of pairs) {
-    if (!newListItemsSet.has(p.listItemId)) continue;
+    const n = newEpisodeCounts.get(p.listItemId) ?? 0;
+    if (n === 0) continue;
     const c = counts.get(p.list_id) ?? { folgen: 0, kapitel: 0 };
-    if (p.type === "manga") c.kapitel++;
-    else if (p.type === "anime" || p.type === "series") c.folgen++;
+    if (p.type === "manga") c.kapitel += n;
+    else if (p.type === "anime" || p.type === "series") c.folgen += n;
     counts.set(p.list_id, c);
   }
   return counts;
@@ -364,7 +380,7 @@ export function listsQueryOptions(user: User) {
       // candidate set. Per-list_item (sync-aware) so a synced instance and a
       // global entry of the same item get independent badges; see
       // findItemsWithNewEpisodes.
-      const newListItemsSet = await findItemsWithNewEpisodes(
+      const newEpisodeCounts = await findItemsWithNewEpisodes(
         user.id,
         flatPairs.map((p) => ({
           itemId: p.item_id,
@@ -372,7 +388,7 @@ export function listsQueryOptions(user: User) {
           syncEnabled: p.syncEnabled,
         })),
       );
-      const newCountsByList = aggregateNewCounts(flatPairs, newListItemsSet);
+      const newCountsByList = aggregateNewCounts(flatPairs, newEpisodeCounts);
 
       const rows = (membershipRes.data ?? []) as unknown as RawMembershipJoinRow[];
       const summaries: ListSummary[] = rows
@@ -475,7 +491,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
       if (error) throw error;
 
       const rawRows = (data as unknown as RawListItemRow[]) ?? [];
-      const newListItemsSet = await findItemsWithNewEpisodes(
+      const newEpisodeCounts = await findItemsWithNewEpisodes(
         user.id,
         rawRows.map((r) => ({
           itemId: r.item_id,
@@ -484,18 +500,22 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
         })),
       );
 
-      const rows = rawRows.map((r) => ({
-        listItemId: r.id,
-        itemId: r.item_id,
-        type: r.items?.type ?? "anime",
-        slug: r.items?.slug ?? "",
-        title: r.items?.title ?? "Unbekannt",
-        coverUrl: r.items?.cover_url ?? null,
-        syncEnabled: r.sync_enabled,
-        pinned: r.pinned_at !== null,
-        sortOrder: r.sort_order,
-        hasNewEpisode: newListItemsSet.has(r.id),
-      }));
+      const rows = rawRows.map((r) => {
+        const count = newEpisodeCounts.get(r.id) ?? 0;
+        return {
+          listItemId: r.id,
+          itemId: r.item_id,
+          type: r.items?.type ?? "anime",
+          slug: r.items?.slug ?? "",
+          title: r.items?.title ?? "Unbekannt",
+          coverUrl: r.items?.cover_url ?? null,
+          syncEnabled: r.sync_enabled,
+          pinned: r.pinned_at !== null,
+          sortOrder: r.sort_order,
+          hasNewEpisode: count > 0,
+          newEpisodeCount: count,
+        };
+      });
       return rows.sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
         return a.sortOrder - b.sortOrder;

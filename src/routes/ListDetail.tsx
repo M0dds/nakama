@@ -335,6 +335,7 @@ export default function ListDetail() {
                   <ListEntries
                     items={items.data!}
                     listShortCode={params.shortCode}
+                    tracksHome={list.data?.tracksHome ?? true}
                     dragSettling={dragSettling}
                     onRequestMove={(entry) => setMovingEntry(entry)}
                     onTogglePin={handleTogglePin}
@@ -459,14 +460,16 @@ function EntriesEmpty() {
   );
 }
 
-/** Per-row "Neue Folge" / "Neues Kapitel" badge label, or null if the
- *  entry has no recent unwatched release. Type-aware: anime/series get
- *  "Neue Folge", manga gets "Neues Kapitel"; movies/games get nothing
- *  (no episode model). */
+/** Per-row "Neue Folge(n)" / "Neue(s) Kapitel" badge label, or null if the
+ *  entry has no recent unwatched release. Type-aware (anime/series → Folge,
+ *  manga → Kapitel; movies/games → nothing) and count-aware: plural when more
+ *  than one new episode (e.g. a same-day batch release), no count number. */
 function newEpisodeLabel(entry: ListEntry): string | null {
   if (!entry.hasNewEpisode) return null;
-  if (entry.type === "manga") return "Neues Kapitel";
-  if (entry.type === "anime" || entry.type === "series") return "Neue Folge";
+  const plural = entry.newEpisodeCount > 1;
+  if (entry.type === "manga") return plural ? "Neue Kapitel" : "Neues Kapitel";
+  if (entry.type === "anime" || entry.type === "series")
+    return plural ? "Neue Folgen" : "Neue Folge";
   return null;
 }
 
@@ -479,6 +482,7 @@ function newEpisodeLabel(entry: ListEntry): string | null {
 function ListEntries(props: {
   items: ListEntry[];
   listShortCode: string;
+  tracksHome: boolean;
   dragSettling: () => boolean;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
@@ -496,6 +500,7 @@ function ListEntries(props: {
             <SortableEntryRow
               entry={entry}
               listShortCode={props.listShortCode}
+              tracksHome={props.tracksHome}
               dragSettling={props.dragSettling}
               onRequestMove={props.onRequestMove}
               onTogglePin={props.onTogglePin}
@@ -509,6 +514,7 @@ function ListEntries(props: {
             <SortableEntryRow
               entry={entry}
               listShortCode={props.listShortCode}
+              tracksHome={props.tracksHome}
               dragSettling={props.dragSettling}
               onRequestMove={props.onRequestMove}
               onTogglePin={props.onTogglePin}
@@ -523,6 +529,7 @@ function ListEntries(props: {
 function SortableEntryRow(props: {
   entry: ListEntry;
   listShortCode: string;
+  tracksHome: boolean;
   dragSettling: () => boolean;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
@@ -582,7 +589,9 @@ function SortableEntryRow(props: {
               <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
                 {props.entry.title}
               </h3>
-              <Show when={newEpisodeLabel(props.entry)}>
+              <Show
+                when={props.tracksHome ? newEpisodeLabel(props.entry) : null}
+              >
                 {(label) => (
                   <span class="shrink-0 font-mono text-mini uppercase text-accent">
                     {label()}

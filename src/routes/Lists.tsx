@@ -307,16 +307,19 @@ function sectionParts(key: SectionKey): { visibility: Visibility; pinned: boolea
  *  released-but-unwatched episodes/chapters. Singular vs plural + type-aware;
  *  mixed lists fall back to a neutral "N neu". Returns null when there's
  *  nothing new — caller renders nothing. */
+/** Badge wording for a list's new-episode tally. Singular vs plural only — no
+ *  count number (by design: "es muss nicht zählen, nur Mehrzahl angeben"). */
 function newCountLabel(counts: {
   folgen: number;
   kapitel: number;
 }): string | null {
   const { folgen, kapitel } = counts;
   if (folgen + kapitel === 0) return null;
-  if (folgen > 0 && kapitel > 0) return `${folgen + kapitel} neu`;
-  if (kapitel > 0)
-    return kapitel === 1 ? "Neues Kapitel" : `${kapitel} neue Kapitel`;
-  return folgen === 1 ? "Neue Folge" : `${folgen} neue Folgen`;
+  // Mixed (dormant — kapitel stays 0 until manga gets an air-date signal):
+  // both kinds present ⇒ several releases ⇒ neutral plural.
+  if (folgen > 0 && kapitel > 0) return "Neue Releases";
+  if (kapitel > 0) return kapitel === 1 ? "Neues Kapitel" : "Neue Kapitel";
+  return folgen === 1 ? "Neue Folge" : "Neue Folgen";
 }
 
 /** "12 Einträge · privat · Archiv" — count, visibility, optional archive marker. */
@@ -426,7 +429,15 @@ function SortableListRow(props: {
             <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
               {props.list.name}
             </h3>
-            <Show when={newCountLabel(props.list.newCounts)}>
+            {/* Only tracked lists surface the new-episode badge — an archived
+                (tracks_home off) list shouldn't nag about new releases. */}
+            <Show
+              when={
+                props.list.tracksHome
+                  ? newCountLabel(props.list.newCounts)
+                  : null
+              }
+            >
               {(label) => (
                 <span class="shrink-0 font-mono text-mini uppercase text-accent">
                   {label()}
