@@ -30,7 +30,7 @@ import {
   topOfSection,
   useDragSettling,
 } from "@/lib/sortable";
-import { typeLabel } from "@/lib/format";
+import { typeInitial, typeLabel } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
@@ -571,7 +571,7 @@ function SortableEntryRow(props: {
               when={props.entry.coverUrl}
               fallback={
                 <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-                  {props.entry.type === "manga" ? "M" : "A"}
+                  {typeInitial(props.entry.type)}
                 </div>
               }
             >

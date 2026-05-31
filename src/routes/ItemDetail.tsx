@@ -31,6 +31,7 @@ import {
   dayOffset,
   hasAirTime,
   timeLabel,
+  typeInitial,
   typeLabel,
 } from "@/lib/format";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
@@ -446,7 +447,7 @@ export default function ItemDetail() {
                 <>
                   <Cover
                     coverUrl={data().coverUrl}
-                    fallbackLetter={data().type === "manga" ? "M" : "A"}
+                    fallbackLetter={typeInitial(data().type)}
                   />
                   <dl class="space-y-3 border-t border-border pt-5 text-body">
                     <div class="flex items-baseline justify-between gap-3">
