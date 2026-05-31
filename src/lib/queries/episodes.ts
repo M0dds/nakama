@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import { fetchAniListEpisodes } from "@/lib/anilist";
+import { fetchTmdbSeriesEpisodes } from "@/lib/tmdb";
 import { fetchJikanEpisodeTitles } from "@/lib/jikan";
 import { fetchMangaDexChapterTitles } from "@/lib/mangadex";
 
@@ -91,17 +92,40 @@ interface ItemForFetch {
 }
 
 function isFetchable(item: ItemForFetch): boolean {
-  return (
-    item.source === "anilist" &&
-    (item.type === "anime" || item.type === "manga")
-  );
+  if (item.source === "anilist") {
+    return item.type === "anime" || item.type === "manga";
+  }
+  if (item.source === "tmdb") {
+    return item.type === "series";
+  }
+  return false;
+}
+
+/** Pull the episode list from the right provider for this item's source.
+ *  AniList (anime/manga) also resolves a MAL id for downstream Jikan title
+ *  enrichment; TMDB ships episode names inline, so it carries no malId and
+ *  skips the enrichment pass entirely (see storeEpisodes). */
+async function fetchEpisodesForSource(
+  item: ItemForFetch,
+): Promise<{ episodes: AniListEpisodeLike[]; malId: number | null }> {
+  if (item.source === "tmdb") {
+    const episodes = await fetchTmdbSeriesEpisodes(item.sourceId);
+    return { episodes, malId: null };
+  }
+  return fetchAniListEpisodes(item.sourceId, item.type as "anime" | "manga");
+}
+
+/** Structural shape shared by AniListEpisode and TmdbEpisode — the only
+ *  fields storeEpisodes needs to upsert. */
+interface AniListEpisodeLike {
+  seasonNumber: number;
+  episodeNumber: number;
+  title: string | null;
+  airDate: string | null;
 }
 
 async function storeEpisodes(item: ItemForFetch): Promise<void> {
-  const { episodes, malId } = await fetchAniListEpisodes(
-    item.sourceId,
-    item.type as "anime" | "manga",
-  );
+  const { episodes, malId } = await fetchEpisodesForSource(item);
 
   if (episodes.length > 0) {
     await supabase.from("episodes").upsert(

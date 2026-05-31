@@ -10,7 +10,8 @@ import { useLocation } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
 import { Check, Loader2, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
-import { searchAniList, type AniListResult } from "@/lib/anilist";
+import { searchMedia, type MediaResult } from "@/lib/search";
+import { typeInitial, typeLabel } from "@/lib/format";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { addItemToList } from "@/lib/queries/items";
 import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
@@ -103,7 +104,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
 
   // ── Search ─────────────────────────────────────────────────────────────
   const [query, setQuery] = createSignal("");
-  const [results, setResults] = createSignal<AniListResult[]>([]);
+  const [results, setResults] = createSignal<MediaResult[]>([]);
   const [searching, setSearching] = createSignal(false);
   // The query string the current `results` were fetched for. Lets the empty-
   // state distinguish "haven't searched yet" from "no hits for this term".
@@ -119,7 +120,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       debounceTimer = null;
     }
     if (q.length < 2) {
-      // Don't hammer AniList on the first keystroke.
+      // Don't hammer the search providers on the first keystroke.
       abort?.abort();
       setResults([]);
       setSearching(false);
@@ -131,7 +132,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       const ctrl = new AbortController();
       abort = ctrl;
       setSearching(true);
-      void searchAniList(q, ctrl.signal).then((rows) => {
+      void searchMedia(q, ctrl.signal).then((rows) => {
         if (ctrl.signal.aborted) return;
         setResults(rows);
         setLastQuery(q);
@@ -157,7 +158,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   });
 
   const addMutation = createMutation(() => ({
-    mutationFn: (source: AniListResult) =>
+    mutationFn: (source: MediaResult) =>
       addItemToList({ listId: targetListId(), source }),
     onSuccess: (_, source) => {
       setAdded((prev) => {
@@ -176,7 +177,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     onSettled: () => setPending(null),
   }));
 
-  const onAdd = (r: AniListResult) => {
+  const onAdd = (r: MediaResult) => {
     if (!targetListId()) return;
     if (added().has(addedKey(targetListId(), r.sourceId))) return;
     if (pending() === r.sourceId) return;
@@ -481,12 +482,12 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
 function ResultsBody(props: {
   query: string;
   lastQuery: string;
-  results: AniListResult[];
+  results: MediaResult[];
   searching: boolean;
   pending: string | null;
-  isAdded: (r: AniListResult) => boolean;
+  isAdded: (r: MediaResult) => boolean;
   canAdd: boolean;
-  onAdd: (r: AniListResult) => void;
+  onAdd: (r: MediaResult) => void;
 }) {
   return (
     <Show
@@ -541,7 +542,7 @@ function ResultsBody(props: {
 }
 
 function ResultRow(props: {
-  result: AniListResult;
+  result: MediaResult;
   added: boolean;
   pending: boolean;
   canAdd: boolean;
@@ -572,7 +573,7 @@ function ResultRow(props: {
               when={props.result.coverUrl}
               fallback={
                 <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-                  {props.result.type === "manga" ? "M" : "A"}
+                  {typeInitial(props.result.type)}
                 </div>
               }
             >
@@ -588,7 +589,7 @@ function ResultRow(props: {
           <div class="min-w-0 flex-1">
             <h4 class="truncate text-body text-text">{props.result.title}</h4>
             <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-              {props.result.type === "manga" ? "Manga" : "Anime"}
+              {typeLabel(props.result.type)}
               {props.result.year ? ` · ${props.result.year}` : ""}
             </p>
           </div>

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import type { AniListResult } from "@/lib/anilist";
+import type { MediaResult } from "@/lib/search";
 
 /**
  * Items data layer — the side of the model that's source-of-truth-shared
@@ -68,9 +68,12 @@ export function itemQueryOptions(type: string, slug: string) {
   };
 }
 
-/** Upsert an AniList result into `items`, then link it to a list. The items
+/** Upsert a search result into `items`, then link it to a list. The items
  *  upsert uses `(source, source_id)` as the conflict key, so the same work
- *  added by different users into different lists stays a single row.
+ *  added by different users into different lists stays a single row — and so
+ *  the same title from two different sources (an anime on AniList vs the same
+ *  show on TMDB) stays two distinct items, which is correct: their episode
+ *  numbering and ids differ.
  *
  *  Idempotent at the list_items layer too: PostgREST 23505 (unique_violation)
  *  on the (list_id, item_id) constraint means "already in this list" and is
@@ -78,16 +81,17 @@ export function itemQueryOptions(type: string, slug: string) {
  *  doesn't error. */
 export async function addItemToList(input: {
   listId: string;
-  source: AniListResult;
+  source: MediaResult;
 }): Promise<void> {
   const { source } = input;
 
-  // Step 1 — upsert the canonical item row.
+  // Step 1 — upsert the canonical item row. source.source carries the
+  // provider ("anilist" / "tmdb" / "steam") — no longer hardcoded.
   const { data: item, error: itemError } = await supabase
     .from("items")
     .upsert(
       {
-        source: "anilist",
+        source: source.source,
         source_id: source.sourceId,
         type: source.type,
         title: source.title,
