@@ -234,6 +234,9 @@ export default function ItemDetail() {
         ["list"],
         // A co-member ticking this item updates the Mitseher overlay.
         ["co-watchers"],
+        // Keep Home (Fortsetzen) + Kalender fresh too — they unmount here.
+        ["home"],
+        ["calendar"],
       ],
     },
     {
@@ -293,10 +296,16 @@ export default function ItemDetail() {
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      // Home (Fortsetzen) + Kalender unmount during an item visit, so a tick
+      // here would leave their caches stale until staleTime. Refresh both so
+      // own progress is reflected the moment we navigate back.
+      void queryClient.invalidateQueries({ queryKey: ["home"] });
+      void queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
   }));
 
-  // Long-press cascade. Optimistic: tick all visible rows ≤ ep.episodeNumber.
+  // Long-press cascade. Optimistic: tick all visible rows up to ep, ordered
+  // by (season, episode) so per-season numbering doesn't cross seasons.
   // Note that "visible rows" is only the latest `limit` window (default 26)
   // — so cascading from a recent episode UP doesn't optimistically reflect
   // older episodes outside the window. The server-side RPC marks them all,
@@ -325,7 +334,15 @@ export default function ItemDetail() {
         if (!old) return old;
         let delta = 0;
         const nextEpisodes = old.episodes.map((e) => {
-          if (e.episodeNumber <= ep.episodeNumber && !e.watched) {
+          // Season-aware "up to": episode_number resets per season on TMDB
+          // series, so comparing the number alone would tick S2's early
+          // episodes when cascading inside S1 (and miss S1's later ones).
+          // Order by (season, episode) to match the server-side RPC.
+          const atOrBefore =
+            e.seasonNumber < ep.seasonNumber ||
+            (e.seasonNumber === ep.seasonNumber &&
+              e.episodeNumber <= ep.episodeNumber);
+          if (atOrBefore && !e.watched) {
             delta += 1;
             return { ...e, watched: true };
           }
@@ -352,6 +369,11 @@ export default function ItemDetail() {
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      // Home (Fortsetzen) + Kalender unmount during an item visit, so a tick
+      // here would leave their caches stale until staleTime. Refresh both so
+      // own progress is reflected the moment we navigate back.
+      void queryClient.invalidateQueries({ queryKey: ["home"] });
+      void queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
   }));
 
@@ -1129,14 +1151,19 @@ function MoviePanel(props: {
   // Backfill the German release date into items.metadata once TMDB resolves it
   // — so "Was kommt" reads the right date even for films added before the DE
   // date was known (or whose date TMDB later corrected). Fire-and-forget, once.
-  let backfilled = false;
+  // Guard per item id, NOT a one-shot boolean: this panel instance stays
+  // mounted across warm-cached navigations (the <Show> stays truthy), so a
+  // boolean would early-return for every item after the first and the second
+  // film/game would never get its releaseDate stamped → missing from "Was
+  // kommt" until a fresh page load.
+  let backfilledFor: string | null = null;
   createEffect(() => {
     const rel = details.data?.releaseDate;
-    if (!rel || backfilled) return;
+    if (!rel || backfilledFor === props.item.id) return;
     const current = (props.item.metadata as Record<string, unknown> | null)
       ?.releaseDate;
     if (current === rel) return;
-    backfilled = true;
+    backfilledFor = props.item.id;
     setItemReleaseDate(props.item.id, props.item.metadata, rel)
       .then(() => queryClient.invalidateQueries({ queryKey: ["home"] }))
       .catch(() => {});
@@ -1365,14 +1392,19 @@ function GamePanel(props: {
   // Backfill the ISO release date into items.metadata once Steam resolves it
   // (only when the store string parsed to a real date — fuzzy "Q2 2025" stays
   // null). Fire-and-forget, once. Same pattern as MoviePanel.
-  let backfilled = false;
+  // Guard per item id, NOT a one-shot boolean: this panel instance stays
+  // mounted across warm-cached navigations (the <Show> stays truthy), so a
+  // boolean would early-return for every item after the first and the second
+  // film/game would never get its releaseDate stamped → missing from "Was
+  // kommt" until a fresh page load.
+  let backfilledFor: string | null = null;
   createEffect(() => {
     const rel = details.data?.releaseDate;
-    if (!rel || backfilled) return;
+    if (!rel || backfilledFor === props.item.id) return;
     const current = (props.item.metadata as Record<string, unknown> | null)
       ?.releaseDate;
     if (current === rel) return;
-    backfilled = true;
+    backfilledFor = props.item.id;
     setItemReleaseDate(props.item.id, props.item.metadata, rel)
       .then(() => queryClient.invalidateQueries({ queryKey: ["home"] }))
       .catch(() => {});
