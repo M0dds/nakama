@@ -67,15 +67,17 @@ export interface ContinueItem {
   listName: string | null;
 }
 
-/** Was kommt — the next release per tracked item, soonest first. */
+/** Was kommt — the next release per tracked item, soonest first. Episodic
+ *  items carry an episodeNumber; movies (a single dated release) don't. */
 export interface UpcomingItem {
   itemId: string;
   title: string;
   type: MediaType;
   slug: string;
   coverUrl: string | null;
-  episodeNumber: number;
-  airDate: string; // ISO
+  /** Episodic items only — the next episode's number. Absent for movies. */
+  episodeNumber?: number;
+  airDate: string; // ISO — episode air date, or a movie's release date
 }
 
 /** Logbuch — a discriminated union of factual events. Four kinds:
@@ -188,7 +190,19 @@ export function continueWatchingOptions(user: User) {
 export function upcomingEpisodesOptions(user: User) {
   return queryOptions({
     queryKey: upcomingEpisodesKey(user.id),
-    queryFn: () => fetchUpcomingEpisodes(),
+    queryFn: async (): Promise<UpcomingItem[]> => {
+      const itemIds = await trackedItemIds();
+      if (itemIds.length === 0) return [];
+      // Episodes (next 14 days) + unreleased movies (any future date),
+      // merged and sorted soonest-first into one "Was kommt" stream.
+      const [eps, movies] = await Promise.all([
+        fetchUpcomingEpisodes(itemIds),
+        fetchUpcomingMovies(itemIds),
+      ]);
+      return [...eps, ...movies].sort((a, b) =>
+        a.airDate.localeCompare(b.airDate),
+      );
+    },
     staleTime: 5 * 60_000,
   });
 }
@@ -274,8 +288,9 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
  *  item, ascending air_date. Three-step fetch (tracked-list ids → matching
  *  episodes → enrich with item meta) because we can't safely express the
  *  "first per item" reduction in a single PostgREST request. */
-async function fetchUpcomingEpisodes(): Promise<UpcomingItem[]> {
-  const itemIds = await trackedItemIds();
+async function fetchUpcomingEpisodes(
+  itemIds: string[],
+): Promise<UpcomingItem[]> {
   if (itemIds.length === 0) return [];
 
   const now = new Date();
@@ -326,6 +341,46 @@ async function fetchUpcomingEpisodes(): Promise<UpcomingItem[]> {
         coverUrl: m.coverUrl,
         episodeNumber: f.episode_number,
         airDate: f.air_date,
+      },
+    ];
+  });
+}
+
+/** Unreleased movies in the tracked lists, by their (German) release date.
+ *  Movies are episode-less: the date lives in items.metadata.releaseDate
+ *  (stamped on add / backfilled on the detail page from TMDB's DE release).
+ *  No upper window — a film stays in "Was kommt" until it's out, then drops
+ *  off (start = local midnight today, so a release today still counts). */
+async function fetchUpcomingMovies(
+  itemIds: string[],
+): Promise<UpcomingItem[]> {
+  if (itemIds.length === 0) return [];
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const { data, error } = await supabase
+    .from("items")
+    .select("id, title, type, slug, cover_url, metadata")
+    .in("id", itemIds)
+    .eq("type", "movie")
+    .gte("metadata->>releaseDate", start.toISOString());
+  if (error) {
+    console.error("upcoming movies query failed", error);
+    return [];
+  }
+
+  return (data ?? []).flatMap((r) => {
+    const rel = (r.metadata as Record<string, unknown> | null)?.releaseDate;
+    if (typeof rel !== "string") return [];
+    return [
+      {
+        itemId: r.id as string,
+        title: r.title as string,
+        type: r.type as MediaType,
+        slug: r.slug as string,
+        coverUrl: (r.cover_url as string | null) ?? null,
+        airDate: rel,
       },
     ];
   });

@@ -288,8 +288,14 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                       "text-text-muted": !active(),
                     }}
                   >
-                    {episodeCode(item.episodeNumber)}
-                    {active() ? ` · ${typeLabel(item.type)}` : ""}
+                    {/* Movies have no episode number → just the type label. */}
+                    <Show
+                      when={item.episodeNumber !== undefined}
+                      fallback={typeLabel(item.type)}
+                    >
+                      {episodeCode(item.episodeNumber!)}
+                      {active() ? ` · ${typeLabel(item.type)}` : ""}
+                    </Show>
                   </span>
                 </div>
               </A>

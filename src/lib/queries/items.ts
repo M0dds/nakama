@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { MediaResult } from "@/lib/search";
+import { fetchTmdbMovieDetails } from "@/lib/tmdb";
 
 /**
  * Items data layer — the side of the model that's source-of-truth-shared
@@ -91,7 +92,19 @@ export async function addItemToList(input: {
   // upcoming film (films have no episode/air_date rows to read).
   const metadata: Record<string, unknown> = {};
   if (source.format) metadata.format = source.format;
-  if (source.releaseDate) metadata.releaseDate = source.releaseDate;
+  // Movies: store the GERMAN release date so "Was kommt" surfaces a film
+  // that's out in the US but not yet here. The search result only carries the
+  // primary (usually US) date, so resolve the DE date via the detail call;
+  // fall back to the search date if that fails.
+  if (source.type === "movie" && source.source === "tmdb") {
+    const details = await fetchTmdbMovieDetails(source.sourceId).catch(
+      () => null,
+    );
+    const rel = details?.releaseDate ?? source.releaseDate ?? null;
+    if (rel) metadata.releaseDate = rel;
+  } else if (source.releaseDate) {
+    metadata.releaseDate = source.releaseDate;
+  }
   const { data: item, error: itemError } = await supabase
     .from("items")
     .upsert(
@@ -121,4 +134,21 @@ export async function addItemToList(input: {
   if (linkError && linkError.code !== "23505") {
     throw linkError;
   }
+}
+
+/** Backfill/refresh a movie's release date in items.metadata (merged, so
+ *  `format` etc. survive). The film detail page calls this once it has TMDB's
+ *  German release, so "Was kommt" reads the right date even for films that
+ *  were added before the DE date was resolved, or whose date TMDB changed. */
+export async function setItemReleaseDate(
+  itemId: string,
+  metadata: Record<string, unknown> | null,
+  releaseDate: string,
+): Promise<void> {
+  const next = { ...(metadata ?? {}), releaseDate };
+  const { error } = await supabase
+    .from("items")
+    .update({ metadata: next })
+    .eq("id", itemId);
+  if (error) throw error;
 }

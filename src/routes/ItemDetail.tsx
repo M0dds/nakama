@@ -1,4 +1,4 @@
-import { createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { useLocation, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -10,7 +10,11 @@ import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { fetchTmdbMovieDetails, type TmdbCastMember } from "@/lib/tmdb";
-import { itemQueryOptions, type ItemDetails } from "@/lib/queries/items";
+import {
+  itemQueryOptions,
+  setItemReleaseDate,
+  type ItemDetails,
+} from "@/lib/queries/items";
 import {
   movieSeenKey,
   movieSeenOptions,
@@ -1065,6 +1069,22 @@ function MoviePanel(props: {
   const details = createQuery(() =>
     movieDetailsQueryOptions(props.item.source, props.item.sourceId),
   );
+
+  // Backfill the German release date into items.metadata once TMDB resolves it
+  // — so "Was kommt" reads the right date even for films added before the DE
+  // date was known (or whose date TMDB later corrected). Fire-and-forget, once.
+  let backfilled = false;
+  createEffect(() => {
+    const rel = details.data?.releaseDate;
+    if (!rel || backfilled) return;
+    const current = (props.item.metadata as Record<string, unknown> | null)
+      ?.releaseDate;
+    if (current === rel) return;
+    backfilled = true;
+    setItemReleaseDate(props.item.id, props.item.metadata, rel)
+      .then(() => queryClient.invalidateQueries({ queryKey: ["home"] }))
+      .catch(() => {});
+  });
 
   const seenMut = createMutation(() => ({
     mutationFn: (next: boolean) =>
