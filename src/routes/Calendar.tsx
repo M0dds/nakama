@@ -532,13 +532,11 @@ function WeekGrid(props: {
 function EventChip(props: { ev: CalendarEvent }) {
   return (
     <div class="flex items-center gap-2">
-      <span
-        class="shrink-0 font-mono text-mini tabular-nums"
-        classList={{
-          "text-text-muted": props.ev.watched || !props.ev.released,
-          "text-accent": props.ev.released && !props.ev.watched,
-        }}
-      >
+      {/* Episode code stays a neutral muted label in every state (matches the
+          day-pane + the other episodes). The released-unwatched signal lives
+          in the hollow-accent dot + the brighter title — accenting the number
+          on top read as a confusing double-highlight. */}
+      <span class="shrink-0 font-mono text-mini tabular-nums text-text-muted">
         {nextLabel(props.ev.type, props.ev.episodeNumber)}
       </span>
       <span
