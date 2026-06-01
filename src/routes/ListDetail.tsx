@@ -45,6 +45,8 @@ import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
+import { ListCover, PinBadge } from "@/components/GeneratedCover";
+import { EditableListCover } from "@/components/EditableListCover";
 
 /**
  * /lists/:id — detail view. Layout mirrors the Logbook handshake:
@@ -362,6 +364,30 @@ export default function ListDetail() {
             <Show when={list.data} fallback={<DetailsSkeleton />}>
               {(data) => (
                 <>
+                  {/* Cover — owner can change it (crop + upload); others see
+                      the current cover read-only. Sized to a third of the
+                      column so it reads as a thumbnail, not a hero. */}
+                  <div class="mb-5 w-1/3">
+                    <Show
+                      when={data().isOwner}
+                      fallback={
+                        <ListCover
+                          coverUrl={data().coverUrl}
+                          seed={data().coverSeed}
+                          alt=""
+                          class="aspect-square w-full overflow-hidden"
+                        />
+                      }
+                    >
+                      <EditableListCover
+                        listId={data().id}
+                        shortCode={data().shortCode}
+                        coverUrl={data().coverUrl}
+                        coverSeed={data().coverSeed}
+                      />
+                    </Show>
+                  </div>
+
                   <dl class="space-y-3 text-body">
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class={dtClass}>Sichtbarkeit</dt>
@@ -576,7 +602,7 @@ function SortableEntryRow(props: {
           }}
           class="flex min-w-0 flex-1 items-center gap-3"
         >
-          <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
+          <div class="relative aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
             <Show
               when={props.entry.coverUrl}
               fallback={
@@ -592,6 +618,9 @@ function SortableEntryRow(props: {
                 class="size-full object-cover"
                 loading="lazy"
               />
+            </Show>
+            <Show when={props.entry.pinned}>
+              <PinBadge />
             </Show>
           </div>
           <div class="min-w-0 flex-1">

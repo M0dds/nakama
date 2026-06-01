@@ -17,31 +17,47 @@ const reduceMotion = () =>
  * inline opacity 0 — set synchronously in the ref, before the first paint, so
  * the pre-decode frame is hidden — then animates to full on load.
  *
- * - Cached images (already complete) still get the fade: a quick, pleasant
- *   settle instead of an instant snap. Deferred one frame so the opacity-0
- *   paint lands first and the fade actually runs.
+ * - A src that already faded in once this session shows INSTANTLY on re-mount
+ *   (no re-fade). Without this, a `<For>` list that swaps object refs — e.g. a
+ *   pin reorder replaces every row's ListSummary, so Solid disposes + re-mounts
+ *   every row and recreates its <img> — would re-run the fade on all cached
+ *   covers at once: a visible flicker, twice (optimistic patch + settle
+ *   refetch). The fade is a one-time decode-mask, not a recurring settle.
  * - `error` reveals the element too, so a broken src never stays invisible.
  * - Reduced motion: show immediately, no fade.
  */
+const fadedSrcs = new Set<string>();
+
 export function fadeOnLoad(img: HTMLImageElement) {
   if (reduceMotion()) return;
 
-  img.style.opacity = "0";
-  let done = false;
-  const reveal = () => {
-    if (done) return;
-    done = true;
-    img.style.opacity = "1";
-    img.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: FADE_MS,
-      easing: EASE_QUART,
-    });
-  };
+  // Solid applies the dynamic `src` in a render effect that fires JUST AFTER
+  // the ref runs, so img.src is still empty here. Defer one microtask to read
+  // the resolved src — otherwise the dedup below always misses and every
+  // <For> re-mount (e.g. a pin reorder swapping every row's object ref)
+  // re-runs the fade on all cached covers at once.
+  queueMicrotask(() => {
+    // Faded once already → leave at natural opacity (1), no re-fade flicker.
+    if (img.src && fadedSrcs.has(img.src)) return;
 
-  if (img.complete && img.naturalWidth > 0) {
-    requestAnimationFrame(() => requestAnimationFrame(reveal));
-    return;
-  }
-  img.addEventListener("load", reveal, { once: true });
-  img.addEventListener("error", reveal, { once: true });
+    img.style.opacity = "0";
+    let done = false;
+    const reveal = () => {
+      if (done) return;
+      done = true;
+      if (img.src) fadedSrcs.add(img.src);
+      img.style.opacity = "1";
+      img.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: FADE_MS,
+        easing: EASE_QUART,
+      });
+    };
+
+    if (img.complete && img.naturalWidth > 0) {
+      requestAnimationFrame(() => requestAnimationFrame(reveal));
+      return;
+    }
+    img.addEventListener("load", reveal, { once: true });
+    img.addEventListener("error", reveal, { once: true });
+  });
 }

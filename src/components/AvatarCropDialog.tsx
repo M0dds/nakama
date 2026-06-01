@@ -26,7 +26,12 @@ export function AvatarCropDialog(props: {
   open: boolean;
   onClose: () => void;
   onCropped: (file: File) => void;
+  /** Viewport mask shape. "circle" (default) for avatars, "square" for list
+   *  covers. Export is always a square canvas either way — this only changes
+   *  the preview mask so the user crops to what they'll actually see. */
+  shape?: "circle" | "square";
 }) {
+  const round = () => (props.shape ?? "circle") === "circle";
   const [mounted, setMounted] = createSignal(false);
   const [visible, setVisible] = createSignal(false);
   const [snapUrl, setSnapUrl] = createSignal<string | null>(null);
@@ -210,9 +215,11 @@ export function AvatarCropDialog(props: {
           </header>
 
           <div class="flex flex-col items-center gap-5 px-6 py-6">
-            {/* Round viewport — pan by dragging. A faint ring marks the crop. */}
+            {/* Viewport — pan by dragging. A faint ring marks the crop. */}
             <div
-              class="relative cursor-grab touch-none overflow-hidden rounded-full bg-surface ring-1 ring-border active:cursor-grabbing"
+              class={`relative cursor-grab touch-none overflow-hidden ${
+                round() ? "rounded-full" : "rounded-sm"
+              } bg-surface ring-1 ring-border active:cursor-grabbing`}
               style={{ width: `${V}px`, height: `${V}px` }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}

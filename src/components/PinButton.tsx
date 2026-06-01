@@ -3,14 +3,13 @@ import { Tooltip } from "@/components/Tooltip";
 
 /**
  * Hover-revealed pin toggle. Lives next to the row name on both /lists and
- * /lists/:shortCode rows. Two visual states:
+ * /lists/:shortCode rows. Both states fade in on the parent row's group-hover
+ * (mirroring the RowActions affordance language) — the AT-REST pinned
+ * indicator is the PinBadge on the cover, not this icon. The icon only colours:
  *
- *   • Unpinned (default)  — outline pin, muted color, opacity-0. Fades in on
- *                           the group-hover of the parent row, mirroring the
- *                           RowActions affordance language.
- *   • Pinned (active)     — outline+filled pin, accent color, always
- *                           opacity-100. Stays visible at rest because it
- *                           communicates state, not just an action.
+ *   • Unpinned  — outline pin, muted color → text on hover.
+ *   • Pinned    — outline+filled pin, accent (orange) so a hover reveals that
+ *                 the pin is currently active and a click would un-pin it.
  *
  * The component is type=button + stops event propagation, so it can sit
  * safely inside or alongside an <A> link without triggering navigation
@@ -62,10 +61,8 @@ export function PinButton(props: Props) {
           // are already gone, reading as a flash.
           props.hidden
             ? "pointer-events-none opacity-0"
-            : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] ${
-                props.pinned
-                  ? "text-accent opacity-100 hover:bg-bg"
-                  : "pointer-events-none text-text-muted opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 hover:bg-bg hover:text-text"
+            : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 ${
+                props.pinned ? "text-accent" : "text-text-muted hover:text-text"
               }`
         }`}
       >

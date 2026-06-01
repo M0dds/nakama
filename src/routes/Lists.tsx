@@ -35,6 +35,7 @@ import { InvitationsInbox } from "@/components/InvitationsInbox";
 import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 import { Skeleton } from "@/components/Skeleton";
+import { ListCover } from "@/components/GeneratedCover";
 
 /**
  * /lists — overview. Left 2/3: "Deine Listen" (private) + "Geteilte Listen"
@@ -433,31 +434,40 @@ function SortableListRow(props: {
       >
         <A
           href={`/lists/${props.list.shortCode}`}
-          class="block min-w-0 flex-1"
+          class="flex min-w-0 flex-1 items-center gap-3"
         >
-          <div class="flex min-w-0 items-start gap-3">
-            <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-              {props.list.name}
-            </h3>
-            {/* Only tracked lists surface the new-episode badge — an archived
-                (tracks_home off) list shouldn't nag about new releases. */}
-            <Show
-              when={
-                props.list.tracksHome
-                  ? newCountLabel(props.list.newCounts)
-                  : null
-              }
-            >
-              {(label) => (
-                <span class="shrink-0 font-mono text-mini uppercase text-accent">
-                  {label()}
-                </span>
-              )}
-            </Show>
+          <ListCover
+            coverUrl={props.list.coverUrl}
+            seed={props.list.coverSeed}
+            alt=""
+            pinned={props.list.pinned}
+            class="size-11 shrink-0 overflow-hidden"
+          />
+          <div class="min-w-0 flex-1">
+            <div class="flex min-w-0 items-start gap-3">
+              <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
+                {props.list.name}
+              </h3>
+              {/* Only tracked lists surface the new-episode badge — an archived
+                  (tracks_home off) list shouldn't nag about new releases. */}
+              <Show
+                when={
+                  props.list.tracksHome
+                    ? newCountLabel(props.list.newCounts)
+                    : null
+                }
+              >
+                {(label) => (
+                  <span class="shrink-0 font-mono text-mini uppercase text-accent">
+                    {label()}
+                  </span>
+                )}
+              </Show>
+            </div>
+            <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+              {metaLine(props.list)}
+            </p>
           </div>
-          <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-            {metaLine(props.list)}
-          </p>
         </A>
         <RowActions
           pinned={props.list.pinned}
