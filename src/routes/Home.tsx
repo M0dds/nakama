@@ -1,4 +1,4 @@
-import { createSignal, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import { Check, Clock, Crown, Eye, EyeOff, ListPlus, RefreshCw } from "lucide-solid";
@@ -40,6 +40,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
 import { Skeleton } from "@/components/Skeleton";
+import { Pager } from "@/components/Pager";
 
 /**
  * Home dashboard — three derived modules, layout mirrors Logbook's `/`:
@@ -384,9 +385,9 @@ function EmptyUpcoming() {
  * Accordion rows for mid-watch items. The active row's cover grows (3rem×4rem
  * → 5.33rem×4rem), and a small "Anime"/"Manga"/etc. category line slides in
  * above the title. First click activates, second click (same row) opens.
- * Initially shows 4; the rest reveal via ShowMoreToggle.
+ * Shows 4 per page; the numbered Pager swaps to the next 4 (no growing list).
  */
-const FORTSETZEN_VISIBLE = 4;
+const FORTSETZEN_PER_PAGE = 4;
 
 /** Row identity: a sync instance and the global entry of the same item are two
  *  distinct rows, so we key on listItemId when present (not just itemId). */
@@ -394,30 +395,31 @@ const rowKey = (it: ContinueItem) => it.listItemId ?? it.itemId;
 
 function Fortsetzen(props: { items: ContinueItem[] }) {
   const navigate = useNavigate();
+  const [page, setPage] = createSignal(1);
+
+  const pageCount = () =>
+    Math.max(1, Math.ceil(props.items.length / FORTSETZEN_PER_PAGE));
+  const visible = () => {
+    const start = (page() - 1) * FORTSETZEN_PER_PAGE;
+    return props.items.slice(start, start + FORTSETZEN_PER_PAGE);
+  };
+
   const [activeId, setActiveId] = createSignal<string | null>(
     props.items[0] ? rowKey(props.items[0]) : null,
   );
-  const [expanded, setExpanded] = createSignal(false);
-
-  const hasMore = () => props.items.length > FORTSETZEN_VISIBLE;
-  const visible = () =>
-    expanded() || !hasMore()
-      ? props.items
-      : props.items.slice(0, FORTSETZEN_VISIBLE);
-  const overflow = () => Math.max(0, props.items.length - FORTSETZEN_VISIBLE);
-
-  const toggleExpanded = () => {
-    setExpanded((prev) => {
-      const next = !prev;
-      // Collapsing while the active row would disappear — refocus to the top.
-      if (!next) {
-        const idx = props.items.findIndex((it) => rowKey(it) === activeId());
-        if (idx >= FORTSETZEN_VISIBLE)
-          setActiveId(props.items[0] ? rowKey(props.items[0]) : null);
-      }
-      return next;
-    });
-  };
+  // On a page change, focus the first row of the new page. Deferred so it only
+  // fires on navigation — NOT on every data refetch (which would clobber the
+  // user's in-page selection when realtime re-slices the list).
+  createEffect(
+    on(
+      page,
+      () => {
+        const first = visible()[0];
+        setActiveId(first ? rowKey(first) : null);
+      },
+      { defer: true },
+    ),
+  );
 
   return (
     <>
@@ -555,13 +557,7 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
         </For>
       </ul>
 
-      <Show when={hasMore()}>
-        <ShowMoreToggle
-          expanded={expanded()}
-          remaining={overflow()}
-          onToggle={toggleExpanded}
-        />
-      </Show>
+      <Pager page={page()} pageCount={pageCount()} onPage={setPage} />
     </>
   );
 }
@@ -863,24 +859,6 @@ function TransferSentence(props: { ev: TransferEvent }) {
   );
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────
-
-function ShowMoreToggle(props: {
-  expanded: boolean;
-  remaining: number;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={props.onToggle}
-      aria-expanded={props.expanded}
-      class="mt-1 flex w-full items-center justify-center rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
-    >
-      {props.expanded ? "Weniger anzeigen" : `+${props.remaining} weitere`}
-    </button>
-  );
-}
 
 // ── Skeleton placeholders ─────────────────────────────────────────────
 // Each mirrors its module's content shape so the real data drops in without
@@ -904,7 +882,7 @@ function WasKommtSkeleton() {
 function FortsetzenSkeleton() {
   return (
     <ul class="-mx-5">
-      <For each={Array.from({ length: FORTSETZEN_VISIBLE })}>
+      <For each={Array.from({ length: FORTSETZEN_PER_PAGE })}>
         {() => (
           <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
             <div class="flex items-center gap-3 px-5 py-2">
