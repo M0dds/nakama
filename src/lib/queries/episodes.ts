@@ -382,9 +382,10 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
  *  the first time + after 12 h. Empty + fetchable:false for non-episodic
  *  items.
  *
- *  `limit` controls how many of the latest episodes are returned (default
- *  26 — roughly one cour, fits most ongoing anime without needing to load
- *  more). "Weitere laden" in the UI bumps the limit by another 26.
+ *  `page` is 1-based and selects a fixed window of EPISODE_PAGE_SIZE (26 ≈ one
+ *  cour) of the newest-first episode list — page 1 is the latest 26, page 2 the
+ *  26 before that, and so on. Each page is its own cache entry, so the numbered
+ *  pager swaps windows instead of growing one long list (the One-Piece case).
  *
  *  `instanceListItemId` selects the progress lane (sync-instances model):
  *    - null   → GLOBAL progress (`episode_watches.list_item_id IS NULL`) —
@@ -395,20 +396,22 @@ async function ensureEpisodes(item: ItemForFetch): Promise<void> {
  *  The explicit IS NULL matters once instances exist: without it a synced
  *  instance elsewhere would leak its rows into the global watched count.
  *
- *  The queryKey is `[...episodesQueryKey(type, slug), limit, instanceListItemId]`
- *  so each pagination step AND each lane is its own cache entry; invalidations
- *  target the prefix and clear all of them at once. */
+ *  The queryKey is `[...episodesQueryKey(type, slug), page, instanceListItemId]`
+ *  so each page AND each lane is its own cache entry; invalidations target the
+ *  prefix and clear all of them at once. */
+export const EPISODE_PAGE_SIZE = 26;
+
 export function episodesQueryOptions(
   user: User,
   type: string,
   slug: string,
-  limit: number = 26,
+  page: number = 1,
   instanceListItemId: string | null = null,
 ) {
   return {
     queryKey: [
       ...episodesQueryKey(type, slug),
-      limit,
+      page,
       instanceListItemId,
     ] as const,
     queryFn: async (): Promise<EpisodePayload> => {
@@ -454,7 +457,11 @@ export function episodesQueryOptions(
         .eq("user_id", user.id)
         .eq("episodes.item_id", item.id);
 
-      // Now read: total + watched (head counts) + latest `limit` in parallel.
+      // The window of the newest-first list for this page. `.range()` is
+      // inclusive on both ends, so page 1 = rows [0, 25], page 2 = [26, 51], …
+      const offset = (Math.max(1, page) - 1) * EPISODE_PAGE_SIZE;
+
+      // Now read: total + watched (head counts) + this page's window in parallel.
       const [totalRes, watchedRes, latestRes] = await Promise.all([
         supabase
           .from("episodes")
@@ -469,7 +476,7 @@ export function episodesQueryOptions(
           .eq("item_id", item.id)
           .order("season_number", { ascending: false })
           .order("episode_number", { ascending: false })
-          .limit(limit),
+          .range(offset, offset + EPISODE_PAGE_SIZE - 1),
       ]);
 
       const total = totalRes.count ?? 0;
