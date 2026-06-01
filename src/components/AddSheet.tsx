@@ -175,7 +175,10 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   /** Tracks which sourceIds were added in THIS session, scoped to the list
    *  they were added to (so switching lists doesn't carry the ✓ over). */
   const [added, setAdded] = createSignal<Set<string>>(new Set());
-  const [pending, setPending] = createSignal<string | null>(null);
+  // A SET, not a single id: two results can be added in quick succession, and
+  // a single-string pending let the first add's onSettled clear the spinner of
+  // the second (still in flight). Keyed by sourceId.
+  const [pending, setPending] = createSignal<Set<string>>(new Set());
 
   const addedKey = (listId: string, sourceId: string) =>
     `${listId}:${sourceId}`;
@@ -188,12 +191,19 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   });
 
   const addMutation = createMutation(() => ({
-    mutationFn: (source: MediaResult) =>
-      addItemToList({ listId: targetListId(), source }),
-    onSuccess: (_, source) => {
+    // The target list is captured at mutate time and rides in the variables —
+    // NOT read fresh in onSuccess, where a list switch between mutate and
+    // success would book the ✓ against the wrong list.
+    mutationFn: (input: { source: MediaResult; listId: string }) =>
+      addItemToList({
+        listId: input.listId,
+        source: input.source,
+        userId: auth.user()!.id,
+      }),
+    onSuccess: (_, input) => {
       setAdded((prev) => {
         const next = new Set(prev);
-        next.add(addedKey(targetListId(), source.sourceId));
+        next.add(addedKey(input.listId, input.source.sourceId));
         return next;
       });
       // Counts ripple across three places: the overview (listsQueryKey),
@@ -204,15 +214,22 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
     },
-    onSettled: () => setPending(null),
+    onSettled: (_d, _e, input) => {
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(input.source.sourceId);
+        return next;
+      });
+    },
   }));
 
   const onAdd = (r: MediaResult) => {
-    if (!targetListId()) return;
-    if (added().has(addedKey(targetListId(), r.sourceId))) return;
-    if (pending() === r.sourceId) return;
-    setPending(r.sourceId);
-    addMutation.mutate(r);
+    const listId = targetListId();
+    if (!listId) return;
+    if (added().has(addedKey(listId, r.sourceId))) return;
+    if (pending().has(r.sourceId)) return;
+    setPending((prev) => new Set(prev).add(r.sourceId));
+    addMutation.mutate({ source: r, listId });
   };
 
   // ── Entry/exit transition ──────────────────────────────────────────────
@@ -450,7 +467,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               lastQuery={lastQuery()}
               results={results()}
               searching={searching()}
-              pending={pending()}
+              isPending={(r) => pending().has(r.sourceId)}
               isAdded={(r) =>
                 added().has(addedKey(targetListId(), r.sourceId))
               }
@@ -526,7 +543,7 @@ function ResultsBody(props: {
   lastQuery: string;
   results: MediaResult[];
   searching: boolean;
-  pending: string | null;
+  isPending: (r: MediaResult) => boolean;
   isAdded: (r: MediaResult) => boolean;
   canAdd: boolean;
   onAdd: (r: MediaResult) => void;
@@ -570,7 +587,7 @@ function ResultsBody(props: {
                 <ResultRow
                   result={r}
                   added={props.isAdded(r)}
-                  pending={props.pending === r.sourceId}
+                  pending={props.isPending(r)}
                   canAdd={props.canAdd}
                   onAdd={() => props.onAdd(r)}
                 />

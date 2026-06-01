@@ -43,6 +43,17 @@ function yearOf(date: string | null | undefined): number | null {
   return Number.isFinite(y) && y > 1800 ? y : null;
 }
 
+/** Parse a TMDB date (date-only "YYYY-MM-DD") to a UTC-midnight ISO string, or
+ *  null when missing/unparseable. TMDB normally returns clean ISO dates, but a
+ *  stray "" / "TBD" / malformed value makes `new Date(x).toISOString()` throw a
+ *  RangeError that rejects the whole query — this degrades to null instead. */
+function toIsoDateOrNull(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const t = Date.parse(date);
+  if (Number.isNaN(t)) return null;
+  return new Date(t).toISOString();
+}
+
 async function tmdbGet<T>(
   path: string,
   params: Record<string, string> = {},
@@ -153,9 +164,7 @@ export async function searchTmdbMovies(
     format: null,
     // TMDB date-only → store as UTC midnight ISO, mirroring the series
     // air_date convention (no fabricated clock time; see format.ts).
-    releaseDate: r.release_date
-      ? new Date(r.release_date).toISOString()
-      : null,
+    releaseDate: toIsoDateOrNull(r.release_date),
   }));
 }
 
@@ -239,14 +248,16 @@ function germanCertification(raw: RawMovieDetail): string | null {
  *  → premiere (1) → whatever's earliest. Returns null when there's no DE row. */
 function germanReleaseDate(raw: RawMovieDetail): string | null {
   const de = raw.release_dates?.results?.find((r) => r.iso_3166_1 === "DE");
-  const dates = de?.release_dates ?? [];
+  // Filter to rows that actually carry a date BEFORE sorting — a null
+  // release_date would make localeCompare throw a TypeError mid-sort.
+  const dates = (de?.release_dates ?? []).filter((d) => d.release_date);
   if (dates.length === 0) return null;
   const rank = (t: number) => (t === 3 ? 0 : t === 2 ? 1 : t === 1 ? 2 : 3);
   const best = [...dates].sort((a, b) => {
     const r = rank(a.type) - rank(b.type);
     return r !== 0 ? r : a.release_date.localeCompare(b.release_date);
   })[0];
-  return best?.release_date ? new Date(best.release_date).toISOString() : null;
+  return toIsoDateOrNull(best?.release_date);
 }
 
 /** Fetch one movie's detail + credits + per-country release dates in a single
@@ -279,9 +290,7 @@ export async function fetchTmdbMovieDetails(
     overview: d.overview?.trim() || null,
     tagline: d.tagline?.trim() || null,
     runtime: d.runtime && d.runtime > 0 ? d.runtime : null,
-    releaseDate:
-      germanReleaseDate(d) ??
-      (d.release_date ? new Date(d.release_date).toISOString() : null),
+    releaseDate: germanReleaseDate(d) ?? toIsoDateOrNull(d.release_date),
     certification: germanCertification(d),
     genres: (d.genres ?? []).map((g) => g.name),
     directors,
@@ -367,7 +376,7 @@ export async function fetchTmdbSeriesEpisodes(
         seasonNumber: e.season_number,
         episodeNumber: e.episode_number,
         title: realTitle(e.name),
-        airDate: e.air_date ? new Date(e.air_date).toISOString() : null,
+        airDate: toIsoDateOrNull(e.air_date),
       });
     }
   }

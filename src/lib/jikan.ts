@@ -38,11 +38,17 @@ interface RawJikanResponse {
   pagination: RawJikanPagination | null;
 }
 
+/** `complete` is false ONLY when paging stopped on a transient failure
+ *  (network error, non-ok response, unparseable body) — the caller leaves the
+ *  enrichment version gate OPEN so a 429/5xx mid-run retries on the next visit
+ *  instead of silently locking in a partial title set. Reaching the end of
+ *  pages (or the defensive MAX_PAGES cap) counts as complete. */
 export async function fetchJikanEpisodeTitles(
   malId: number,
-): Promise<Map<number, string>> {
+): Promise<{ titles: Map<number, string>; complete: boolean }> {
   const result = new Map<number, string>();
   let page = 1;
+  let complete = true;
 
   while (page <= MAX_PAGES) {
     let json: RawJikanResponse | null = null;
@@ -50,12 +56,19 @@ export async function fetchJikanEpisodeTitles(
       const res = await fetch(
         `${ENDPOINT}/anime/${malId}/episodes?page=${page}`,
       );
-      if (!res.ok) break;
+      if (!res.ok) {
+        complete = false;
+        break;
+      }
       json = (await res.json().catch(() => null)) as RawJikanResponse | null;
     } catch {
+      complete = false;
       break;
     }
-    if (!json) break;
+    if (!json) {
+      complete = false;
+      break;
+    }
 
     for (const ep of json.data ?? []) {
       const num = ep.mal_id;
@@ -70,5 +83,5 @@ export async function fetchJikanEpisodeTitles(
     // Brief delay so the next request doesn't trip Jikan's ~3 req/sec limit.
     await new Promise((r) => setTimeout(r, THROTTLE_MS));
   }
-  return result;
+  return { titles: result, complete };
 }

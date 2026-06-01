@@ -146,14 +146,20 @@ export default function Lists() {
   // the cache optimistically (sort_order = i+1 in that section), then push
   // the same payload to the server.
   const reorderMut = createMutation(() => ({
-    mutationFn: (input: { orderedListIds: string[] }) =>
+    mutationFn: (input: {
+      orderedListIds: string[];
+      // Pre-patch snapshot captured at the call site (the optimistic patch is
+      // applied inline in the drag handler, before mutate). Carried through
+      // the variables so onError can roll back — there is no onMutate here, so
+      // the old ctx.prev read was always undefined and the rollback inert.
+      prev: { private: ListSummary[]; shared: ListSummary[] };
+    }) =>
       reorderLists({
         userId: auth.user()!.id,
         orderedListIds: input.orderedListIds,
       }),
-    onError: (_err, _input, ctx) => {
-      const prev = (ctx as { prev?: unknown } | undefined)?.prev;
-      if (prev) queryClient.setQueryData(listsQueryKey, prev);
+    onError: (_err, input) => {
+      queryClient.setQueryData(listsQueryKey, input.prev);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
@@ -200,12 +206,16 @@ export default function Lists() {
             return a.sortOrder - b.sortOrder;
           });
 
+      // `data` is the pre-patch snapshot (patch() returns fresh arrays, so the
+      // original object's arrays are untouched) — hand it to the mutation as
+      // the rollback target before overwriting the cache.
+      const prev = data;
       queryClient.setQueryData(listsQueryKey, {
         private: visibility === "private" ? patch(data.private) : data.private,
         shared: visibility === "shared" ? patch(data.shared) : data.shared,
       });
 
-      reorderMut.mutate({ orderedListIds: nextSection.map((l) => l.id) });
+      reorderMut.mutate({ orderedListIds: nextSection.map((l) => l.id), prev });
     },
   );
 

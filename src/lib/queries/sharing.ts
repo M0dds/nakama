@@ -398,6 +398,10 @@ export function coWatchersOptions(
     queryKey: [...coWatchersKey(itemId), listId, instanceListItemId] as const,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
+      // PRIVACY BOUNDARY: scope to THIS list's members only, and bail when
+      // there are none. episode_watches RLS is stricter server-side, but do
+      // NOT drop this `.in("user_id", memberIds)` — it's the guarantee that a
+      // shared list never surfaces a non-member's progress.
       const memberIds = await listMemberIdsOf(listId, user.id);
       if (memberIds.length === 0) return {};
 
@@ -449,6 +453,13 @@ export function movieCoWatchersOptions(
     queryKey: [...movieCoWatchersKey(itemId), listId] as const,
     staleTime: 30_000,
     queryFn: async (): Promise<CoWatcher[]> => {
+      // PRIVACY BOUNDARY (load-bearing): item_history's RLS policy
+      // (item_history_select_co / shares_list_with) is deliberately BROAD — it
+      // lets you read any co-member's full seen-state across all items. The
+      // per-list guarantee lives ONLY in this `.in("user_id", memberIds)`
+      // scope + the empty-member bail below. A future query that reads
+      // item_history without this scope would leak others' progress. Do not
+      // remove. (Tightening the RLS itself is a migration — see HEALTH.md.)
       const memberIds = await listMemberIdsOf(listId, user.id);
       if (memberIds.length === 0) return [];
 

@@ -104,13 +104,16 @@ export async function fetchMangaDexChapterCount(
 export async function fetchMangaDexChapterTitles(
   aniListId: number,
   title: string | null,
-): Promise<Map<number, string>> {
+): Promise<{ titles: Map<number, string>; complete: boolean }> {
   const result = new Map<number, string>();
+  // No id match = permanent miss (retrying won't help) → complete, so the
+  // caller closes the version gate rather than retrying forever.
   const mdId = await findMangaDexId(aniListId, title);
-  if (!mdId) return result;
+  if (!mdId) return { titles: result, complete: true };
 
   const limit = 500;
   let offset = 0;
+  let complete = true;
 
   while (offset < SANE_MAX) {
     const feed = (await mdRequest(
@@ -125,7 +128,15 @@ export async function fetchMangaDexChapterTitles(
       total?: number;
     } | null;
 
-    const rows = feed?.data ?? [];
+    // null = mdRequest swallowed a transient error (network / non-ok). Stop
+    // and report incomplete so the gate stays open for a retry, rather than
+    // locking in whatever pages we got before the failure.
+    if (feed === null) {
+      complete = false;
+      break;
+    }
+
+    const rows = feed.data ?? [];
     for (const r of rows) {
       const n = Number(r.attributes.chapter);
       const t = typeof r.attributes.title === "string"
@@ -138,8 +149,8 @@ export async function fetchMangaDexChapterTitles(
 
     if (rows.length < limit) break;
     offset += rows.length;
-    if (typeof feed?.total === "number" && offset >= feed.total) break;
+    if (typeof feed.total === "number" && offset >= feed.total) break;
   }
 
-  return result;
+  return { titles: result, complete };
 }

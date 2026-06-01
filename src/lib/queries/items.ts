@@ -83,6 +83,11 @@ export function itemQueryOptions(type: string, slug: string) {
 export async function addItemToList(input: {
   listId: string;
   source: MediaResult;
+  /** The acting user — stamped into list_items.added_by_user_id so the
+   *  Logbuch can attribute the "hinzugefügt"-event. Without it the column
+   *  stays NULL (no default, no trigger) and the Logbuch builder skips the
+   *  row entirely, so Nakama adds never showed up in the feed. */
+  userId: string;
 }): Promise<void> {
   const { source } = input;
 
@@ -129,6 +134,7 @@ export async function addItemToList(input: {
   const { error: linkError } = await supabase.from("list_items").insert({
     list_id: input.listId,
     item_id: item.id,
+    added_by_user_id: input.userId,
   });
 
   if (linkError && linkError.code !== "23505") {

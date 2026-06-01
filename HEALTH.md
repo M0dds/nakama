@@ -9,6 +9,8 @@ Working document. Lies nach handshake.md. **Offene Findings stehen oben**; der B
 Volle Begründung je Finding steht in der Session die es aufdeckte (`git log` rund um den HEALTH.md-Initialcommit).
 
 - **A5** — `episodesQueryOptions` macht 4-5 Round-Trips pro Item-Page-Load. Noch nicht angefasst — **bei Thema 2 mitnehmen** (Episodenliste auf seitenweises Paging umbauen → guter Moment, die Query-Round-Trips zu straffen). Siehe handshake §Offene Punkte „Nächste große Themen" #2.
+- **AUD-2** — *(aus Audit 2026-06-01, bewusst NICHT gefixt)* Migration `20260531100000` droppt `unique(user_id, episode_id)` und ersetzt ihn durch zwei partielle Indizes. Logbook-Ära-RPCs mit `on conflict (user_id, episode_id) do nothing` brauchen aber einen nicht-partiellen Arbiter → würden `42P10` werfen. **Nakama selbst verschont** (nacktes `on conflict do nothing`). Übersprungen, weil **Logbook nicht mehr genutzt wird** (User-Entscheidung). Falls Logbook je reaktiviert wird auf derselben DB: betroffene RPCs auf nacktes `on conflict do nothing` umstellen.
+- **AUD-10** — *(aus Audit 2026-06-01, halb gefixt)* `item_history`-RLS `item_history_select_co` (`shares_list_with`) ist bewusst breit: erlaubt das Lesen des vollen Seen-Status jedes Co-Members über alle Items. Die Pro-Liste-Garantie hängt allein am Client-Filter `.in("user_id", memberIds)`. **Kein Leck heute** (beide Co-Watcher-Queries korrekt gescoped); die Filter-Stellen sind jetzt als „PRIVACY BOUNDARY" markiert (`740aa64`). Offen bleibt die **RLS-Verschärfung** (Item muss in einer geteilten Liste co-präsent sein) — braucht eine Migration, deshalb deferred.
 - **C8** — `console.error` an 12+ Stellen ohne Telemetry. **Deferred bis Hosting steht** (Phase 9) — ohne shared User-Base bringt ein Telemetry-Layer nichts.
 - **D1** — `Math.min(...nums)` Spread bei großen Bundles (theoretisch, kein realer Case). Keine Action geplant.
 - **D2** — Inkonsistente Timer-Typen (`number | null` vs `ReturnType<typeof setTimeout>`). Kosmetisch.
@@ -31,3 +33,13 @@ Alle 7 Bundles gelandet + gemerged. Je Zeile: Finding-IDs · Kern-SHA · Outcome
 - **Bundle 7 — AddSheet Origin Re-measure + Pin-Race** · B1, B5 · `b7a2180` + `b22c9f5` + `657102d` (+ Follow-up `b9d37aa`) — `measureOrigin()` auch im resize-Handler; atomare `set_list_pin`/`set_list_item_pin` RPCs (sort_order server-side, kein stale-cache-Race); AddSheet-Preselect-Bug mitgefixt. **Migration `20260529130000` angewendet** (2026-05-29, verifiziert).
 
 Auch außerhalb der Bundles geschlossen: **A7** (`listsQueryOptions` pairs-Query → explizites `.limit(5000)`, `79a5863`, Phase 7e).
+
+- **Bundle 8 — Audit-Findings 2026-06-01** · Branch `fix/audit-findings` (7 atomare Commits, noch NICHT gemerged) — adversarial Multi-Agent-Audit (23 Agenten, 16 Roh → 12 bestätigt, 4 Fehlalarm). Gesamturteil: solide, kein kritisches Finding, kein aktiver Datenverlust/Privacy-Leck. Gelandet auf dem Branch:
+  - `f264da9` **AUD-1 (high)** — `addItemToList` stempelt `added_by_user_id` (war NULL → Logbuch-„hinzugefügt"-Events erschienen nie für Nakama-Adds).
+  - `1c65396` **AUD-3/6/5** — Cascade staffel-bewusst (`(season, episode)` statt nur `episode_number`); Episode-Tick invalidiert auch `["home"]`+`["calendar"]`; Release-Backfill guarded per Item-ID statt One-Shot-Boolean.
+  - `8e4d7c6` **AUD-7** — `toIsoDateOrNull`-Helper an allen 4 TMDB-Datum-Stellen + `germanReleaseDate`-Sort gegen null-Datum (kein RangeError/TypeError mehr, der die Query killt).
+  - `8039f07` **AUD-8** — Jikan/MangaDex-Fetcher liefern `{titles, complete}`; `backfillTitles` lässt das Enrichment-Gate bei transientem 429/5xx OFFEN (statt Version zu bumpen + Teil-Titel einzufrieren).
+  - `0016365` **AUD-9** — Drag-Reorder-Rollback feuert wieder (Snapshot durch die Mutation-Variablen statt totem `ctx.prev`-Read; Lists + ListDetail).
+  - `3a1d3c5` **AUD-11** — AddSheet `pending` als Set (zwei parallele Adds löschen sich nicht mehr den Spinner) + Ziel-Liste zur Mutate-Zeit fixiert.
+  - `740aa64` **AUD-10 (halb)** — Co-Watcher-Privacy-Grenze als „PRIVACY BOUNDARY" markiert (RLS-Verschärfung deferred → §Offen).
+  - Übersprungen: **AUD-2** (Logbook-Constraint — Logbook nicht mehr genutzt, → §Offen).
