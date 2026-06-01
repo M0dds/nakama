@@ -341,10 +341,12 @@ export function listsQueryOptions(user: User) {
         supabase
           .from("list_items")
           .select("id, sync_enabled, list_id, item_id, items!inner(type)")
-          // A7: explicit cap — without it PostgREST stops at 1000 rows. Sharing
-          // multiplies list_items across all members' shared lists, so the
-          // newCounts aggregation would silently under-count past 1000 (no
-          // error, just a missing badge). 5000 mirrors GAP_QUERY_LIMIT.
+          // Windowed by the user's total list_items (normally well under 1000).
+          // NOTE: Supabase's hard 1000-row cap (db-max-rows) overrides this
+          // `.limit` — a user with 1000+ list_items across all lists would
+          // under-count badges past 1000 (no error, just a missing badge).
+          // Acceptable at this app's scale; paginate with `.range()` if it ever
+          // bites. (Same cap class as the co-watcher eye / title-gap fixes.)
           .limit(5000),
       ]);
 

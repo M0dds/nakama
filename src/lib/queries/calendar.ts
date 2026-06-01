@@ -43,8 +43,11 @@ export const calendarEventsKey = (userId: string) =>
 export const WINDOW_BACK = 2;
 /** Months ahead kept in the window. */
 export const WINDOW_AHEAD = 4;
-/** Explicit ceiling so a busy window can't silently truncate at PostgREST's
- *  implicit 1000-row cap (the HEALTH A7 / GAP_QUERY_LIMIT class of bug). */
+/** Safety ceiling on the window read. NOTE: Supabase's hard 1000-row cap
+ *  (db-max-rows) overrides any larger `.limit`, so this is effectively 1000 — a
+ *  ~6-month window with 1000+ airings would truncate silently. Fine at this
+ *  app's scale (a couple / small group); paginate with `.range()` if a power
+ *  user ever hits it. Same cap class as the co-watcher eye / title-gap fixes. */
 const WINDOW_LIMIT = 5000;
 
 // ── Types ───────────────────────────────────────────────────────────────
