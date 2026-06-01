@@ -117,7 +117,7 @@ export function ConfirmDialog(props: Props) {
           }`}
         />
         <div
-          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
             visible() ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -143,7 +143,7 @@ export function ConfirmDialog(props: Props) {
               type="button"
               onClick={props.onClose}
               aria-label="Schließen"
-              class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-text"
+              class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface dark:hover:bg-white/[0.07] hover:text-text"
             >
               <X class="size-4" strokeWidth={1.75} aria-hidden />
             </button>
