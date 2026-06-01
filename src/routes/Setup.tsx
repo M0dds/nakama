@@ -248,8 +248,8 @@ export default function Setup() {
                       Willkommen bei Nakama
                     </h1>
                     <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-                      Gib dir ein Gesicht — ein Profilbild (kannst du später
-                      ändern oder jetzt überspringen).
+                      Gib dir ein Gesicht — oder klick einfach auf Weiter und
+                      hol's später im Profil nach.
                     </p>
                     <div class="mt-8 flex flex-col items-center gap-4">
                       <Avatar
@@ -388,20 +388,10 @@ export default function Setup() {
 
             {/* Footer controls */}
             <div class="mt-6 flex items-center justify-between gap-3">
-              <Show
-                when={step() > 1}
-                fallback={
-                  <Show when={step() === 1}>
-                    <button
-                      type="button"
-                      onClick={() => go(2)}
-                      class="font-mono text-mini uppercase tracking-wider text-text-muted underline-offset-4 transition-colors hover:text-text hover:underline"
-                    >
-                      Überspringen
-                    </button>
-                  </Show>
-                }
-              >
+              {/* Empty spacer on step 1 (no back) keeps "Weiter" right-aligned.
+                  No separate "skip" — the avatar is optional, so "Weiter"
+                  without a picture IS the skip. */}
+              <Show when={step() > 1} fallback={<span />}>
                 <Button variant="ghost" onClick={() => go(step() - 1)}>
                   Zurück
                 </Button>
