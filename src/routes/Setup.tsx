@@ -189,7 +189,7 @@ export default function Setup() {
         }
       }
       void queryClient.invalidateQueries({ queryKey: myProfileKey(userId) });
-      go(3);
+      go(2);
     } catch {
       setError("Konnte nicht gespeichert werden — nochmal versuchen?");
     } finally {
@@ -241,15 +241,15 @@ export default function Setup() {
             {/* Animated step card */}
             <div ref={cardEl!} class="min-h-[18rem]">
               <Switch>
-                {/* ── Step 1 · Avatar ── */}
-                <Match when={step() === 1}>
+                {/* ── Step 2 · Avatar ── */}
+                <Match when={step() === 2}>
                   <div class="text-center">
                     <h1 class="text-heading font-medium tracking-tight text-text">
-                      Willkommen bei Nakama
+                      Gib dir ein Gesicht
                     </h1>
                     <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-                      Gib dir ein Gesicht — oder klick einfach auf Weiter und
-                      hol's später im Profil nach.
+                      Ein Profilbild — oder klick einfach auf Weiter und hol's
+                      später im Profil nach.
                     </p>
                     <div class="mt-8 flex flex-col items-center gap-4">
                       <Avatar
@@ -282,14 +282,15 @@ export default function Setup() {
                   </div>
                 </Match>
 
-                {/* ── Step 2 · Identity ── */}
-                <Match when={step() === 2}>
+                {/* ── Step 1 · Identity ── */}
+                <Match when={step() === 1}>
                   <div>
                     <h1 class="text-center text-heading font-medium tracking-tight text-text">
-                      Wie sollen dich andere sehen?
+                      Willkommen bei Nakama
                     </h1>
                     <p class="mx-auto mt-2 max-w-xs text-center text-body text-text-muted">
-                      Der Anzeigename steht überall; der @handle ist eindeutig.
+                      Wie sollen dich andere sehen? Der Anzeigename steht
+                      überall, der @handle ist eindeutig.
                     </p>
                     <div class="mt-8 space-y-4">
                       <label class="block">
@@ -399,16 +400,16 @@ export default function Setup() {
 
               <Switch>
                 <Match when={step() === 1}>
-                  <Button variant="primary" onClick={() => go(2)}>
-                    Weiter
-                  </Button>
-                </Match>
-                <Match when={step() === 2}>
                   <Button
                     variant="primary"
                     disabled={!handleOk() || checking() || committing()}
                     onClick={commitIdentity}
                   >
+                    Weiter
+                  </Button>
+                </Match>
+                <Match when={step() === 2}>
+                  <Button variant="primary" onClick={() => go(3)}>
                     Weiter
                   </Button>
                 </Match>
