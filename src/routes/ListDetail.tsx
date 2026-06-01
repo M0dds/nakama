@@ -287,6 +287,7 @@ export default function ListDetail() {
                 listId={data().id}
                 shortCode={data().shortCode}
                 initialName={data().name}
+                isOwner={data().isOwner}
               />
             )}
           </Show>

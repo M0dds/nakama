@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Crown, Mail, X } from "lucide-solid";
+import { Crown, Mail, UserMinus, X } from "lucide-solid";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
@@ -11,6 +11,7 @@ import {
   listInvitationsOptions,
   listMembersKey,
   listMembersOptions,
+  removeMember,
   revokeInvitation,
   transferOwnership,
 } from "@/lib/queries/sharing";
@@ -146,6 +147,22 @@ export function MembersModule(props: {
     onError: () => setTransferConfirmId(null),
   }));
 
+  // ── Remove member (owner-only, per-row → ConfirmDialog) ────────────────
+  const [removeConfirmId, setRemoveConfirmId] = createSignal<string | null>(
+    null,
+  );
+  const removeMut = createMutation(() => ({
+    mutationFn: (userId: string) =>
+      removeMember({ listId: props.listId, userId }),
+    onSuccess: (_d, userId) => {
+      const m = members.data?.find((x) => x.userId === userId);
+      setRemoveConfirmId(null);
+      toast(m ? `${m.name} wurde entfernt.` : "Mitglied entfernt.");
+      refreshShared();
+    },
+    onError: () => setRemoveConfirmId(null),
+  }));
+
   return (
     <div>
       {/* Roster */}
@@ -202,6 +219,21 @@ export function MembersModule(props: {
                     <Crown class="size-3.5" strokeWidth={1.75} />
                   </button>
                 </Show>
+
+                {/* Remove member — owner only, on co-members' rows. Opens the
+                    removal ConfirmDialog (rendered once, after the roster). */}
+                <Show when={props.isOwner && !m.isMe && m.role !== "owner"}>
+                  <button
+                    type="button"
+                    aria-label={`${m.name} entfernen`}
+                    title="Mitglied entfernen"
+                    disabled={removeMut.isPending}
+                    onClick={() => setRemoveConfirmId(m.userId)}
+                    class="inline-flex size-6 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent disabled:opacity-50"
+                  >
+                    <UserMinus class="size-3.5" strokeWidth={1.75} />
+                  </button>
+                </Show>
               </li>
             )}
           </For>
@@ -224,6 +256,23 @@ export function MembersModule(props: {
           if (id) transferMut.mutate(id);
         }}
         onClose={() => setTransferConfirmId(null)}
+      />
+
+      {/* Remove member — one dialog, driven by the row that armed it. */}
+      <ConfirmDialog
+        open={removeConfirmId() !== null}
+        kicker="Mitglied entfernen"
+        title={
+          members.data?.find((m) => m.userId === removeConfirmId())?.name ?? ""
+        }
+        body="Dieses Mitglied verliert den Zugriff auf die Liste. Es kann später erneut eingeladen werden."
+        confirmLabel="Entfernen"
+        pending={removeMut.isPending}
+        onConfirm={() => {
+          const id = removeConfirmId();
+          if (id) removeMut.mutate(id);
+        }}
+        onClose={() => setRemoveConfirmId(null)}
       />
 
       {/* Invite — owner only */}

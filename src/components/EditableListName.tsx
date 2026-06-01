@@ -14,10 +14,11 @@ import {
  * in the same heading typo. Enter / blur commits, Escape reverts. Empty
  * names are silently rejected (no destructive write).
  *
- * Any list member may rename — RLS (lists_update_member) enforces it. The
- * mutation `.select()`s the persisted name back; if RLS silently blocked
- * the write (0 rows, no error), the returned name is null and we revert
- * the optimistic patch.
+ * Owner-only (PRELAUNCH-2): only the list creator may rename — RLS
+ * (lists_update_owner) enforces it, and we hide the edit affordance for
+ * non-owners so they never hit a silent revert. The mutation `.select()`s
+ * the persisted name back; if RLS silently blocked the write (0 rows, no
+ * error) the returned name is null and we revert the optimistic patch.
  */
 export function EditableListName(props: {
   /** UUID — what renameList's underlying UPDATE filters on. */
@@ -25,6 +26,8 @@ export function EditableListName(props: {
   /** URL-stable identifier — what listQueryKey is keyed on. */
   shortCode: string;
   initialName: string;
+  /** Only the owner gets the inline-edit affordance; others see it read-only. */
+  isOwner: boolean;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = createSignal(props.initialName);
@@ -118,6 +121,16 @@ export function EditableListName(props: {
 
   return (
     <Show
+      when={props.isOwner}
+      fallback={
+        // Non-owner: read-only heading, same typo as the editable display so
+        // the title baseline is identical whether or not you can rename.
+        <span class="-ml-1 inline-flex items-center px-1 text-heading font-medium tracking-tight text-text">
+          {name()}
+        </span>
+      }
+    >
+    <Show
       when={editing()}
       fallback={
         // No border on the display button — the input below uses `ring`
@@ -157,6 +170,7 @@ export function EditableListName(props: {
         class="-ml-1 w-full max-w-md rounded-xs bg-transparent px-1 text-heading font-medium tracking-tight text-text outline-none ring-1 ring-accent"
         autofocus
       />
+    </Show>
     </Show>
   );
 }
