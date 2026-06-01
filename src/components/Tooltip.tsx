@@ -44,6 +44,10 @@ export function Tooltip(props: {
   /** Merged into the wrapper — e.g. flex positioning when the trigger was a
    *  flex child (shrink-0 / self-center). */
   class?: string;
+  /** Rich content instead of the plain mono chip — renders in a surface card
+   *  (used by UserChip's identity card). `label` is still used for the a11y
+   *  role/fallback. */
+  content?: JSX.Element;
 }) {
   let triggerEl: HTMLSpanElement | undefined;
   let tooltipEl: HTMLSpanElement | undefined;
@@ -106,9 +110,13 @@ export function Tooltip(props: {
               left: `${pos()?.left ?? -9999}px`,
               top: `${pos()?.top ?? -9999}px`,
             }}
-            class="pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
+            class={
+              props.content
+                ? "pointer-events-none fixed z-50 rounded-sm border border-border bg-surface px-3 py-2.5 shadow-floating"
+                : "pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
+            }
           >
-            {props.label}
+            {props.content ?? props.label}
           </span>
         </Portal>
       </Show>

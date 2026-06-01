@@ -41,6 +41,7 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
 import { Skeleton } from "@/components/Skeleton";
 import { Pager } from "@/components/Pager";
+import { UserChip } from "@/components/UserChip";
 
 /**
  * Home dashboard — three derived modules, layout mirrors Logbook's `/`:
@@ -795,14 +796,37 @@ function EventIcon(props: { ev: LogbookEvent }) {
   );
 }
 
+/** The actor's name in a Logbuch sentence: plain "Du" for self, plain "Jemand"
+ *  for an unresolved actor, else a UserChip whose hover card reveals avatar +
+ *  display name + @handle (anti-spoofing: the @handle is the unique identity). */
+function ActorName(props: {
+  isSelf: boolean;
+  name: string | null;
+  handle: string | null;
+  avatarUrl: string | null;
+}) {
+  if (props.isSelf) return <span class="font-medium">Du</span>;
+  if (!props.name) return <span class="font-medium">Jemand</span>;
+  return (
+    <UserChip name={props.name} handle={props.handle} avatarUrl={props.avatarUrl}>
+      <span class="font-medium underline decoration-border decoration-dotted underline-offset-2">
+        {props.name}
+      </span>
+    </UserChip>
+  );
+}
+
 /** "Du hast Frieren E07 gesehen." / "@aki hat One Piece E37–E1163 gesehen."
  *  Read-only — the Logbuch is a pure indicator, nothing links anywhere. */
 function WatchSentence(props: { ev: WatchBundle }) {
   return (
     <>
-      <span class="font-medium">
-        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
-      </span>{" "}
+      <ActorName
+        isSelf={props.ev.isSelf}
+        name={props.ev.actorName}
+        handle={props.ev.actorHandle}
+        avatarUrl={props.ev.actorAvatarUrl}
+      />{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span>{" "}
       <span class="font-mono text-mini uppercase tracking-wider">
@@ -817,9 +841,12 @@ function WatchSentence(props: { ev: WatchBundle }) {
 function ListAddSentence(props: { ev: ListAddEvent }) {
   return (
     <>
-      <span class="font-medium">
-        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
-      </span>{" "}
+      <ActorName
+        isSelf={props.ev.isSelf}
+        name={props.ev.actorName}
+        handle={props.ev.actorHandle}
+        avatarUrl={props.ev.actorAvatarUrl}
+      />{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span> zu{" "}
       <span class="font-medium">{props.ev.listName}</span> hinzugefügt.
@@ -846,14 +873,24 @@ function MissedSentence(props: { ev: MissedEvent }) {
 function TransferSentence(props: { ev: TransferEvent }) {
   return (
     <>
-      <span class="font-medium">
-        {props.ev.isSelf ? "Du" : props.ev.actorName ?? "Jemand"}
-      </span>{" "}
+      <ActorName
+        isSelf={props.ev.isSelf}
+        name={props.ev.actorName}
+        handle={props.ev.actorHandle}
+        avatarUrl={props.ev.actorAvatarUrl}
+      />{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.listName}</span> an{" "}
-      <span class="font-medium">
-        {props.ev.recipientIsMe ? "dich" : props.ev.recipientName ?? "Jemand"}
-      </span>{" "}
+      {props.ev.recipientIsMe ? (
+        <span class="font-medium">dich</span>
+      ) : (
+        <ActorName
+          isSelf={false}
+          name={props.ev.recipientName}
+          handle={props.ev.recipientHandle}
+          avatarUrl={props.ev.recipientAvatarUrl}
+        />
+      )}{" "}
       übergeben.
     </>
   );

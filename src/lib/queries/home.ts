@@ -107,6 +107,9 @@ interface BaseLogbookEvent {
   ts: string; // ISO — sort key
   actorUserId: string;
   actorName: string | null;
+  /** Bare "@username" for the hover identity card (UserChip). Null for self /
+   *  actor-less / unresolved. */
+  actorHandle: string | null;
   /** Co-member actor's profile picture for the feed's left-slot avatar. Null
    *  for self-events and the actor-less `missed` nudge (those keep a bare
    *  kind icon). */
@@ -157,6 +160,8 @@ export interface TransferEvent extends BaseLogbookEvent {
   listShortCode: string;
   listName: string;
   recipientName: string | null;
+  recipientHandle: string | null;
+  recipientAvatarUrl: string | null;
   recipientIsMe: boolean;
 }
 
@@ -637,6 +642,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       episodeCount: b.episode_count,
       actorUserId: b.actor_user_id,
       actorName: actor?.name ?? null,
+      actorHandle: actor?.handle ?? null,
       actorAvatarUrl: actor?.avatarUrl ?? null,
       isSelf,
     });
@@ -663,6 +669,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       listName: a.lists.name,
       actorUserId: a.added_by_user_id,
       actorName: actor?.name ?? null,
+      actorHandle: actor?.handle ?? null,
       actorAvatarUrl: actor?.avatarUrl ?? null,
       isSelf,
     });
@@ -685,6 +692,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       episodeNumber: c.episodeNumber,
       actorUserId: currentUserId,
       actorName: null,
+      actorHandle: null,
       actorAvatarUrl: null,
       isSelf: false,
     });
@@ -698,6 +706,8 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     const initiator = isFromMe || !t.from_user_id
       ? undefined
       : actors.get(t.from_user_id);
+    const recipient =
+      isToMe || !t.to_user_id ? undefined : actors.get(t.to_user_id);
     events.push({
       kind: "ownership_transfer",
       eventId: `t:${t.id}`,
@@ -707,10 +717,12 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       listName: t.lists.name,
       actorUserId: t.from_user_id ?? "",
       actorName: initiator?.name ?? null,
+      actorHandle: initiator?.handle ?? null,
       actorAvatarUrl: initiator?.avatarUrl ?? null,
       isSelf: isFromMe,
-      recipientName:
-        isToMe || !t.to_user_id ? null : actors.get(t.to_user_id)?.name ?? null,
+      recipientName: recipient?.name ?? null,
+      recipientHandle: recipient?.handle ?? null,
+      recipientAvatarUrl: recipient?.avatarUrl ?? null,
       recipientIsMe: isToMe,
     });
   }
@@ -787,6 +799,10 @@ interface ActorProfile {
   /** display_name preferred, then "@username", else null (→ UI falls back
    *  to "Jemand"). */
   name: string | null;
+  /** The bare "@username" (or null) — carried alongside `name` so the hover
+   *  identity card can show the unique handle even when `name` is a display
+   *  name. */
+  handle: string | null;
   avatarUrl: string | null;
 }
 
@@ -809,9 +825,11 @@ async function actorProfiles(
   for (const p of data ?? []) {
     const username = p.username as string | null;
     const displayName = p.display_name as string | null;
+    const handle = username ? `@${username}` : null;
     map.set(p.user_id as string, {
       // Display name preferred app-wide; @handle is the fallback.
-      name: displayName ?? (username ? `@${username}` : null),
+      name: displayName ?? handle,
+      handle,
       avatarUrl: (p.avatar_url as string | null) ?? null,
     });
   }
