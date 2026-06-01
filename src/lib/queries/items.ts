@@ -110,30 +110,29 @@ export async function addItemToList(input: {
   } else if (source.releaseDate) {
     metadata.releaseDate = source.releaseDate;
   }
-  const { data: item, error: itemError } = await supabase
-    .from("items")
-    .upsert(
-      {
-        source: source.source,
-        source_id: source.sourceId,
-        type: source.type,
-        title: source.title,
-        cover_url: source.coverUrl,
-        metadata,
-      },
-      { onConflict: "source,source_id" },
-    )
-    .select("id")
-    .single();
+  // Direct items writes are locked down (PRELAUNCH-1) — the catalog upsert
+  // runs through the DEFINER `upsert_item` RPC, which inserts a new row or, on
+  // a (source, source_id) conflict, returns the existing id WITHOUT clobbering
+  // the first writer's title/cover/metadata (so a re-add no longer wipes
+  // enrichment metadata like episodesFetchedAt — a latent bug in the old
+  // upsert-overwrites-all behaviour).
+  const { data: itemId, error: itemError } = await supabase.rpc("upsert_item", {
+    _source: source.source,
+    _source_id: source.sourceId,
+    _type: source.type,
+    _title: source.title,
+    _cover_url: source.coverUrl,
+    _metadata: metadata,
+  });
 
-  if (itemError || !item) {
+  if (itemError || !itemId) {
     throw itemError ?? new Error("Item-Upsert fehlgeschlagen.");
   }
 
   // Step 2 — link to the list. Unique-violation = already in list → success.
   const { error: linkError } = await supabase.from("list_items").insert({
     list_id: input.listId,
-    item_id: item.id,
+    item_id: itemId,
     added_by_user_id: input.userId,
   });
 
@@ -152,9 +151,11 @@ export async function setItemReleaseDate(
   releaseDate: string,
 ): Promise<void> {
   const next = { ...(metadata ?? {}), releaseDate };
-  const { error } = await supabase
-    .from("items")
-    .update({ metadata: next })
-    .eq("id", itemId);
+  // Direct items writes are locked down (PRELAUNCH-1) — metadata goes through
+  // the DEFINER `set_item_metadata` RPC (replace-whole; caller builds the merge).
+  const { error } = await supabase.rpc("set_item_metadata", {
+    _item_id: itemId,
+    _metadata: next,
+  });
   if (error) throw error;
 }
