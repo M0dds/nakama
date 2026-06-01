@@ -10,7 +10,6 @@ import { Navigate, useNavigate } from "@solidjs/router";
 import { createQuery, useQueryClient } from "@tanstack/solid-query";
 import { Check, ImagePlus, Loader2, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
-import { useToast } from "@/lib/toast";
 import {
   checkUsernameAvailable,
   completeOnboarding,
@@ -45,7 +44,9 @@ export default function Setup() {
   const auth = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const toast = useToast();
+  // Inline errors, not toasts: /setup lives outside the AppShell, so there's
+  // no ToastProvider in the tree here.
+  const [error, setError] = createSignal<string | null>(null);
 
   const profileQ = createQuery(() => ({
     ...myProfileOptions(auth.user()!),
@@ -119,6 +120,7 @@ export default function Setup() {
     setCropOpen(false);
     const userId = auth.user()?.id;
     if (!userId) return;
+    setError(null);
     setUploading(true);
     try {
       const url = await uploadAvatar({ userId, file });
@@ -127,7 +129,7 @@ export default function Setup() {
       setAvatarUrl(url);
       void queryClient.invalidateQueries({ queryKey: myProfileKey(userId) });
     } catch {
-      toast("Avatar konnte nicht gespeichert werden.");
+      setError("Avatar konnte nicht gespeichert werden.");
     } finally {
       setUploading(false);
     }
@@ -169,6 +171,7 @@ export default function Setup() {
     if (!handleOk() || committing()) return;
     const userId = auth.user()?.id;
     if (!userId) return;
+    setError(null);
     setCommitting(true);
     try {
       await updateDisplayName({
@@ -188,7 +191,7 @@ export default function Setup() {
       void queryClient.invalidateQueries({ queryKey: myProfileKey(userId) });
       go(3);
     } catch {
-      toast("Konnte nicht gespeichert werden — nochmal versuchen?");
+      setError("Konnte nicht gespeichert werden — nochmal versuchen?");
     } finally {
       setCommitting(false);
     }
@@ -198,13 +201,14 @@ export default function Setup() {
     if (committing()) return;
     const userId = auth.user()?.id;
     if (!userId) return;
+    setError(null);
     setCommitting(true);
     try {
       await completeOnboarding(userId);
       await queryClient.invalidateQueries({ queryKey: myProfileKey(userId) });
       navigate("/", { replace: true });
     } catch {
-      toast("Konnte nicht abgeschlossen werden — nochmal versuchen?");
+      setError("Konnte nicht abgeschlossen werden — nochmal versuchen?");
       setCommitting(false);
     }
   };
@@ -376,8 +380,14 @@ export default function Setup() {
               </Switch>
             </div>
 
+            <Show when={error()}>
+              <p role="status" class="mt-6 text-center text-body text-accent">
+                {error()}
+              </p>
+            </Show>
+
             {/* Footer controls */}
-            <div class="mt-10 flex items-center justify-between gap-3">
+            <div class="mt-6 flex items-center justify-between gap-3">
               <Show
                 when={step() > 1}
                 fallback={
