@@ -22,6 +22,12 @@ export async function signInWithDiscord(): Promise<{ error?: string }> {
     provider: "discord",
     options: {
       redirectTo: callbackUrl(),
+      // Explicitly request the verified email — it's the linchpin of the auth
+      // model: Supabase auto-links the email identity to this Discord user, so
+      // a magic link to that same address recovers INTO the same account. Also
+      // what we show on the profile. (Discord's default scope can change; pin
+      // it.)
+      scopes: "identify email",
     },
   });
   if (error) return { error: `Discord-Login fehlgeschlagen: ${error.message}` };
