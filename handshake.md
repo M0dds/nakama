@@ -276,7 +276,7 @@ War: geführte Tour über die `Tooltip`-Primitive beim ersten Login. **Gestriche
 - **Status-Control für Movies/Games** (`item_history`-Table) — jetzt Teil von Thema 1b/1c (Filme/Spiele).
 - **Newest-Episode-Title-Lag.** Jikan/MAL + AniList `streamingEpisodes` hinken 1-3 Wochen hinter Air-Date; UI zeigt „Name der Folge ist noch nicht bekannt"-Fallback bis zum nächsten 12 h Stale-Refresh. Quellen-Issue.
 - **Manga-Kapitel-Titel.** MangaDex-Coverage patchy für lizenzierte Serien (One Piece ~6 EN-Titel insgesamt). Best-effort akzeptiert.
-- **Long-anime PostgREST-Cap.** `GAP_QUERY_LIMIT=5000`; bei 5000+ Folgen (extrem selten) fehlt das letzte Drittel.
+- **Long-anime Titel-Cap (Supabase `db-max-rows`=1000).** `selectTitleGaps`' `.limit(5000)` wird vom Hard-Cap auf 1000 überstimmt (§Gotchas → Daten/RLS) → Episodentitel jenseits Folge 1000 bleiben leer. Titel sind best-effort, daher zurückgestellt; echte Lösung wäre `.range()`-Chunking der Gap-Query. (Das Mitseher-Auge hatte denselben Cap — gefixt durch Per-Seiten-Scope, `coWatchersOptions`.)
 
 ### Bekannte tech-debt
 
@@ -327,7 +327,7 @@ Vollständig in `CLAUDE.md`. Operativ wichtig: **Dev** `npm run dev` (Port 5173,
 
 ### Daten / RLS
 
-- **PostgREST 1000-Row-Cap** auf SELECT ohne explizites `.limit()`. Bei langlaufenden Shows explizit `.limit(5000)` setzen (siehe `GAP_QUERY_LIMIT`). Hatten silent-truncate auf den neuesten ~100 Folgen, weil das Bulk-Upsert deren Titel gar nicht erst in der Gap-Liste hatte.
+- **PostgREST/Supabase HARTER 1000-Row-Cap (`db-max-rows`).** ACHTUNG, frühere Notiz war falsch: ein explizites `.limit(5000)` **hebt den Cap NICHT auf** — Supabase erzwingt einen serverseitigen Hard-Cap von **1000 Zeilen**, der jedes größere `.limit()` nach unten überstimmt (empirisch bestätigt 2026-06-01: das Mitseher-Auge auf One Piece brach exakt bei Folge 1000 ab, obwohl `coWatchersOptions` `.limit(5000)` trug). **Für >1000 Zeilen: NICHT auf ein großes `.limit()` verlassen** — entweder per `.range()` in ≤1000er-Chunks paginieren, ODER (besser) die Query auf das sichtbare Fenster scopen (`.in("episode_id", visibleIds)`, wie `episodesQueryOptions` + jetzt `coWatchersOptions`). `count: exact, head: true`-Heads sind NICHT betroffen (zählen, liefern keine Zeilen) — darum sahen A's eigener Fortschritt (Head-Count) + sichtbare Seiten korrekt aus, nur B's Voll-Fetch des Auges nicht. **Bekannt noch betroffen:** `selectTitleGaps` (`episodes.ts`, `GAP_QUERY_LIMIT=5000`) ist real bei 1000 gekappt → Episodentitel jenseits Folge 1000 bleiben leer (Titel sind ohnehin best-effort, daher zurückgestellt).
 - **Bulk Upsert ist immer schneller als per-row UPDATE-Loop.** 1100+ Rows: ~5 s vs ~110 s. Per-row → tab tot, kein Update committed. Pattern: `storeEpisodes`, `enrichJikanTitles`, `enrichMangaDexTitles`.
 - **Cross-Cutting Cache-Fan-out:** jede Mutation die `itemCount` oder Title/Watch-Beziehung ändert, MUSS `listsQueryKey` + `["list"]`-Prefix invalidieren. Episode-Mutations zusätzlich `episodesQueryKey`. Episode-Realtime in `/item` invalidiert auch List-Keys, sonst updaten Partner-Ticks die Badges auf nicht-gemounteten /lists-Seiten nicht.
 - **TITLE_ENRICHMENT_VERSION Pattern für one-time backfill.** Items.metadata trägt Version-Zahl; bei Logic-Change bumpen → alle Items kriegen einmaligen Retry beim nächsten Visit, unabhängig vom 12 h Stale-Gate. Beispiel: v2 hatte per-row-UPDATE-Loop der für lange Anime crashte, v3 bumpt + bulk-upsert.
