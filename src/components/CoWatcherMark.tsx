@@ -50,6 +50,13 @@ export function CoWatcherMark(props: { watchers: CoWatcher[] }) {
                     <Avatar handle={w.name} avatarUrl={w.avatarUrl} size={24} />
                     <div class="min-w-0">
                       <p class="truncate text-mini text-text">{w.name}</p>
+                      {/* The unique @handle — the anti-spoof identity. Skipped
+                          when it just repeats the display label. */}
+                      <Show when={w.handle && w.handle !== w.name}>
+                        <p class="truncate font-mono text-mini text-text-muted">
+                          {w.handle}
+                        </p>
+                      </Show>
                       <p class="font-mono text-mini text-text-muted">
                         {w.timeLabel}
                       </p>

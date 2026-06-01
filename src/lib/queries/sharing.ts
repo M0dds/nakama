@@ -74,6 +74,8 @@ export interface CoWatcher {
   userId: string;
   /** Display name preferred, else @handle, else "Jemand". */
   name: string;
+  /** Bare "@username" (or null) for the hover identity card (UserChip). */
+  handle: string | null;
   avatarUrl: string | null;
   /** Pre-formatted relative time ("gestern", "vor 2 Std.", "12.05."). */
   timeLabel: string;
@@ -364,6 +366,7 @@ async function buildCoWatcherMap(
     (map[r.episode_id] ??= []).push({
       userId: r.user_id,
       name: p?.name ?? "Jemand",
+      handle: p?.handle ?? null,
       avatarUrl: p?.avatarUrl ?? null,
       timeLabel: relTime(r.watched_at),
     });
@@ -482,6 +485,7 @@ export function movieCoWatchersOptions(
         return {
           userId: r.user_id,
           name: p?.name ?? "Jemand",
+          handle: p?.handle ?? null,
           avatarUrl: p?.avatarUrl ?? null,
           timeLabel: relTime(r.updated_at),
         };
