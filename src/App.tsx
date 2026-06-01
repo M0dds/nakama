@@ -20,7 +20,7 @@ export default function App(props: ParentProps) {
     <>
       <div
         aria-hidden
-        class="grain-layer pointer-events-none fixed inset-0 z-50 opacity-[0.025] mix-blend-multiply dark:opacity-[0.04] dark:mix-blend-screen"
+        class="grain-layer pointer-events-none fixed inset-0 z-50 opacity-[0.04] mix-blend-multiply dark:opacity-[0.06] dark:mix-blend-screen"
       />
       <div class="relative min-h-svh">
         <ErrorBoundary
