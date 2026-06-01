@@ -25,6 +25,7 @@ export function UserChip(props: {
   return (
     <Tooltip
       label={props.name}
+      openDelay={300}
       content={
         <div class="flex items-center gap-2.5">
           <Avatar
@@ -37,7 +38,7 @@ export function UserChip(props: {
               {props.name}
             </div>
             <Show when={props.handle && props.handle !== props.name}>
-              <div class="whitespace-nowrap font-mono text-mini text-text-muted">
+              <div class="-mt-0.5 whitespace-nowrap font-mono text-mini text-text-muted">
                 {props.handle}
               </div>
             </Show>
