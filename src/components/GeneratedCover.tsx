@@ -1,6 +1,7 @@
-import { createMemo } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { THEMES, getThemeMeta, type ThemeId, type ThemeMode } from "@/lib/themes";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
+import { fadeOnLoad } from "@/lib/image-fade";
 
 /**
  * GeneratedCover — the default list cover when no custom image is uploaded.
@@ -120,5 +121,35 @@ export function GeneratedCover(props: { seed: number; class?: string }) {
       // eslint-disable-next-line solid/no-innerhtml
       innerHTML={svg()}
     />
+  );
+}
+
+/**
+ * A list's cover: the owner-uploaded custom image if present, else the
+ * generated themed cover from the seed. `class` sizes the box (e.g.
+ * `aspect-square w-full overflow-hidden rounded-sm`) and applies to both
+ * branches so swapping a custom cover in/out doesn't shift layout.
+ */
+export function ListCover(props: {
+  coverUrl: string | null;
+  seed: number;
+  class?: string;
+  alt?: string;
+}) {
+  return (
+    <Show
+      when={props.coverUrl}
+      fallback={<GeneratedCover seed={props.seed} class={props.class} />}
+    >
+      {(url) => (
+        <img
+          ref={fadeOnLoad}
+          src={url()}
+          alt={props.alt ?? ""}
+          loading="lazy"
+          class={`${props.class ?? ""} object-cover`}
+        />
+      )}
+    </Show>
   );
 }

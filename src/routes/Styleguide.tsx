@@ -668,7 +668,7 @@ export default function Styleguide() {
                 <div>
                   <GeneratedCover
                     seed={seed}
-                    class="aspect-square w-full overflow-hidden rounded-sm border border-border"
+                    class="aspect-square w-full overflow-hidden"
                   />
                   <p class="mt-1 truncate font-mono text-mini text-text-muted">
                     {spec.themeId} · {spec.pattern}
