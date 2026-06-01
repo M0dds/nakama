@@ -34,6 +34,7 @@ import { SelectMenu } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
 import { PinButton } from "@/components/PinButton";
 import { DragHandle } from "@/components/DragHandle";
+import { GeneratedCover, coverSpecFromSeed } from "@/components/GeneratedCover";
 
 /**
  * Styleguide — the source of truth for every visual decision. New primitives
@@ -646,6 +647,36 @@ export default function Styleguide() {
             good="Tooltip mit Grund"
             why="Disabled-State braucht einen Tooltip, der den Grund erklärt (außer der Grund ist visuell offensichtlich)."
           />
+        </div>
+      </Section>
+
+      {/* ── 17 · List Covers (generiert) ─────────────────────────── */}
+      <Section number="17" label="List Covers (generiert)">
+        <p class="mb-4 text-body text-text-muted">
+          Default-Cover für Listen ohne eigenes Bild: Inline-SVG aus einem{" "}
+          <code class="font-mono text-mini">cover_seed</code> → deterministisch
+          zufälliges Theme + japanisch-geometrisches Muster (Seigaiha-Wellen /
+          Shippō-Kreise). Kein Storage, immer scharf, folgt Light/Dark
+          automatisch — toggle den Mode oben in Sektion 01 und sieh zu, wie alle
+          Cover umfärben.
+        </p>
+        <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8">
+          <For each={Array.from({ length: 24 }, (_, i) => i)}>
+            {(seed) => {
+              const spec = coverSpecFromSeed(seed);
+              return (
+                <div>
+                  <GeneratedCover
+                    seed={seed}
+                    class="aspect-square w-full overflow-hidden rounded-sm border border-border"
+                  />
+                  <p class="mt-1 truncate font-mono text-mini text-text-muted">
+                    {spec.themeId} · {spec.pattern}
+                  </p>
+                </div>
+              );
+            }}
+          </For>
         </div>
       </Section>
     </main>
