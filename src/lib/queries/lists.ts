@@ -648,28 +648,27 @@ export async function moveListItem(input: {
 }
 
 /**
- * Toggle the per-user tracks_home flag. Off = archive mode for the caller
- * only — items in this list drop off Home / Calendar / Logbook for them.
- * Other members keep their own setting.
+ * Toggle the per-user tracks_home flag. Archive (off) = items in this list
+ * drop off Home / Calendar / Logbook for the caller only; other members keep
+ * their own setting.
  *
- * `.select()` to detect silent RLS blocks (0 rows updated, no error).
+ * Routes through the `set_list_tracking` DEFINER RPC, NOT a direct UPDATE: the
+ * list_members UPDATE policy is owner-only, so a member's direct write was
+ * silently RLS-blocked and the toggle bounced back. The RPC self-scopes to the
+ * caller's own membership (mirrors set_list_pin). Returns the new tracks_home,
+ * or null when the caller isn't a member of the list (so a no-op still reverts).
  */
 export async function setListTracking(
   user: User,
   input: { listId: string; enabled: boolean },
 ): Promise<{ tracksHome: boolean | null }> {
-  const { data, error } = await supabase
-    .from("list_members")
-    .update({ tracks_home: input.enabled })
-    .eq("list_id", input.listId)
-    .eq("user_id", user.id)
-    .select("tracks_home")
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("set_list_tracking", {
+    _user_id: user.id,
+    _list_id: input.listId,
+    _enabled: input.enabled,
+  });
   if (error) throw error;
-  return {
-    tracksHome:
-      (data as { tracks_home: boolean } | null)?.tracks_home ?? null,
-  };
+  return { tracksHome: (data as boolean | null) ?? null };
 }
 
 /**
