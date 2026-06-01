@@ -410,7 +410,15 @@ export default function ItemDetail() {
     "font-mono text-mini uppercase tracking-wider text-text-muted";
 
   return (
-    <Show when={!notFound()} fallback={<NotFound kind="item" />}>
+    <Show
+      when={!notFound()}
+      fallback={
+        <NotFound
+          kind="item"
+          backHref={params.shortCode ? `/lists/${params.shortCode}` : "/"}
+        />
+      }
+    >
     <main class="w-full">
       <PageHeader
         kicker={
@@ -434,7 +442,7 @@ export default function ItemDetail() {
             {(data) => <span>{data().title}</span>}
           </Show>
         }
-        backHref={params.shortCode ? `/lists/${params.shortCode}` : "/lists"}
+        backHref={params.shortCode ? `/lists/${params.shortCode}` : "/"}
         aside={
           <Show when={item.data && (episodes.data?.watched ?? 0) > 0}>
             <ResetItemButton

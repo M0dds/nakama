@@ -12,7 +12,15 @@ import { PageHeader } from "@/components/PageHeader";
  * URL-Existenz nicht durch Trial-and-Error verifizierbar ist. Wir
  * erklären das hier NICHT — Erklärung wäre selbst schon ein Hinweis.
  */
-export function NotFound(props: { kind: "item" | "list" }) {
+export function NotFound(props: {
+  kind: "item" | "list";
+  /** Deep-link fallback for the back chevron (in-app arrivals return to the
+   *  real origin via history). Defaults per kind: an unknown item → Home (items
+   *  are reached from everywhere), an unknown list → the lists overview. */
+  backHref?: string;
+}) {
+  const backHref = () =>
+    props.backHref ?? (props.kind === "item" ? "/" : "/lists");
   return (
     <main class="w-full">
       <PageHeader
@@ -22,7 +30,7 @@ export function NotFound(props: { kind: "item" | "list" }) {
             ? "Eintrag nicht gefunden"
             : "Liste nicht gefunden"
         }
-        backHref="/lists"
+        backHref={backHref()}
       />
       <div class="max-w-2xl px-5 py-10">
         <Show when={props.kind === "item"}>

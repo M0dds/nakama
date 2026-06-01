@@ -1,4 +1,5 @@
 import { ErrorBoundary, type ParentProps } from "solid-js";
+import { useTrackNavigation } from "@/lib/navigation";
 
 /**
  * Root layout wrapper around every route. The grain overlay sits as a fixed
@@ -12,6 +13,9 @@ import { ErrorBoundary, type ParentProps } from "solid-js";
  * and surfaces the message so the actual fault is diagnosable.
  */
 export default function App(props: ParentProps) {
+  // Track in-app navigations so the back affordances know when history.back()
+  // is safe (stays in-app) vs. when to use a fallback href (deep-link).
+  useTrackNavigation();
   return (
     <>
       <div
