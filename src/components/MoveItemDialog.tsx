@@ -174,7 +174,7 @@ export function MoveItemDialog(props: Props) {
             there); the consistency makes both dialogs read as the same
             opening gesture. */}
         <div
-          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
             visible() ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -200,7 +200,7 @@ export function MoveItemDialog(props: Props) {
               type="button"
               onClick={props.onClose}
               aria-label="Schließen"
-              class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-text"
+              class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface dark:hover:bg-white/[0.07] hover:text-text"
             >
               <X class="size-4" strokeWidth={1.75} aria-hidden />
             </button>
@@ -233,7 +233,7 @@ export function MoveItemDialog(props: Props) {
                         type="button"
                         onClick={() => moveMut.mutate(l.id)}
                         disabled={moveMut.isPending}
-                        class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface disabled:cursor-default disabled:opacity-50"
+                        class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-50"
                       >
                         <span class="min-w-0 truncate text-body font-medium text-text">
                           {l.name}
