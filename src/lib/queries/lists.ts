@@ -41,6 +41,12 @@ export interface ListSummary {
   tracksHome: boolean;
   ownerId: string;
   createdAt: string;
+  /** Owner-uploaded custom cover (public storage URL). Null → render the
+   *  generated GeneratedCover from coverSeed instead. */
+  coverUrl: string | null;
+  /** Deterministic seed for the generated default cover (random theme +
+   *  pattern). Assigned by the DB default on insert. */
+  coverSeed: number;
   itemCount: number;
   memberCount: number;
   /** True when the caller is the list's creator. Used to gate the "Liste
@@ -111,12 +117,14 @@ interface RawListRow {
   is_shared: boolean;
   owner_id: string;
   created_at: string;
+  cover_url: string | null;
+  cover_seed: number;
   list_items: { count: number }[] | null;
   list_members: { count: number }[] | null;
 }
 
 const LIST_SELECT =
-  "id, short_code, name, description, is_shared, owner_id, created_at, list_items(count), list_members(count)";
+  "id, short_code, name, description, is_shared, owner_id, created_at, cover_url, cover_seed, list_items(count), list_members(count)";
 
 function toSummary(
   row: RawListRow,
@@ -132,6 +140,8 @@ function toSummary(
     tracksHome: membership.tracksHome,
     ownerId: row.owner_id,
     createdAt: row.created_at,
+    coverUrl: row.cover_url,
+    coverSeed: row.cover_seed,
     itemCount: embedCount(row.list_items),
     memberCount: embedCount(row.list_members),
     isOwner: row.owner_id === user.id,
@@ -745,4 +755,56 @@ export async function reorderListItems(input: {
     _ordered_list_item_ids: input.orderedListItemIds,
   });
   if (error) throw error;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// List covers — owner-uploaded custom image (overrides the generated cover).
+// Bucket + storage RLS from migration 20260601150000; only the list owner may
+// write (the bucket policy checks lists.owner_id against the <list_id> folder,
+// and the cover_url write rides the owner-only lists_update_owner policy).
+// ──────────────────────────────────────────────────────────────────────────
+
+export const MAX_COVER_BYTES = 10 * 1024 * 1024; // 10 MB (cropper recompresses)
+
+/** Upload a cropped cover image to the `list-covers` bucket, return its public
+ *  URL. Stable path `<list_id>/cover.<ext>` + upsert → re-upload overwrites in
+ *  place. `?v=<ts>` cache-busts so members fetch the new image. */
+export async function uploadListCover(input: {
+  listId: string;
+  file: File;
+}): Promise<string> {
+  const ext = (input.file.name.split(".").pop() || "jpg")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const path = `${input.listId}/cover.${ext || "jpg"}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("list-covers")
+    .upload(path, input.file, {
+      upsert: true,
+      contentType: input.file.type || "image/jpeg",
+      cacheControl: "3600",
+    });
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from("list-covers").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+/** Write lists.cover_url (owner only — guarded by lists_update_owner). Pass
+ *  null to clear the custom cover and fall back to the generated one.
+ *  `.select()` back to detect a silent RLS block (0 rows, no error). */
+export async function setListCover(input: {
+  listId: string;
+  coverUrl: string | null;
+}): Promise<{ coverUrl: string | null; blocked: boolean }> {
+  const { data, error } = await supabase
+    .from("lists")
+    .update({ cover_url: input.coverUrl })
+    .eq("id", input.listId)
+    .select("cover_url")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { coverUrl: null, blocked: true };
+  return { coverUrl: (data as { cover_url: string | null }).cover_url, blocked: false };
 }
