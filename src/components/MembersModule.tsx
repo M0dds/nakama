@@ -16,6 +16,7 @@ import {
 } from "@/lib/queries/sharing";
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/Button";
+import { UserChip } from "@/components/UserChip";
 
 /**
  * Mitglieder-Modul (03) on the list-detail page. The sharing surface:
@@ -159,21 +160,24 @@ export function MembersModule(props: {
                 <Avatar handle={m.name} avatarUrl={m.avatarUrl} size={32} />
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-body text-text">
-                    {m.name}
-                    {/* @handle inline right after the name, so the two read as
-                        one unit. Skipped when it's just the @-prefixed display
-                        name (magic-link users, where both derive from the email
-                        — no point showing "maria @maria"). */}
+                    {/* Self: just "Anzeigename · du" (you know your own handle).
+                        Others: the name carries the UserChip — handle on hover,
+                        not inline — so every co-member reads identically. */}
                     <Show
-                      when={
-                        m.handle &&
-                        m.handle !== m.name &&
-                        m.handle !== `@${m.name}`
+                      when={m.isMe}
+                      fallback={
+                        <UserChip
+                          name={m.name}
+                          handle={m.handle}
+                          avatarUrl={m.avatarUrl}
+                        >
+                          <span class="underline decoration-border decoration-dotted underline-offset-2">
+                            {m.name}
+                          </span>
+                        </UserChip>
                       }
                     >
-                      <span class="text-text-muted"> · {m.handle}</span>
-                    </Show>
-                    <Show when={m.isMe}>
+                      {m.name}
                       <span class="text-text-muted"> · du</span>
                     </Show>
                   </p>

@@ -44,11 +44,39 @@ export function Tooltip(props: {
   /** Merged into the wrapper — e.g. flex positioning when the trigger was a
    *  flex child (shrink-0 / self-center). */
   class?: string;
+  /** Rich content instead of the plain mono chip — renders in a surface card
+   *  (used by UserChip's identity card). `label` is still used for the a11y
+   *  role/fallback. */
+  content?: JSX.Element;
+  /** Delay (ms) before opening on hover. Default 0 (instant, for icon hints).
+   *  UserChip uses a short delay so a dense feed doesn't flash cards as the
+   *  pointer sweeps across names. Keyboard focus always opens instantly. */
+  openDelay?: number;
 }) {
   let triggerEl: HTMLSpanElement | undefined;
   let tooltipEl: HTMLSpanElement | undefined;
+  let openTimer: ReturnType<typeof setTimeout> | undefined;
   const [open, setOpen] = createSignal(false);
   const [pos, setPos] = createSignal<Pos | null>(null);
+
+  const openWithDelay = () => {
+    const delay = props.openDelay ?? 0;
+    if (!delay) {
+      setOpen(true);
+      return;
+    }
+    if (openTimer) clearTimeout(openTimer);
+    openTimer = setTimeout(() => setOpen(true), delay);
+  };
+  const close = () => {
+    if (openTimer) clearTimeout(openTimer);
+    openTimer = undefined;
+    setOpen(false);
+  };
+
+  onCleanup(() => {
+    if (openTimer) clearTimeout(openTimer);
+  });
 
   const reposition = () => {
     if (!triggerEl || !tooltipEl) return;
@@ -76,7 +104,7 @@ export function Tooltip(props: {
     // Tooltip is now in the DOM thanks to <Show when={open()}>. Solid
     // patches DOM before effects run, so refs are populated by now.
     reposition();
-    const close = () => setOpen(false);
+    // Any scroll/resize dismisses (closing also clears a pending open-timer).
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     onCleanup(() => {
@@ -89,10 +117,10 @@ export function Tooltip(props: {
     <span
       ref={triggerEl!}
       class={`relative inline-flex ${props.class ?? ""}`}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={openWithDelay}
+      onMouseLeave={close}
       onFocusIn={() => setOpen(true)}
-      onFocusOut={() => setOpen(false)}
+      onFocusOut={close}
     >
       {props.children}
       <Show when={open()}>
@@ -106,9 +134,13 @@ export function Tooltip(props: {
               left: `${pos()?.left ?? -9999}px`,
               top: `${pos()?.top ?? -9999}px`,
             }}
-            class="pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
+            class={
+              props.content
+                ? "pointer-events-none fixed z-50 rounded-sm border border-border bg-surface px-3 py-2.5 shadow-floating"
+                : "pointer-events-none fixed z-50 whitespace-nowrap rounded-xs bg-text px-2 py-1 font-mono text-mini uppercase tracking-wider text-bg shadow-floating"
+            }
           >
-            {props.label}
+            {props.content ?? props.label}
           </span>
         </Portal>
       </Show>
