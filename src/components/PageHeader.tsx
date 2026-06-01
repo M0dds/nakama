@@ -2,7 +2,7 @@ import type { JSX } from "solid-js";
 import { Show } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { ChevronLeft } from "lucide-solid";
-import { canGoBack } from "@/lib/navigation";
+import { goBack as runBack } from "@/lib/navigation";
 
 /**
  * Full-bleed instrument header shared across the app surface. Same component
@@ -37,15 +37,9 @@ export function PageHeader(props: {
   backHref?: string;
 }) {
   const navigate = useNavigate();
-  const goBack = () => {
-    // Context-aware back: if the user navigated here within the app, return to
-    // their actual origin via history.back(); otherwise (deep-link / fresh
-    // load) route to the fallback href. canGoBack() tracks real in-app
-    // navigations, so it never walks OUT of the app the way the old
-    // window.history.length heuristic could.
-    if (canGoBack()) window.history.back();
-    else if (props.backHref) navigate(props.backHref);
-  };
+  // Context-aware back (in-app origin via history, deep-link via fallback href).
+  // See src/lib/navigation.ts.
+  const goBack = () => runBack(navigate, props.backHref);
 
   return (
     <header class="relative flex items-end justify-between px-5 pb-3 pt-6">

@@ -9,7 +9,7 @@ import { createQuery } from "@tanstack/solid-query";
 import { ArrowLeft, Calendar, House, List, Mail, Plus, User } from "lucide-solid";
 import { NavButton } from "@/components/NavButton";
 import { useAuth } from "@/lib/auth";
-import { canGoBack } from "@/lib/navigation";
+import { goBack as runBack } from "@/lib/navigation";
 import { useToast } from "@/lib/toast";
 import { myInvitationsOptions } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
@@ -128,8 +128,7 @@ export function BottomNav(props: {
     if (!fallback) return;
     pulseBack();
     // In-app origin via history.back(); deep-link → the route's fallback.
-    if (canGoBack()) window.history.back();
-    else navigate(fallback);
+    runBack(navigate, fallback);
   };
 
   let pillEl: HTMLDivElement | undefined;
