@@ -128,16 +128,19 @@ async function storeEpisodes(item: ItemForFetch): Promise<void> {
   const { episodes, malId } = await fetchEpisodesForSource(item);
 
   if (episodes.length > 0) {
-    await supabase.from("episodes").upsert(
-      episodes.map((e) => ({
-        item_id: item.id,
+    // Direct episodes writes are locked down (PRELAUNCH-1) — the bulk upsert
+    // runs through the DEFINER `upsert_episodes` RPC (coalesces on conflict so
+    // it never nulls an existing title/air_date).
+    const { error } = await supabase.rpc("upsert_episodes", {
+      _item_id: item.id,
+      _rows: episodes.map((e) => ({
         season_number: e.seasonNumber,
         episode_number: e.episodeNumber,
         title: e.title,
         air_date: e.airDate,
       })),
-      { onConflict: "item_id,season_number,episode_number" },
-    );
+    });
+    if (error) throw error;
   }
 
   // Fill missing titles through the SAME backfill path the version gate
@@ -223,12 +226,17 @@ async function writeTitles(
   const updates = gaps.flatMap((n) => {
     const t = titles.get(n);
     if (!t) return [];
-    return [{ item_id: itemId, season_number: 1, episode_number: n, title: t }];
+    // No air_date here — the RPC coalesces on conflict, so it fills the title
+    // without nulling the episode's existing air_date.
+    return [{ season_number: 1, episode_number: n, title: t }];
   });
   if (updates.length > 0) {
-    await supabase
-      .from("episodes")
-      .upsert(updates, { onConflict: "item_id,season_number,episode_number" });
+    // Locked-down catalog write (PRELAUNCH-1) → DEFINER `upsert_episodes` RPC.
+    const { error } = await supabase.rpc("upsert_episodes", {
+      _item_id: itemId,
+      _rows: updates,
+    });
+    if (error) throw error;
   }
 }
 
@@ -245,10 +253,12 @@ async function stampEnrichment(
   if (opts.bumpVersion) extra.titleEnrichmentVersion = TITLE_ENRICHMENT_VERSION;
   if (opts.touchFetchedAt) extra.episodesFetchedAt = new Date().toISOString();
   if (Object.keys(extra).length === 0) return;
-  await supabase
-    .from("items")
-    .update({ metadata: { ...item.metadata, ...extra } })
-    .eq("id", item.id);
+  // Locked-down catalog write (PRELAUNCH-1) → DEFINER `set_item_metadata` RPC
+  // (replace-whole; we build the merged object here, as before).
+  await supabase.rpc("set_item_metadata", {
+    _item_id: item.id,
+    _metadata: { ...item.metadata, ...extra },
+  });
 }
 
 /**
