@@ -70,14 +70,20 @@ const STALE_MS = 1000 * 60 * 60 * 12; // 12 h — re-fetch ongoing schedules
  *        which silently dropped them) — finished/old shows like Naruto carry
  *        no air dates on AniList, so they found zero gaps and never got Jikan
  *        titles. Bump re-enriches every item once with the fixed query.
- *  (gap limit also caps storage at 5000 episodes/item — anything past
- *  that is on the same wishlist as anilist.ts MAX_EPISODES) */
-const TITLE_ENRICHMENT_VERSION = 4;
-/** Cap for the gap-detection SELECT. PostgREST's implicit default is 1000
- *  which silently lopped off the tail of long-running shows on the v2
- *  enrichment — we explicitly request more so the bulk-upsert below sees
- *  every gap that needs filling. */
-const GAP_QUERY_LIMIT = 5000;
+ *    5 — gap query PAGES with `.range()` instead of a single `.limit(5000)`.
+ *        The v3 "explicit limit" never actually worked: Supabase's hard 1000-
+ *        row cap overrides any larger limit, so One Piece's titles past episode
+ *        1000 stayed empty. Bump re-enriches long shows' tails. */
+const TITLE_ENRICHMENT_VERSION = 5;
+/** Page size for the gap-detection SELECT. Supabase enforces a HARD 1000-row
+ *  cap (db-max-rows) that overrides any larger `.limit()`, so we page through
+ *  the gaps with `.range()` in 1000-row chunks instead — a single big `.limit()`
+ *  silently stopped at 1000 and left every title past episode 1000 unfilled on
+ *  long shows (One Piece). */
+const GAP_PAGE_SIZE = 1000;
+/** Runaway guard on the gap pagination loop. Episodes per item are themselves
+ *  capped at MAX_EPISODES (2000, anilist.ts) → 2 pages suffice in practice. */
+const GAP_MAX_PAGES = 20;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Lazy fetch + upsert
@@ -189,29 +195,47 @@ interface EnrichResult {
 /** Aired/untitled gap episode-numbers for one item. `airedOnly` restricts to
  *  released episodes — MAL has no unaired titles either, so for anime an
  *  unaired gap isn't fillable. Manga passes false: chapters carry no air-date
- *  release model. Bounded by GAP_QUERY_LIMIT so long shows don't hit
- *  PostgREST's implicit 1000-row default (the v2-enrichment tail-loss bug). */
+ *  release model. Pages through the gaps with `.range()` (GAP_PAGE_SIZE chunks)
+ *  because Supabase's hard 1000-row cap overrides a larger `.limit()` — without
+ *  paging, long shows (One Piece) lost every title past episode 1000. */
 async function selectTitleGaps(
   itemId: string,
   airedOnly: boolean,
 ): Promise<number[]> {
-  let q = supabase
-    .from("episodes")
-    .select("episode_number")
-    .eq("item_id", itemId)
-    .is("title", null);
-  if (airedOnly) {
-    // Fillable = aired OR no-air-date. Finished/old shows (Naruto, Bleach)
-    // carry NULL air dates on AniList, but MAL HAS their titles — so we must
-    // include NULL here and only EXCLUDE known-future episodes. The previous
-    // `.lte("air_date", now)` dropped NULL rows too, so those shows found zero
-    // gaps → never fetched Jikan → titles stayed empty + the version gate
-    // closed. Mirrors the `(air_date is null or air_date <= now())` guard the
-    // mark/backfill RPCs use.
-    q = q.or(`air_date.is.null,air_date.lte.${new Date().toISOString()}`);
+  // One cutoff for the whole loop (not re-evaluated per page).
+  const now = new Date().toISOString();
+  const nums: number[] = [];
+  for (let page = 0; page < GAP_MAX_PAGES; page++) {
+    let q = supabase
+      .from("episodes")
+      .select("episode_number")
+      .eq("item_id", itemId)
+      .is("title", null);
+    if (airedOnly) {
+      // Fillable = aired OR no-air-date. Finished/old shows (Naruto, Bleach)
+      // carry NULL air dates on AniList, but MAL HAS their titles — so we must
+      // include NULL here and only EXCLUDE known-future episodes. The previous
+      // `.lte("air_date", now)` dropped NULL rows too, so those shows found zero
+      // gaps → never fetched Jikan → titles stayed empty + the version gate
+      // closed. Mirrors the `(air_date is null or air_date <= now())` guard the
+      // mark/backfill RPCs use.
+      q = q.or(`air_date.is.null,air_date.lte.${now}`);
+    }
+    // Stable order by episode_number (enrichment items are single-season →
+    // unique) so consecutive ranges never skip or repeat a row.
+    const from = page * GAP_PAGE_SIZE;
+    const { data, error } = await q
+      .order("episode_number", { ascending: true })
+      .range(from, from + GAP_PAGE_SIZE - 1);
+    // Throw on error → backfillTitles catches it and returns ok:false, leaving
+    // the version gate OPEN so the next visit retries (the old swallow-error
+    // path returned [] → "no gaps" → ok:true → gate closed, never retried).
+    if (error) throw error;
+    const batch = (data ?? []).map((g) => g.episode_number as number);
+    nums.push(...batch);
+    if (batch.length < GAP_PAGE_SIZE) break; // short page = last page
   }
-  const { data } = await q.limit(GAP_QUERY_LIMIT);
-  return (data ?? []).map((g) => g.episode_number as number);
+  return nums;
 }
 
 /** Bulk-upsert titles for the given gap episode-numbers. Single round-trip —
