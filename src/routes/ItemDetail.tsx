@@ -193,12 +193,19 @@ export default function ItemDetail() {
   // non-shared list show no eye at all (a private tracker must never reveal
   // others' progress). Lane-matched (global vs this synced instance) and gated
   // on laneReady so it never queries the wrong lane.
+  // Episode ids of the page the list is currently showing — the eye reads
+  // co-watch state for just this window (avoids Supabase's 1000-row cap that
+  // truncated the whole-show fetch at episode 1000 on long shows).
+  const visibleEpisodeIds = (): string[] =>
+    (episodes.data?.episodes ?? []).map((e) => e.id);
+
   const coWatchers = createQuery(() => ({
     ...coWatchersOptions(
       auth.user()!,
       item.data?.id ?? "",
       syncCtx.data?.listId ?? "",
       instanceLI(),
+      visibleEpisodeIds(),
     ),
     enabled:
       !!auth.user() &&
@@ -206,7 +213,8 @@ export default function ItemDetail() {
       params.type !== "movie" &&
       laneReady() &&
       !!syncCtx.data?.isShared &&
-      !!syncCtx.data?.listId,
+      !!syncCtx.data?.listId &&
+      visibleEpisodeIds().length > 0,
   }));
 
   // Item resolved-but-null → render the NotFound surface inline (items are

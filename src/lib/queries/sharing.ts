@@ -396,11 +396,21 @@ export function coWatchersOptions(
   itemId: string,
   listId: string,
   instanceListItemId: string | null = null,
+  /** The episode ids of the CURRENTLY VISIBLE page of the item's episode list.
+   *  The eye only ever renders for these rows, so we read co-watch state for
+   *  just this window — never the whole show. */
+  episodeIds: string[] = [],
 ) {
   return {
-    queryKey: [...coWatchersKey(itemId), listId, instanceListItemId] as const,
+    queryKey: [
+      ...coWatchersKey(itemId),
+      listId,
+      instanceListItemId,
+      episodeIds,
+    ] as const,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CoWatcher[]>> => {
+      if (episodeIds.length === 0) return {};
       // PRIVACY BOUNDARY: scope to THIS list's members only, and bail when
       // there are none. episode_watches RLS is stricter server-side, but do
       // NOT drop this `.in("user_id", memberIds)` — it's the guarantee that a
@@ -408,21 +418,22 @@ export function coWatchersOptions(
       const memberIds = await listMemberIdsOf(listId, user.id);
       if (memberIds.length === 0) return {};
 
+      // Scope to the visible episode window (≤ EPISODE_PAGE_SIZE × members rows)
+      // instead of fetching every watch for the show. Supabase enforces a hard
+      // 1000-row cap that overrides an explicit `.limit()`, so the old
+      // fetch-the-whole-show query silently truncated the eye at episode 1000 on
+      // long-running shows (One Piece). Per-page reads can never hit that cap.
+      // The episode ids come from the item's own episode list, so they're
+      // already item-scoped — no item join needed.
       const base = supabase
         .from("episode_watches")
-        .select("episode_id, user_id, watched_at, episodes!inner(item_id)")
-        .eq("episodes.item_id", itemId)
+        .select("episode_id, user_id, watched_at")
+        .in("episode_id", episodeIds)
         .in("user_id", memberIds);
       const scoped = instanceListItemId
         ? base.eq("list_item_id", instanceListItemId)
         : base.is("list_item_id", null);
-      const { data, error } = await scoped
-        .order("watched_at", { ascending: false })
-        // Explicit cap — without it PostgREST stops at 1000 rows. A 1000-cut
-        // ordered by watched_at could drop an arbitrary subset → episodes
-        // randomly missing the Mitseher eye on long shows. 5000 covers any item
-        // up to MAX_EPISODES (2000) × a couple of co-members. (A7-class fix.)
-        .limit(5000);
+      const { data, error } = await scoped;
       if (error) {
         console.error("co-watchers lookup failed", error);
         return {};
