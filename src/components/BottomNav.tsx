@@ -9,15 +9,22 @@ import { createQuery } from "@tanstack/solid-query";
 import { ArrowLeft, Calendar, House, List, Mail, Plus, User } from "lucide-solid";
 import { NavButton } from "@/components/NavButton";
 import { useAuth } from "@/lib/auth";
+import { canGoBack } from "@/lib/navigation";
 import { useToast } from "@/lib/toast";
 import { myInvitationsOptions } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 
-/** Back target derived from the route — mirrors each detail page's header
- *  backHref. Null on the top-level tabs, where no back affordance shows. */
+/** Fallback back target derived from the route — mirrors each detail page's
+ *  header backHref. Only used for deep-links (when canGoBack() is false);
+ *  in-app navigation returns to the real origin via history.back(). Null on the
+ *  top-level tabs, where no back affordance shows. */
 function backTarget(pathname: string): string | null {
+  // List-scoped item → the specific list. Global item → Home (reached from
+  // Home / Calendar / search, not a list). List detail → the overview.
+  const listScopedItem = pathname.match(/^\/lists\/([^/]+)\/item\//);
+  if (listScopedItem) return `/lists/${listScopedItem[1]}`;
+  if (pathname.startsWith("/item/")) return "/";
   if (pathname.startsWith("/lists/")) return "/lists";
-  if (pathname.startsWith("/item/")) return "/lists";
   return null;
 }
 
@@ -120,7 +127,8 @@ export function BottomNav(props: {
     const fallback = back();
     if (!fallback) return;
     pulseBack();
-    if (window.history.length > 1) window.history.back();
+    // In-app origin via history.back(); deep-link → the route's fallback.
+    if (canGoBack()) window.history.back();
     else navigate(fallback);
   };
 

@@ -2,6 +2,7 @@ import type { JSX } from "solid-js";
 import { Show } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { ChevronLeft } from "lucide-solid";
+import { canGoBack } from "@/lib/navigation";
 
 /**
  * Full-bleed instrument header shared across the app surface. Same component
@@ -37,11 +38,12 @@ export function PageHeader(props: {
 }) {
   const navigate = useNavigate();
   const goBack = () => {
-    // History-aware back: if we got here via in-app navigation, the router
-    // has a previous entry; otherwise we land at the fallback (e.g. /lists
-    // from /lists/[id]). We can't reliably introspect router history yet, so
-    // attempt window.history.back() and fall back to navigate() if no entry.
-    if (window.history.length > 1) window.history.back();
+    // Context-aware back: if the user navigated here within the app, return to
+    // their actual origin via history.back(); otherwise (deep-link / fresh
+    // load) route to the fallback href. canGoBack() tracks real in-app
+    // navigations, so it never walks OUT of the app the way the old
+    // window.history.length heuristic could.
+    if (canGoBack()) window.history.back();
     else if (props.backHref) navigate(props.backHref);
   };
 
