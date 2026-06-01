@@ -5,7 +5,7 @@ import {
   createQuery,
   useQueryClient,
 } from "@tanstack/solid-query";
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-solid";
+import { ChevronLeft, ChevronRight } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -27,6 +27,7 @@ import {
 } from "@/lib/queries/status";
 import { listsQueryKey } from "@/lib/queries/lists";
 import {
+  EPISODE_PAGE_SIZE,
   episodesQueryKey,
   episodesQueryOptions,
   markEpisodesWatchedUpTo,
@@ -58,8 +59,7 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
 import { SyncToggle } from "@/components/SyncToggle";
-
-const PAGE_SIZE = 26;
+import { Pager } from "@/components/Pager";
 
 /**
  * /item/:type/:slug — Item-Detail. Layout:
@@ -67,9 +67,9 @@ const PAGE_SIZE = 26;
  *   Section 01 (left 2/3, "Episoden"):
  *     Fortschritt 12 / 184           (progress bar)
  *     ──────────────────────────
- *     [latest PAGE_SIZE (26) episodes — newest on top, ticked dot right]
+ *     [one page of EPISODE_PAGE_SIZE (26) — newest on top, ticked dot right]
  *     ──────────────────────────
- *     ↓  Weitere laden               (when total > loaded)
+ *     ‹ 1 2 … 7 8 9 … 43 ›           (numbered Pager when total > one page)
  *
  *   Section 02 (right 1/3, "Details"):
  *     ┌────────┐
@@ -148,18 +148,18 @@ export default function ItemDetail() {
     enabled: !!auth.user() && !!params.type && !!params.slug,
   }));
 
-  // Pagination — limit grows by PAGE_SIZE on each "Weitere laden". Each step
-  // is its own cache entry (queryKey ends in the limit + lane), so flipping the
-  // limit doesn't re-fetch from zero — TanStack keeps the previous payload
-  // visible via placeholderData while the next chunk arrives.
-  const [limit, setLimit] = createSignal(PAGE_SIZE);
+  // Pagination — the numbered Pager swaps a fixed EPISODE_PAGE_SIZE window
+  // instead of growing one long list (the One-Piece case). Each page is its
+  // own cache entry (queryKey ends in page + lane), and placeholderData keeps
+  // the current page visible while the next one fetches — a clean hard swap.
+  const [page, setPage] = createSignal(1);
 
   const episodes = createQuery(() => ({
     ...episodesQueryOptions(
       auth.user()!,
       params.type,
       params.slug,
-      limit(),
+      page(),
       instanceLI(),
     ),
     enabled:
@@ -171,13 +171,22 @@ export default function ItemDetail() {
     placeholderData: (prev: EpisodePayload | undefined) => prev,
   }));
 
+  const pageCount = () =>
+    Math.max(1, Math.ceil((episodes.data?.total ?? 0) / EPISODE_PAGE_SIZE));
+
+  // Clamp if the page falls off the end (e.g. total shrank after a refetch, or
+  // switching lanes/items). Keeps the Pager and the query in lockstep.
+  createEffect(() => {
+    if (page() > pageCount()) setPage(pageCount());
+  });
+
   // The exact cache key the episodes query lives under right now (prefix +
-  // limit + lane). The optimistic patches must target THIS, not the bare
-  // prefix — getQueryData/setQueryData need an exact match, and the lane is
-  // part of the key. Invalidations below still use the prefix to clear every
-  // pagination + both lanes at once.
+  // page + lane). The optimistic patches must target THIS, not the bare prefix
+  // — getQueryData/setQueryData need an exact match, and the lane is part of
+  // the key. Invalidations below still use the prefix to clear every page +
+  // both lanes at once.
   const epKey = () =>
-    [...episodesQueryKey(params.type, params.slug), limit(), instanceLI()] as const;
+    [...episodesQueryKey(params.type, params.slug), page(), instanceLI()] as const;
 
   // Mitseher eye — ONLY when the item is opened through a SHARED list, and only
   // for THAT list's members. A private list / the global item page / a
@@ -502,17 +511,11 @@ export default function ItemDetail() {
                         onTap={onTap}
                         onCascade={onCascade}
                       />
-                      <Show
-                        when={
-                          episodes.data!.total >
-                          episodes.data!.episodes.length
-                        }
-                      >
-                        <LoadMore
-                          loading={episodes.isFetching}
-                          onLoad={() => setLimit((l) => l + PAGE_SIZE)}
-                        />
-                      </Show>
+                      <Pager
+                        page={page()}
+                        pageCount={pageCount()}
+                        onPage={setPage}
+                      />
                     </Show>
                   </Show>
                 </>
@@ -949,37 +952,6 @@ function EpisodeListRow(props: {
         </div>
       </button>
     </li>
-  );
-}
-
-/** "Weitere laden" — sits BELOW the EpisodeList. The wrapping div bleeds
- *  to the column edges (-mx-5) so the inner button's hover bg fills the
- *  full row width, matching the list-row hover bleed. The button itself
- *  is intentionally NOT shaped like a Button primitive: just centered mono
- *  caption + chevron, with bg-surface on hover — visually a continuation
- *  of the list, not a CTA. */
-function LoadMore(props: { loading: boolean; onLoad: () => void }) {
-  return (
-    <div class="-mx-5">
-      <button
-        type="button"
-        onClick={props.onLoad}
-        disabled={props.loading}
-        class="block w-full px-5 py-3.5 transition-colors hover:bg-surface disabled:cursor-default disabled:opacity-60"
-      >
-        <div class="flex items-center justify-center gap-2 font-mono text-mini uppercase tracking-wider text-text-muted">
-          <Show
-            when={props.loading}
-            fallback={
-              <ChevronDown class="size-3.5" strokeWidth={1.75} />
-            }
-          >
-            <Loader2 class="size-3.5 animate-spin" strokeWidth={1.75} />
-          </Show>
-          <span>{props.loading ? "Lädt …" : "Weitere laden"}</span>
-        </div>
-      </button>
-    </div>
   );
 }
 
