@@ -7,6 +7,8 @@ import {
   listsQueryKey,
   type ListSummary,
 } from "@/lib/queries/lists";
+import { homeQueryKey } from "@/lib/queries/home";
+import { calendarQueryKey } from "@/lib/queries/calendar";
 import { Segmented } from "@/components/Segmented";
 
 type TrackingValue = "track" | "archive";
@@ -62,7 +64,7 @@ export function ListTrackingToggle(props: {
     },
     onSuccess: (res, next) => {
       if (res.tracksHome === null) {
-        // RLS silently blocked — revert.
+        // No row updated (caller isn't a member) — revert.
         setEnabled(!next);
         queryClient.invalidateQueries({
           queryKey: listQueryKey(props.shortCode),
@@ -83,6 +85,13 @@ export function ListTrackingToggle(props: {
           shared: prevState.shared.map(patch),
         };
       });
+      // Archiving changes home scope (Was kommt / Fortsetzen / Logbuch) and
+      // the calendar — but those aren't mounted while toggling on the list
+      // page, so the home/calendar realtime channels never fire. Invalidate
+      // explicitly so the change shows on next visit instead of after the
+      // 5-min staleTime. trackedItemIds() already gates on tracks_home.
+      queryClient.invalidateQueries({ queryKey: homeQueryKey });
+      queryClient.invalidateQueries({ queryKey: calendarQueryKey });
     },
   }));
 
