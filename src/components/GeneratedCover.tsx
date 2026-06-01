@@ -1,4 +1,5 @@
 import { createMemo, Show } from "solid-js";
+import { Pin } from "lucide-solid";
 import { THEMES, getThemeMeta, type ThemeId, type ThemeMode } from "@/lib/themes";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -124,32 +125,52 @@ export function GeneratedCover(props: { seed: number; class?: string }) {
   );
 }
 
+/** Pin marker for a cover's top-left corner — an accent tab with a filled pin.
+ *  The at-rest "this is pinned" indicator (the row's pin icon is hover-only). */
+export function PinBadge() {
+  return (
+    <div
+      aria-hidden
+      class="pointer-events-none absolute left-0 top-0 flex size-5 items-center justify-center bg-accent text-accent-on shadow-resting"
+    >
+      <Pin class="size-3" strokeWidth={2} fill="currentColor" />
+    </div>
+  );
+}
+
 /**
  * A list's cover: the owner-uploaded custom image if present, else the
  * generated themed cover from the seed. `class` sizes the box (e.g.
- * `aspect-square w-full overflow-hidden rounded-sm`) and applies to both
- * branches so swapping a custom cover in/out doesn't shift layout.
+ * `aspect-square w-full overflow-hidden`); the image/pattern fills it, so
+ * swapping a custom cover in/out doesn't shift layout. `pinned` overlays a
+ * PinBadge in the corner.
  */
 export function ListCover(props: {
   coverUrl: string | null;
   seed: number;
   class?: string;
   alt?: string;
+  pinned?: boolean;
 }) {
   return (
-    <Show
-      when={props.coverUrl}
-      fallback={<GeneratedCover seed={props.seed} class={props.class} />}
-    >
-      {(url) => (
-        <img
-          ref={fadeOnLoad}
-          src={url()}
-          alt={props.alt ?? ""}
-          loading="lazy"
-          class={`${props.class ?? ""} object-cover`}
-        />
-      )}
-    </Show>
+    <div class={`relative ${props.class ?? ""}`}>
+      <Show
+        when={props.coverUrl}
+        fallback={<GeneratedCover seed={props.seed} class="size-full" />}
+      >
+        {(url) => (
+          <img
+            ref={fadeOnLoad}
+            src={url()}
+            alt={props.alt ?? ""}
+            loading="lazy"
+            class="size-full object-cover"
+          />
+        )}
+      </Show>
+      <Show when={props.pinned}>
+        <PinBadge />
+      </Show>
+    </div>
   );
 }

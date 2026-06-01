@@ -45,7 +45,7 @@ import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
-import { ListCover } from "@/components/GeneratedCover";
+import { ListCover, PinBadge } from "@/components/GeneratedCover";
 import { EditableListCover } from "@/components/EditableListCover";
 
 /**
@@ -602,7 +602,7 @@ function SortableEntryRow(props: {
           }}
           class="flex min-w-0 flex-1 items-center gap-3"
         >
-          <div class="size-12 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
+          <div class="relative aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
             <Show
               when={props.entry.coverUrl}
               fallback={
@@ -618,6 +618,9 @@ function SortableEntryRow(props: {
                 class="size-full object-cover"
                 loading="lazy"
               />
+            </Show>
+            <Show when={props.entry.pinned}>
+              <PinBadge />
             </Show>
           </div>
           <div class="min-w-0 flex-1">

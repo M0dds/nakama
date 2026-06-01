@@ -440,6 +440,7 @@ function SortableListRow(props: {
             coverUrl={props.list.coverUrl}
             seed={props.list.coverSeed}
             alt=""
+            pinned={props.list.pinned}
             class="size-11 shrink-0 overflow-hidden"
           />
           <div class="min-w-0 flex-1">
