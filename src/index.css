@@ -83,11 +83,11 @@
 
 /* ─── 3 · SAKURA — Kirschblüte ──────────────────────────────────────── */
 [data-theme="sakura"] {
-  --bg: #f0d5dd;
-  --surface: #fff0f3;
-  --text: #2e1820;
+  --bg: #fbe7ee;                 /* lighter blossom canvas — more contrast */
+  --surface: #ffffff;            /* clean white cards lift off the pink bg */
+  --text: #2a141c;
   --text-muted: #8a6973;
-  --border: rgba(214, 98, 134, 0.18);
+  --border: rgba(214, 98, 134, 0.20);
   --accent: #e85d8f;
   --accent-on: #ffffff;
 }
