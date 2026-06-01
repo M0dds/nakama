@@ -1,10 +1,5 @@
-import {
-  createEffect,
-  createSignal,
-  For,
-  onCleanup,
-  onMount,
-} from "solid-js";
+import { For } from "solid-js";
+import { createLiquidBubble } from "@/lib/liquid-bubble";
 
 /**
  * Liquid segmented control — shares the BottomNav accent-indicator's MOTION so
@@ -12,25 +7,15 @@ import {
  * corners (rounded-xs): only the floating nav is a capsule, the liquid lives
  * in the motion, not the shape.
  *
- * How it moves (mirrors BottomNav.place()): the resting geometry snaps to the
- * active option's box; the SLIDE is a one-shot WAAPI transform overlay
- * (translateX + scaleX) from the previous box → a stretched midpoint (leading
- * edge ahead of the trailing one) → identity. One continuous timeline with
- * snappy bell-velocity easings, so the bubble stretches toward the destination
- * and contracts without the old two-phase settle pause. CSS owns only the
- * opacity fade. Transitions/animation only AFTER the first render so the
- * initial measurement snaps in place.
+ * The motion lives in the shared createLiquidBubble hook — the SAME recipe the
+ * BottomNav and the Pager use (one source of truth for the mercury morph): the
+ * resting geometry snaps to the active option's box, the slide is a one-shot
+ * WAAPI transform overlay from the previous box → a stretched midpoint →
+ * identity. The bubble keeps hard corners; only the floating nav is a capsule.
  *
  * Used by ListTrackingToggle (Tracken / Archiv), ThemeSwitcher's mode picker
  * (Hell / Dunkel / System), SyncToggle, and the Styleguide's mode-demo.
  */
-
-interface Box {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
 
 interface SegmentedOption<T extends string> {
   value: T;
@@ -55,82 +40,11 @@ interface SegmentedProps<T extends string> {
 export function Segmented<T extends string>(props: SegmentedProps<T>) {
   let containerEl: HTMLDivElement | undefined;
   let bubbleEl: HTMLSpanElement | undefined;
-  // prevRest persists across reactive runs without triggering them; slideAnim
-  // is the in-flight slide so a rapid re-fire can cancel it.
-  let prevRest: Box | null = null;
-  let slideAnim: Animation | undefined;
 
-  const [bubble, setBubble] = createSignal<Box | null>(null);
-  const [animated, setAnimated] = createSignal(false);
-
-  const place = () => {
-    if (!containerEl) return;
-    const el = containerEl.querySelector<HTMLElement>('[data-active="true"]');
-    if (!el) return;
-
-    const target: Box = {
-      left: el.offsetLeft,
-      top: el.offsetTop,
-      width: el.offsetWidth,
-      height: el.offsetHeight,
-    };
-    const prev = prevRest;
-    // Resting geometry is always the target box; the slide is a WAAPI overlay.
-    setBubble(target);
-
-    const reduce =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (animated() && prev && prev.left !== target.left && bubbleEl && !reduce) {
-      // Continuous mercury morph — same recipe as BottomNav. Both edges move
-      // from the first frame (leading edge ahead, trailing behind → stretch),
-      // peak velocity through a front-loaded midpoint (0.42), quick settle.
-      const cx = target.left + target.width / 2;
-      const pL = prev.left;
-      const pR = prev.left + prev.width;
-      const tL = target.left;
-      const tR = target.left + target.width;
-      const goingRight = tL > pL;
-      const LEAD = 0.85;
-      const TRAIL = 0.3;
-      const midL = pL + (tL - pL) * (goingRight ? TRAIL : LEAD);
-      const midR = pR + (tR - pR) * (goingRight ? LEAD : TRAIL);
-      const tf = (l: number, r: number) =>
-        `translateX(${(l + r) / 2 - cx}px) scaleX(${(r - l) / target.width})`;
-      slideAnim?.cancel();
-      slideAnim = bubbleEl.animate(
-        [
-          { transform: tf(pL, pR), easing: "cubic-bezier(0.25, 0.5, 0.9, 0.7)" },
-          { transform: tf(midL, midR), offset: 0.42, easing: "cubic-bezier(0.1, 0.45, 0.6, 0.9)" },
-          { transform: "translateX(0) scaleX(1)", offset: 1 },
-        ],
-        { duration: 240, composite: "add" },
-      );
-    }
-
-    prevRest = target;
-
-    if (!animated()) {
-      requestAnimationFrame(() => setAnimated(true));
-    }
-  };
-
-  // Plain createEffect fires on initial setup AND on value change. The
-  // explicit read of props.value is what makes it reactive; rAF defers
-  // measurement to after Solid has patched data-active onto the DOM.
-  createEffect(() => {
-    void props.value;
-    requestAnimationFrame(place);
-  });
-
-  onMount(() => {
-    const onResize = () => place();
-    window.addEventListener("resize", onResize);
-    onCleanup(() => {
-      window.removeEventListener("resize", onResize);
-      slideAnim?.cancel();
-    });
+  const { box: bubble } = createLiquidBubble({
+    container: () => containerEl,
+    bubble: () => bubbleEl,
+    track: () => props.value,
   });
 
   return (
