@@ -373,7 +373,7 @@ export default function Setup() {
                       Profil änderbar.
                     </p>
                     <div class="mt-8">
-                      <ThemeSwitcher />
+                      <ThemeSwitcher fillMode />
                     </div>
                   </div>
                 </Match>
