@@ -18,6 +18,9 @@ export interface MyProfile {
   username: string | null;
   displayName: string | null;
   avatarUrl: string | null;
+  /** ISO timestamp once the first-login /setup flow is done; null = not yet
+   *  onboarded (the AppLayout gate routes such users to /setup). */
+  onboardedAt: string | null;
 }
 
 export function myProfileOptions(user: User) {
@@ -27,7 +30,7 @@ export function myProfileOptions(user: User) {
     queryFn: async (): Promise<MyProfile | null> => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("user_id, username, display_name, avatar_url")
+        .select("user_id, username, display_name, avatar_url, onboarded_at")
         .eq("user_id", user.id)
         .maybeSingle();
       if (error) {
@@ -40,6 +43,7 @@ export function myProfileOptions(user: User) {
         username: (data.username as string | null) ?? null,
         displayName: (data.display_name as string | null) ?? null,
         avatarUrl: (data.avatar_url as string | null) ?? null,
+        onboardedAt: (data.onboarded_at as string | null) ?? null,
       };
     },
   };
@@ -136,4 +140,72 @@ export async function uploadAvatar(input: {
 export async function deleteAccount(): Promise<void> {
   const { error } = await supabase.rpc("delete_account");
   if (error) throw error;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Onboarding (first-login /setup flow)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface UsernameCheck {
+  available: boolean;
+  /** "invalid" (bad shape) | "taken" — present only when unavailable. */
+  error?: "invalid" | "taken";
+  /** The normalized (lowercased, @-stripped) handle when available. */
+  normalized?: string;
+}
+
+/** Live availability check for an @handle. profiles RLS hides other users'
+ *  rows, so this routes through the SECURITY DEFINER `username_available` RPC
+ *  (migration 20260601100000). Debounce the caller — one call per settled
+ *  input, not per keystroke. */
+export async function checkUsernameAvailable(
+  username: string,
+): Promise<UsernameCheck> {
+  const { data, error } = await supabase.rpc("username_available", {
+    _username: username,
+  });
+  if (error) throw error;
+  return data as UsernameCheck;
+}
+
+export interface SetUsernameResult {
+  ok: boolean;
+  /** "invalid" | "taken" | "blocked" (RLS) when !ok. */
+  error?: "invalid" | "taken" | "blocked";
+}
+
+/** Persist a chosen @handle on the caller's own profile. Normalizes to the
+ *  stored shape (lowercase, no leading @), validates the shape client-side,
+ *  and leans on the UNIQUE(username) constraint to settle the race a live
+ *  availability check can't close — a 23505 comes back as `taken`. */
+export async function setUsername(input: {
+  userId: string;
+  username: string;
+}): Promise<SetUsernameResult> {
+  const norm = input.username.trim().replace(/^@/, "").toLowerCase();
+  if (!/^[a-z0-9._-]{3,30}$/.test(norm)) return { ok: false, error: "invalid" };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ username: norm })
+    .eq("user_id", input.userId)
+    .select("username");
+  if (error) {
+    if (error.code === "23505") return { ok: false, error: "taken" };
+    throw error;
+  }
+  if (!data || data.length === 0) return { ok: false, error: "blocked" };
+  return { ok: true };
+}
+
+/** Stamp onboarded_at = now() — marks the /setup flow complete so the
+ *  AppLayout gate stops routing the user to /setup. Self-update (RLS). */
+export async function completeOnboarding(userId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ onboarded_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .select("onboarded_at");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error("blocked");
 }

@@ -19,7 +19,12 @@ import { Segmented } from "@/components/Segmented";
  * Mode toggle: 3-way segment control (Hell / Dunkel / System). "System"
  * tracks the OS color-scheme media query.
  */
-export function ThemeSwitcher() {
+export function ThemeSwitcher(props: {
+  /** Stretch the mode toggle to the full section width (Hell/Dunkel/System
+   *  share the space equally). Used by the first-login Setup; the Profile +
+   *  Styleguide keep the default content-width pill. */
+  fillMode?: boolean;
+} = {}) {
   const [theme, setTheme] = createSignal<ThemeId>("default");
   const [mode, setMode] = createSignal<ThemeModePref>("system");
 
@@ -45,6 +50,7 @@ export function ThemeSwitcher() {
         </p>
         <Segmented<ThemeModePref>
           ariaLabel="Modus"
+          fill={props.fillMode}
           value={mode()}
           onChange={pickMode}
           options={[

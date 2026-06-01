@@ -1,7 +1,16 @@
-import { lazy } from "solid-js";
-import type { RouteDefinition, RouteSectionProps } from "@solidjs/router";
+import { lazy, Show, type ParentProps } from "solid-js";
+import {
+  Navigate,
+  type RouteDefinition,
+  type RouteSectionProps,
+} from "@solidjs/router";
+import { createQuery } from "@tanstack/solid-query";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/lib/auth";
+import { myProfileOptions } from "@/lib/queries/profile";
+
+const SetupRoute = lazy(() => import("./Setup"));
 
 /**
  * Programmatic route map. Solid Router doesn't ship file-based routing
@@ -22,13 +31,39 @@ import { AppShell } from "@/components/AppShell";
  * shell (no nav).
  */
 
-/** Long-lived layout for the authed app. ProtectedRoute gates entry; AppShell
- *  provides the BottomNav + bottom spacing. `props.children` is the matched
- *  child route — only THAT subtree re-mounts on navigation. */
+/** Routes a not-yet-onboarded user to /setup before any app surface renders.
+ *  Sits inside ProtectedRoute (so auth.user() is guaranteed) and outside the
+ *  shell. While the profile loads, render nothing (quick; no skeleton). A null
+ *  profile (lookup failed) falls through to the app rather than trapping the
+ *  user in a redirect. /setup itself lives outside this gate, so no loop. */
+function OnboardingGate(props: ParentProps) {
+  const auth = useAuth();
+  const profile = createQuery(() => ({
+    ...myProfileOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  return (
+    <Show when={!profile.isLoading} fallback={null}>
+      <Show
+        when={!(profile.data && profile.data.onboardedAt === null)}
+        fallback={<Navigate href="/setup" />}
+      >
+        {props.children}
+      </Show>
+    </Show>
+  );
+}
+
+/** Long-lived layout for the authed app. ProtectedRoute gates entry; the
+ *  OnboardingGate sends first-login users to /setup; AppShell provides the
+ *  BottomNav + bottom spacing. `props.children` is the matched child route —
+ *  only THAT subtree re-mounts on navigation. */
 function AppLayout(props: RouteSectionProps) {
   return (
     <ProtectedRoute>
-      <AppShell>{props.children}</AppShell>
+      <OnboardingGate>
+        <AppShell>{props.children}</AppShell>
+      </OnboardingGate>
     </ProtectedRoute>
   );
 }
@@ -54,6 +89,17 @@ export const routes: RouteDefinition[] = [
     // Public feature/landing page — shareable, no auth, standalone (no shell).
     path: "/features",
     component: lazy(() => import("./Features")),
+  },
+  {
+    // First-login setup wizard — authed but OUTSIDE the AppLayout gate (so it
+    // can't redirect-loop) and outside the shell (focal screen). Setup itself
+    // redirects already-onboarded users back to /.
+    path: "/setup",
+    component: () => (
+      <ProtectedRoute>
+        <SetupRoute />
+      </ProtectedRoute>
+    ),
   },
 
   // ─ Protected app surfaces (share AppLayout so the shell persists) ─
