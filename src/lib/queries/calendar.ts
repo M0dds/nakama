@@ -93,7 +93,7 @@ async function fetchCalendarEvents(
   userId: string,
   anchorIso: string,
 ): Promise<CalendarEvent[]> {
-  const itemIds = await trackedItemIds();
+  const itemIds = await trackedItemIds(userId);
   if (itemIds.length === 0) return [];
 
   const anchor = startOfMonth(fromIsoDay(anchorIso));

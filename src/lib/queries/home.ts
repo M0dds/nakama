@@ -196,7 +196,7 @@ export function upcomingEpisodesOptions(user: User) {
   return queryOptions({
     queryKey: upcomingEpisodesKey(user.id),
     queryFn: async (): Promise<UpcomingItem[]> => {
-      const itemIds = await trackedItemIds();
+      const itemIds = await trackedItemIds(user.id);
       if (itemIds.length === 0) return [];
       // Episodes (next 14 days) + unreleased movies & games (any future date),
       // merged and sorted soonest-first into one "Was kommt" stream.
@@ -548,7 +548,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
   // trackedItemIds (home scope) feeds the missed query; it's independent of the
   // activity sources so it rides in the same fan-out.
   const [trackedIds, bundlesRes, addsRes, transfersRes] = await Promise.all([
-    trackedItemIds(),
+    trackedItemIds(currentUserId),
     supabase.rpc("home_watch_bundles", {
       _since: sinceIso,
       _gap_seconds: SESSION_GAP_MS / 1000,
@@ -737,12 +737,16 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
  *  on archived lists (the per-user toggle) deliberately fall out of every
  *  home module — that's the whole point of the toggle. Exported because the
  *  calendar shares the exact same "what's on my home scope" definition. */
-export async function trackedItemIds(): Promise<string[]> {
-  // Lists this user is tracking on home. RLS already scopes list_members to
-  // the caller; the .eq("tracks_home", true) filter is the per-user archive.
+export async function trackedItemIds(userId: string): Promise<string[]> {
+  // Lists THIS user is tracking on home. We MUST scope to user_id explicitly:
+  // the list_members SELECT policy also returns co-members' rows (the roster
+  // needs them), so without `.eq("user_id", …)` a co-member tracking a list
+  // would pull its items into our home even after we archived it. The
+  // `.eq("tracks_home", true)` filter is the per-user archive.
   const { data: memberships, error: mErr } = await supabase
     .from("list_members")
     .select("list_id")
+    .eq("user_id", userId)
     .eq("tracks_home", true);
   if (mErr) {
     console.error("list_members query failed", mErr);
