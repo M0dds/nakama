@@ -102,8 +102,10 @@ export function ListTrackingToggle(props: {
         ]}
       />
       <p class="mt-2 text-mini text-text-muted">
-        Off bedeutet: Einträge dieser Liste fallen aus DEINEM Home, Kalender
-        und Logbuch raus. Andere Mitglieder entscheiden für sich.
+        <span class="text-text">Tracken:</span> Einträge dieser Liste erscheinen
+        in deinem Home, Kalender und Logbuch.{" "}
+        <span class="text-text">Archiv:</span> die Liste bleibt erhalten, taucht
+        dort aber nicht auf. Jedes Mitglied entscheidet für sich.
       </p>
     </div>
   );
