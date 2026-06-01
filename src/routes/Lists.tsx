@@ -494,12 +494,12 @@ function ListRowsSkeleton() {
 
 function PrivateEmpty() {
   return (
-    <div class="px-4 py-8">
-      <p class="text-body-lg text-text">Noch keine Listen.</p>
-      <p class="mt-1.5 max-w-md text-body text-text-muted">
-        Eine private Liste sammelt, was du allein verfolgst. Lade jemanden
-        ein, und sie wandert rüber zu „Geteilte Listen". Lege rechts eine
-        neue Liste an.
+    <div class="rounded-sm border border-border px-5 py-6 text-center">
+      <p class="text-body text-text">Noch keine Listen.</p>
+      <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
+        Eine private Liste sammelt, was du allein verfolgst. Lade jemanden ein,
+        und sie wandert rüber zu „Geteilte Listen". Lege rechts eine neue Liste
+        an.
       </p>
     </div>
   );

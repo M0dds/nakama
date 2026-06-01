@@ -446,8 +446,10 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           <Show
             when={listOptions().length > 0}
             fallback={
-              <p class="px-5 py-10 text-center text-body text-text-muted">
-                Lege erst eine Liste an, dann kannst du Einträge hinzufügen.
+              <p class="mx-auto max-w-xs px-5 py-10 text-center text-body text-text-muted">
+                Du hast noch keine Liste. Leg im{" "}
+                <span class="font-mono">Listen</span>-Tab eine an — dann kannst
+                du hier Titel hinzufügen.
               </p>
             }
           >

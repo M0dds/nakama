@@ -18,6 +18,7 @@ import {
   type UpcomingItem,
   type WatchBundle,
 } from "@/lib/queries/home";
+import { listsQueryOptions } from "@/lib/queries/lists";
 import {
   airDateHasClock,
   dateLabel,
@@ -70,6 +71,19 @@ export default function Home() {
     ...recentlyTickedOptions(auth.user()!),
     enabled: !!auth.user(),
   }));
+  // Whether the user owns ANY list yet. Drives the "first run" empty-state copy
+  // (explain the section + point to the Listen tab to create a first list) vs
+  // the "quiet day" copy (has lists, just nothing in this section right now).
+  // Stays false while loading so an established user never flashes onboarding
+  // copy; a brand-new user's lists query resolves to empty → firstRun true.
+  const listsQ = createQuery(() => ({
+    ...listsQueryOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const firstRun = () =>
+    !!listsQ.data &&
+    listsQ.data.private.length === 0 &&
+    listsQ.data.shared.length === 0;
 
   useRealtimeInvalidation("home", [
     { table: "episode_watches", invalidates: [homeQueryKey] },
@@ -96,7 +110,7 @@ export default function Home() {
             <Show when={!upcomingQ.isLoading} fallback={<WasKommtSkeleton />}>
               <Show
                 when={upcomingQ.data && upcomingQ.data.length > 0}
-                fallback={<EmptyUpcoming />}
+                fallback={<EmptyUpcoming firstRun={firstRun()} />}
               >
                 <WasKommt items={upcomingQ.data!} />
               </Show>
@@ -107,7 +121,7 @@ export default function Home() {
             <Show when={!continueQ.isLoading} fallback={<FortsetzenSkeleton />}>
               <Show
                 when={continueQ.data && continueQ.data.length > 0}
-                fallback={<EmptyContinue />}
+                fallback={<EmptyContinue firstRun={firstRun()} />}
               >
                 <Fortsetzen items={continueQ.data!} />
               </Show>
@@ -368,14 +382,33 @@ function DayTag(props: {
   );
 }
 
-function EmptyUpcoming() {
+function EmptyUpcoming(props: { firstRun: boolean }) {
   return (
     <div class="rounded-sm border border-border px-5 py-6 text-center">
-      <p class="text-body text-text">Diese Woche ruhig.</p>
-      <p class="mt-1 text-body text-text-muted">
-        Nichts steht in den nächsten 14 Tagen an. Stöbere in deiner Watchlist
-        im <span class="font-mono">Listen</span>-Tab.
-      </p>
+      <Show
+        when={props.firstRun}
+        fallback={
+          <>
+            <p class="text-body text-text">Diese Woche ruhig.</p>
+            <p class="mt-1 text-body text-text-muted">
+              In den nächsten 14 Tagen steht nichts an.
+            </p>
+          </>
+        }
+      >
+        <p class="text-body text-text">Hier wird's bald voll.</p>
+        <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
+          Sobald du Serien, Filme oder Spiele verfolgst, erscheinen hier die
+          nächsten Folgen und Releases. Leg dafür im{" "}
+          <A
+            href="/lists"
+            class="text-accent underline-offset-2 hover:underline"
+          >
+            Listen-Tab
+          </A>{" "}
+          deine erste Liste an.
+        </p>
+      </Show>
     </div>
   );
 }
@@ -563,13 +596,31 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
   );
 }
 
-function EmptyContinue() {
+function EmptyContinue(props: { firstRun: boolean }) {
   return (
     <div class="rounded-sm border border-border px-5 py-6 text-center">
-      <p class="text-body text-text">Alles aufgeholt.</p>
-      <p class="mt-1 text-body text-text-muted">
-        Zeit für etwas Neues — schau in deine Watchlist.
-      </p>
+      <Show
+        when={props.firstRun}
+        fallback={
+          <>
+            <p class="text-body text-text">Alles aufgeholt.</p>
+            <p class="mt-1 text-body text-text-muted">Zeit für etwas Neues.</p>
+          </>
+        }
+      >
+        <p class="text-body text-text">Noch nichts begonnen.</p>
+        <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
+          Was du gerade schaust oder spielst, taucht hier auf — mit dem Tipp,
+          wo du weitermachst. Fang mit deiner ersten Liste im{" "}
+          <A
+            href="/lists"
+            class="text-accent underline-offset-2 hover:underline"
+          >
+            Listen-Tab
+          </A>{" "}
+          an.
+        </p>
+      </Show>
     </div>
   );
 }
