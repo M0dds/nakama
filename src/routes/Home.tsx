@@ -156,7 +156,8 @@ export default function Home() {
  * First click activates an inactive card; second click (same card)
  * navigates to the item.
  */
-const WAS_KOMMT_SHOWN = 4;
+const WAS_KOMMT_SHOWN = 4; // desktop page size + mobile initial count
+const WAS_KOMMT_ROW = 2; // mobile: cards revealed per "weitere"-tap (one row)
 
 function WasKommt(props: { items: UpcomingItem[] }) {
   const navigate = useNavigate();
@@ -164,12 +165,34 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     props.items[0]?.itemId ?? null,
   );
 
-  const visible = () => props.items.slice(0, WAS_KOMMT_SHOWN);
-  const hiddenCount = () =>
-    Math.max(0, props.items.length - WAS_KOMMT_SHOWN);
+  // Desktop pages through groups of 4 (numbered Pager, like Fortsetzen);
+  // mobile reveals one more row (2 cards) per tap on the "+N weitere" button.
+  // Two independent models, but only one layout is visible at a time.
+  const [page, setPage] = createSignal(1);
+  const [shown, setShown] = createSignal(WAS_KOMMT_SHOWN);
+
+  const pageCount = () =>
+    Math.max(1, Math.ceil(props.items.length / WAS_KOMMT_SHOWN));
+  const desktopVisible = () => {
+    const start = (page() - 1) * WAS_KOMMT_SHOWN;
+    return props.items.slice(start, start + WAS_KOMMT_SHOWN);
+  };
+  const mobileVisible = () => props.items.slice(0, shown());
+  const mobileRemaining = () => Math.max(0, props.items.length - shown());
+
+  // Desktop: on a page change focus the first card of the new page. Deferred so
+  // it fires only on navigation, not on every realtime refetch (which would
+  // clobber the user's selection). Mirrors Fortsetzen.
+  createEffect(
+    on(
+      page,
+      () => setActiveId(desktopVisible()[0]?.itemId ?? null),
+      { defer: true },
+    ),
+  );
 
   const activeIndex = () => {
-    const idx = visible().findIndex((it) => it.itemId === activeId());
+    const idx = desktopVisible().findIndex((it) => it.itemId === activeId());
     return idx >= 0 ? idx : 0;
   };
 
@@ -186,16 +209,22 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   // as the desktop single row, just wrapped two-up so portrait covers get
   // width instead of being squashed flat across the full screen width.
   const rows = () => {
-    const v = visible();
+    const v = mobileVisible();
     const out: UpcomingItem[][] = [];
     for (let i = 0; i < v.length; i += 2) out.push(v.slice(i, i + 2));
     return out;
   };
-  const rowCols = (row: UpcomingItem[]) =>
-    row.map((it) => (it.itemId === activeId() ? "2fr" : "1fr")).join(" ");
+  const rowCols = (row: UpcomingItem[]) => {
+    const cols = row.map((it) => (it.itemId === activeId() ? "2fr" : "1fr"));
+    // A lone trailing card (odd count) gets a padded 2-column track: it keeps a
+    // normal column width (and still widens to 2fr when active) instead of
+    // stretching full-width; the second column stays empty.
+    if (cols.length === 1) cols.push("1fr");
+    return cols.join(" ");
+  };
   // Exactly one "hero" (the globally-first item) so only it says "HEUTE".
   const isHeroItem = (item: UpcomingItem) =>
-    item.itemId === visible()[0]?.itemId;
+    item.itemId === props.items[0]?.itemId;
 
   const SPRING = "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)";
   const COLOR_T =
@@ -231,7 +260,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     <div>
       {/* ── Desktop: single-row 2fr-1fr-1fr-1fr accordion ──────────── */}
       <div
-        class="hidden md:grid"
+        class="hidden gap-3 md:grid"
         style={{ "grid-template-columns": gridCols(), transition: SPRING }}
         onMouseLeave={() => {
           // Snap the highlight back to the first card on hover-capable
@@ -241,7 +270,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
           }
         }}
       >
-        <For each={visible()}>
+        <For each={desktopVisible()}>
           {(item, i) => {
             const active = () => item.itemId === activeId();
             return (
@@ -254,7 +283,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                 onMouseEnter={() => onCardEnter(item)}
                 onClick={(e) => onCardClick(item, e)}
                 onKeyDown={(e) => onCardKey(item, e)}
-                class="group relative flex h-80 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
                 classList={{
                   "border-accent bg-accent": active(),
                   "border-border bg-bg": !active(),
@@ -323,10 +352,20 @@ function WasKommt(props: { items: UpcomingItem[] }) {
         </For>
       </div>
 
-      <Show when={hiddenCount() > 0}>
-        <p class="mt-2 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted">
-          +{hiddenCount()} weitere
-        </p>
+      {/* Desktop: numbered Pager (4 per page, like Fortsetzen). */}
+      <div class="hidden md:block">
+        <Pager page={page()} pageCount={pageCount()} onPage={setPage} />
+      </div>
+
+      {/* Mobile: reveal one more row (2 cards) per tap. */}
+      <Show when={mobileRemaining() > 0}>
+        <button
+          type="button"
+          onClick={() => setShown((s) => s + WAS_KOMMT_ROW)}
+          class="mt-3 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text md:hidden"
+        >
+          +{mobileRemaining()} weitere
+        </button>
       </Show>
     </div>
   );
@@ -1050,11 +1089,11 @@ function WasKommtSkeleton() {
   return (
     <div>
       <div
-        class="hidden md:grid"
+        class="hidden gap-3 md:grid"
         style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
       >
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-80 w-full" />}
+          {() => <Skeleton class="h-96 w-full" />}
         </For>
       </div>
       <div class="grid grid-cols-2 gap-3 md:hidden">
