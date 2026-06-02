@@ -2,7 +2,6 @@ import { createSignal, Show, type ParentProps } from "solid-js";
 import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
 import { ContentFrame } from "@/components/ContentFrame";
-import { RouteTransition } from "@/components/RouteTransition";
 import { ToastProvider } from "@/lib/toast";
 
 /**
@@ -60,7 +59,7 @@ export function AppShell(props: ParentProps) {
           = nav height (44 px) + offset (26 px) + breathing (24 px); the pill is
           `position: fixed` so it doesn't reserve flow space itself. */}
       <div class="mx-auto w-full max-w-[var(--content-max)] pb-[94px]">
-        <RouteTransition>{props.children}</RouteTransition>
+        {props.children}
       </div>
       <ContentFrame />
       <BottomNav onAddClick={openAdd} addSheetOpen={addVisible()} />

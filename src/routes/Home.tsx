@@ -203,6 +203,38 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     ),
   );
 
+  // Animate the desktop Pager page-swap: a short opacity-in + settle with a
+  // slight overshoot (the "bounce"), so blättern reads as a deliberate change
+  // instead of a hard cut. Deferred → the first render doesn't animate, only
+  // genuine page changes; reduced-motion-aware. A transform is safe here — the
+  // grid has no position:fixed descendants (the ColumnGuide lives at the Home
+  // level, outside this subtree).
+  let desktopGridEl: HTMLDivElement | undefined;
+  createEffect(
+    on(
+      page,
+      () => {
+        if (
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
+          !desktopGridEl
+        )
+          return;
+        desktopGridEl.animate(
+          [
+            { opacity: 0, transform: "translateY(12px)" },
+            { opacity: 1, transform: "translateY(0)" },
+          ],
+          {
+            duration: 420,
+            easing: "cubic-bezier(0.34, 1.5, 0.5, 1)",
+            fill: "backwards",
+          },
+        );
+      },
+      { defer: true },
+    ),
+  );
+
   const activeIndex = () => {
     const idx = desktopVisible().findIndex((it) => it.itemId === activeId());
     return idx >= 0 ? idx : 0;
@@ -272,6 +304,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     <div>
       {/* ── Desktop: single-row 2fr-1fr-1fr-1fr accordion ──────────── */}
       <div
+        ref={desktopGridEl}
         class="hidden gap-3 md:grid"
         style={{ "grid-template-columns": gridCols(), transition: SPRING }}
         onMouseLeave={() => {
