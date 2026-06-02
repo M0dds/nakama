@@ -1,7 +1,17 @@
 import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
-import { Check, Clock, Crown, Eye, EyeOff, ListPlus, RefreshCw } from "lucide-solid";
+import {
+  Check,
+  Clock,
+  Crown,
+  Eye,
+  EyeOff,
+  Film,
+  Gamepad2,
+  ListPlus,
+  RefreshCw,
+} from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +24,7 @@ import {
   type ListAddEvent,
   type LogbookEvent,
   type MissedEvent,
+  type StatusEvent,
   type TransferEvent,
   type UpcomingItem,
   type WatchBundle,
@@ -28,9 +39,9 @@ import {
   hasAirTime,
   newReleaseLabel,
   nextLabel,
-  rangeLabel,
   relTime,
   seasonEpisodeLabel,
+  seasonRangeLabel,
   timeLabel,
   typeInitial,
   typeLabel,
@@ -91,6 +102,7 @@ export default function Home() {
     { table: "list_items", invalidates: [homeQueryKey] },
     { table: "list_members", invalidates: [homeQueryKey] },
     { table: "list_ownership_transfers", invalidates: [homeQueryKey] },
+    { table: "item_history", invalidates: [homeQueryKey] },
   ]);
 
   return (
@@ -824,6 +836,8 @@ function Logbuch(props: { events: LogbookEvent[] }) {
                       <ListAddSentence ev={ev} />
                     ) : ev.kind === "missed" ? (
                       <MissedSentence ev={ev} />
+                    ) : ev.kind === "status" ? (
+                      <StatusSentence ev={ev} />
                     ) : (
                       <TransferSentence ev={ev} />
                     )}
@@ -930,6 +944,13 @@ function KindBadge(props: { ev: LogbookEvent }) {
       <Match when={props.ev.kind === "list_add"}>
         <ListPlus class={cls} strokeWidth={2} aria-hidden />
       </Match>
+      <Match when={props.ev.kind === "status"}>
+        <StatusKindIcon
+          type={(props.ev as StatusEvent).type}
+          class={cls}
+          strokeWidth={2}
+        />
+      </Match>
       <Match when={props.ev.kind === "watch"}>
         <Eye class={cls} strokeWidth={2} aria-hidden />
       </Match>
@@ -940,12 +961,36 @@ function KindBadge(props: { ev: LogbookEvent }) {
 /** Per-kind icon. Self-events are slightly dimmed regardless of kind so
  *  the user's own activity reads as background context next to co-member
  *  activity. Missed carries the accent (it wants the eye — it's actionable). */
+/** Movie/game completion icon — Film for movies, Gamepad for games. Shared by
+ *  the bare EventIcon and the co-member avatar's KindBadge. */
+function StatusKindIcon(props: {
+  type: string;
+  class: string;
+  strokeWidth: number;
+}) {
+  return props.type === "game" ? (
+    <Gamepad2 class={props.class} strokeWidth={props.strokeWidth} aria-hidden />
+  ) : (
+    <Film class={props.class} strokeWidth={props.strokeWidth} aria-hidden />
+  );
+}
+
 function EventIcon(props: { ev: LogbookEvent }) {
   const base = "size-4 shrink-0";
   return (
     <Switch>
       <Match when={props.ev.kind === "missed"}>
         <Clock class={`${base} text-accent`} strokeWidth={1.75} aria-hidden />
+      </Match>
+      <Match when={props.ev.kind === "status"}>
+        {/* EventIcon only renders for self-events (co-members get the avatar +
+            KindBadge), so a completion here is always the user's own → dimmed,
+            matching the self-watch treatment. */}
+        <StatusKindIcon
+          type={(props.ev as StatusEvent).type}
+          class={`${base} text-text-muted opacity-60`}
+          strokeWidth={1.75}
+        />
       </Match>
       <Match when={props.ev.kind === "ownership_transfer"}>
         <Crown
@@ -1011,7 +1056,12 @@ function WatchSentence(props: { ev: WatchBundle }) {
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span>{" "}
       <span class="font-mono text-mini uppercase tracking-wider">
-        {rangeLabel(props.ev.type, props.ev.minEpisode, props.ev.maxEpisode)}
+        {seasonRangeLabel(
+          props.ev.type,
+          props.ev.season,
+          props.ev.minEpisode,
+          props.ev.maxEpisode,
+        )}
       </span>{" "}
       gesehen.
     </>
@@ -1031,6 +1081,25 @@ function ListAddSentence(props: { ev: ListAddEvent }) {
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span> zu{" "}
       <span class="font-medium">{props.ev.listName}</span> hinzugefügt.
+    </>
+  );
+}
+
+/** "Du hast Dune gesehen." / "@aki hat Elden Ring gespielt." — movie/game
+ *  completion. Verb branches on type (movie → gesehen, game → gespielt),
+ *  matching the detail-page "Gesehen"/"Gespielt" toggles. Read-only. */
+function StatusSentence(props: { ev: StatusEvent }) {
+  return (
+    <>
+      <ActorName
+        isSelf={props.ev.isSelf}
+        name={props.ev.actorName}
+        handle={props.ev.actorHandle}
+        avatarUrl={props.ev.actorAvatarUrl}
+      />{" "}
+      {props.ev.isSelf ? "hast" : "hat"}{" "}
+      <span class="font-medium">{props.ev.title}</span>{" "}
+      {props.ev.type === "game" ? "gespielt" : "gesehen"}.
     </>
   );
 }

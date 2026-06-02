@@ -90,6 +90,19 @@ export function rangeLabel(type: string, min: number, max: number): string {
   return `E${String(min).padStart(2, "0")}–E${String(max).padStart(2, "0")}`;
 }
 
+/** Like rangeLabel, but prefixes the season for multi-season works →
+ *  "S2 · E03–E08". Season 1 (anime, manga, single-season series) stays bare so
+ *  the common case reads unchanged — mirrors seasonEpisodeLabel. */
+export function seasonRangeLabel(
+  type: string,
+  season: number,
+  min: number,
+  max: number,
+): string {
+  const base = rangeLabel(type, min, max);
+  return season > 1 ? `S${season} · ${base}` : base;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Dates
 // ──────────────────────────────────────────────────────────────────────

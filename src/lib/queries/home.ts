@@ -80,9 +80,9 @@ export interface UpcomingItem {
   airDate: string; // ISO — episode air date, or a movie's release date
 }
 
-/** Logbuch — a discriminated union of factual events. Four kinds:
+/** Logbuch — a discriminated union of factual events. Five kinds:
  *
- *  - watch              : a bundled watch session ("Du hast E37–E1163 gesehen"),
+ *  - watch              : a bundled watch session ("Du hast S2 · E03–E08 gesehen"),
  *                         clustered by SESSION_GAP_MS so cascades collapse to one row
  *  - list_add           : someone (you or a co-member) put an item into a list. For
  *                         shared lists co-members see each other's adds; for private
@@ -90,6 +90,9 @@ export interface UpcomingItem {
  *  - missed             : the latest released-but-unticked episode of a tracked item
  *                         (within MISSED_DAYS) — an actionable "you're behind" nudge
  *                         carrying a quick-tick (cascade-catch-up) target.
+ *  - status             : a movie/game completion (item_history 'completed') — "Du
+ *                         hast <Film> gesehen" / "@aki hat <Spiel> gespielt". Same
+ *                         shared-vs-private visibility as list_add.
  *  - ownership_transfer : a logged list ownership handover on a list you're in.
  *
  *  The display label for `actor` uses "@username" first, then display_name,
@@ -99,7 +102,8 @@ export type LogbookEvent =
   | WatchBundle
   | ListAddEvent
   | MissedEvent
-  | TransferEvent;
+  | TransferEvent
+  | StatusEvent;
 
 /** Common to every event — the sort key + actor attribution. */
 interface BaseLogbookEvent {
@@ -129,9 +133,23 @@ interface ItemLogbookEvent extends BaseLogbookEvent {
 
 export interface WatchBundle extends ItemLogbookEvent {
   kind: "watch";
+  /** Season the bundled episodes belong to. Bundles never span seasons (the
+   *  RPC groups per season), so a single number is exact. Multi-season works
+   *  (TMDB series) read "S2 · E03–E08"; season 1 (anime/manga/single-season)
+   *  stays bare. */
+  season: number;
   minEpisode: number;
   maxEpisode: number;
   episodeCount: number;
+}
+
+/** completed — a movie marked "seen" / a game marked "played" (item_history
+ *  status='completed'). Item-centric; the verb branches on type in the UI
+ *  (movie → "gesehen", game → "gespielt"), matching the detail-page toggles.
+ *  Co-member completions surface in shared lists via the item_history co-read
+ *  (shares_item_in_list_with); private-list completions are own-only. */
+export interface StatusEvent extends ItemLogbookEvent {
+  kind: "status";
 }
 
 export interface ListAddEvent extends ItemLogbookEvent {
@@ -396,6 +414,7 @@ async function fetchUpcomingDated(
 interface BundleRow {
   actor_user_id: string;
   item_id: string;
+  season: number;
   min_episode: number;
   max_episode: number;
   episode_count: number;
@@ -418,6 +437,13 @@ interface TransferRow {
   to_user_id: string | null;
   transferred_at: string;
   lists: { name: string; short_code: string } | null;
+}
+
+interface StatusRow {
+  item_id: string;
+  user_id: string;
+  status: string;
+  updated_at: string;
 }
 
 /** One candidate for a `missed` event — a released episode of a tracked item,
@@ -547,39 +573,56 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
 
   // trackedItemIds (home scope) feeds the missed query; it's independent of the
   // activity sources so it rides in the same fan-out.
-  const [trackedIds, bundlesRes, addsRes, transfersRes] = await Promise.all([
-    trackedItemIds(currentUserId),
-    supabase.rpc("home_watch_bundles", {
-      _since: sinceIso,
-      _gap_seconds: SESSION_GAP_MS / 1000,
-      _limit: LOGBOOK_LIMIT,
-    }),
-    supabase
-      .from("list_items")
-      .select(
-        "id, item_id, list_id, added_at, added_by_user_id, lists!inner(name, short_code)",
-      )
-      .gte("added_at", sinceIso)
-      .order("added_at", { ascending: false })
-      .limit(LOGBOOK_LIMIT),
-    supabase
-      .from("list_ownership_transfers")
-      .select(
-        "id, list_id, from_user_id, to_user_id, transferred_at, lists!inner(name, short_code)",
-      )
-      .gte("transferred_at", sinceIso)
-      .order("transferred_at", { ascending: false })
-      .limit(LOGBOOK_LIMIT),
-  ]);
+  const [trackedIds, bundlesRes, addsRes, transfersRes, statusRes] =
+    await Promise.all([
+      trackedItemIds(currentUserId),
+      supabase.rpc("home_watch_bundles", {
+        _since: sinceIso,
+        _gap_seconds: SESSION_GAP_MS / 1000,
+        _limit: LOGBOOK_LIMIT,
+      }),
+      supabase
+        .from("list_items")
+        .select(
+          "id, item_id, list_id, added_at, added_by_user_id, lists!inner(name, short_code)",
+        )
+        .gte("added_at", sinceIso)
+        .order("added_at", { ascending: false })
+        .limit(LOGBOOK_LIMIT),
+      supabase
+        .from("list_ownership_transfers")
+        .select(
+          "id, list_id, from_user_id, to_user_id, transferred_at, lists!inner(name, short_code)",
+        )
+        .gte("transferred_at", sinceIso)
+        .order("transferred_at", { ascending: false })
+        .limit(LOGBOOK_LIMIT),
+      // Movie/game completions. RLS spans own + co-member rows (item_history
+      // co-read, scoped to items co-present in a shared list), exactly like the
+      // list_add visibility. updated_at is the completion moment (set on the
+      // 'completed' upsert) and the feed sort key. The movie/game type gate
+      // happens client-side via the item meta — item_history can also carry
+      // episodic overlay rows, which must not surface as completion events.
+      supabase
+        .from("item_history")
+        .select("item_id, user_id, status, updated_at")
+        .eq("status", "completed")
+        .gte("updated_at", sinceIso)
+        .order("updated_at", { ascending: false })
+        .limit(LOGBOOK_LIMIT),
+    ]);
 
   if (bundlesRes.error) console.error("home_watch_bundles RPC failed", bundlesRes.error);
   if (addsRes.error) console.error("list_items recent-adds query failed", addsRes.error);
   if (transfersRes.error)
     console.error("list_ownership_transfers query failed", transfersRes.error);
+  if (statusRes.error)
+    console.error("item_history completions query failed", statusRes.error);
 
   const bundles = (bundlesRes.data ?? []) as BundleRow[];
   const adds = (addsRes.data ?? []) as unknown as AddRow[];
   const transfers = (transfersRes.data ?? []) as unknown as TransferRow[];
+  const statuses = (statusRes.data ?? []) as StatusRow[];
 
   // Missed depends on the tracked-item scope, so it can't ride the fan-out
   // above; it's its own (cheap, windowed) two-query step.
@@ -593,20 +636,24 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     bundles.length === 0 &&
     adds.length === 0 &&
     transfers.length === 0 &&
-    missed.length === 0
+    missed.length === 0 &&
+    statuses.length === 0
   )
     return [];
 
-  // Item meta covers every item-centric kind — bundles, adds, and missed.
+  // Item meta covers every item-centric kind — bundles, adds, missed, and
+  // completions (it also gates completions to movie/game types).
   const itemIds = unique([
     ...bundles.map((b) => b.item_id),
     ...adds.map((a) => a.item_id),
     ...missed.map((m) => m.itemId),
+    ...statuses.map((s) => s.item_id),
   ]);
   const meta = await itemMeta(itemIds);
 
-  // Profiles for every non-self actor mentioned (bundles, adds, or either side
-  // of a transfer), so the feed reads as "@partner" instead of "Jemand".
+  // Profiles for every non-self actor mentioned (bundles, adds, completions, or
+  // either side of a transfer), so the feed reads as "@partner" instead of
+  // "Jemand".
   const coActorIds = unique([
     ...bundles
       .map((b) => b.actor_user_id)
@@ -614,6 +661,9 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     ...adds
       .map((a) => a.added_by_user_id)
       .filter((id): id is string => id !== null && id !== currentUserId),
+    ...statuses
+      .map((s) => s.user_id)
+      .filter((id) => id !== currentUserId),
     ...transfers
       .flatMap((t) => [t.from_user_id, t.to_user_id])
       .filter((id): id is string => id !== null && id !== currentUserId),
@@ -637,6 +687,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       type: m.type,
       slug: m.slug,
       coverUrl: m.coverUrl,
+      season: b.season,
       minEpisode: b.min_episode,
       maxEpisode: b.max_episode,
       episodeCount: b.episode_count,
@@ -695,6 +746,33 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       actorHandle: null,
       actorAvatarUrl: null,
       isSelf: false,
+    });
+  }
+
+  // ── Movie/game completions ──────────────────────────────────────────────
+  for (const s of statuses) {
+    const m = meta.get(s.item_id);
+    if (!m) continue;
+    // item_history can also hold episodic overlay rows ('watching'/'dropped'/
+    // 'completed' on anime/series/manga). Only the episode-less types use it as
+    // a genuine completion; everything else tracks via episode_watches.
+    if (m.type !== "movie" && m.type !== "game") continue;
+    const isSelf = s.user_id === currentUserId;
+    const actor = isSelf ? undefined : actors.get(s.user_id);
+    events.push({
+      kind: "status",
+      eventId: `s:${s.user_id}:${s.item_id}:${s.updated_at}`,
+      ts: s.updated_at,
+      itemId: s.item_id,
+      title: m.title,
+      type: m.type,
+      slug: m.slug,
+      coverUrl: m.coverUrl,
+      actorUserId: s.user_id,
+      actorName: actor?.name ?? null,
+      actorHandle: actor?.handle ?? null,
+      actorAvatarUrl: actor?.avatarUrl ?? null,
+      isSelf,
     });
   }
 
