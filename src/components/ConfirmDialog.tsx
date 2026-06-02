@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { X } from "lucide-solid";
 import { Button } from "@/components/Button";
 
@@ -19,6 +20,16 @@ import { Button } from "@/components/Button";
  *
  * The primary button stays the accent (same as the inline confirms it
  * replaces) — destructive intent is carried by the copy, not a red button.
+ *
+ * Rendered through a <Portal> so the fixed-position overlay always covers the
+ * viewport. Without it, a dialog opened from inside a transformed ancestor
+ * (e.g. a solid-dnd sortable row, which carries a `transform`) gets its
+ * `position: fixed` contained to that ancestor's box instead of the screen —
+ * the "reset dialog opens cramped inside the row" bug.
+ *
+ * For irreversible actions (account deletion), pass `confirmPhrase`: a text
+ * field appears and the primary stays disabled until the user types it back
+ * (GitHub-style). Matching is @-stripped + case-insensitive.
  */
 interface ConfirmContent {
   /** Mono mini-caps kicker above the title, e.g. "Liste löschen". */
@@ -29,6 +40,9 @@ interface ConfirmContent {
   body?: string;
   /** Primary button label, e.g. "Löschen". */
   confirmLabel: string;
+  /** When set, the user must type this phrase (e.g. their @handle) to enable
+   *  the primary button. Matching strips a leading @ and ignores case. */
+  confirmPhrase?: string;
 }
 
 interface Props extends ConfirmContent {
@@ -45,7 +59,15 @@ export function ConfirmDialog(props: Props) {
   const [mounted, setMounted] = createSignal(false);
   const [visible, setVisible] = createSignal(false);
   const [snap, setSnap] = createSignal<ConfirmContent | null>(null);
+  const [typed, setTyped] = createSignal("");
   let closeTimer: number | null = null;
+
+  const normalize = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
+  // No phrase required → always satisfied; otherwise the typed value must match.
+  const phraseSatisfied = () => {
+    const phrase = content().confirmPhrase;
+    return !phrase || normalize(typed()) === normalize(phrase);
+  };
 
   createEffect(() => {
     if (props.open) {
@@ -58,7 +80,9 @@ export function ConfirmDialog(props: Props) {
         title: props.title,
         body: props.body,
         confirmLabel: props.confirmLabel,
+        confirmPhrase: props.confirmPhrase,
       });
+      setTyped("");
       setMounted(true);
       requestAnimationFrame(() =>
         requestAnimationFrame(() => setVisible(true)),
@@ -100,6 +124,7 @@ export function ConfirmDialog(props: Props) {
 
   return (
     <Show when={mounted()}>
+      <Portal>
       <div
         role="dialog"
         aria-modal="true"
@@ -155,6 +180,39 @@ export function ConfirmDialog(props: Props) {
             )}
           </Show>
 
+          <Show when={content().confirmPhrase}>
+            {(phrase) => (
+              <div class="px-6 pt-4">
+                <label
+                  for="confirm-dialog-phrase"
+                  class="font-mono text-mini text-text-muted"
+                >
+                  Tippe{" "}
+                  <span class="text-text">@{normalize(phrase())}</span> zum
+                  Bestätigen
+                </label>
+                <input
+                  id="confirm-dialog-phrase"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck={false}
+                  value={typed()}
+                  onInput={(e) => setTyped(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      phraseSatisfied() &&
+                      !props.pending
+                    )
+                      props.onConfirm();
+                  }}
+                  class="mt-2 w-full rounded-xs border border-border bg-surface px-3 py-2 font-mono text-body text-text outline-none transition-colors focus:border-accent"
+                />
+              </div>
+            )}
+          </Show>
+
           <div class="flex justify-end gap-2 px-6 pb-5 pt-5">
             <Button
               variant="secondary"
@@ -166,13 +224,14 @@ export function ConfirmDialog(props: Props) {
             <Button
               variant="primary"
               onClick={props.onConfirm}
-              disabled={props.pending}
+              disabled={props.pending || !phraseSatisfied()}
             >
               {content().confirmLabel}
             </Button>
           </div>
         </div>
       </div>
+      </Portal>
     </Show>
   );
 }

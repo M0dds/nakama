@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { useToast } from "@/lib/toast";
 import { listsQueryOptions, type ListSummary } from "@/lib/queries/lists";
-import { deleteAccount } from "@/lib/queries/profile";
+import { deleteAccount, myProfileOptions } from "@/lib/queries/profile";
 import { Button } from "@/components/Button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -30,6 +30,15 @@ export function DeleteAccountSection() {
     ...listsQueryOptions(auth.user()!),
     enabled: !!auth.user(),
   }));
+
+  // The @handle the user must type back to confirm deletion. If it hasn't
+  // loaded yet (or is somehow null), we omit the gate rather than block on a
+  // phrase we can't show.
+  const profile = createQuery(() => ({
+    ...myProfileOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const handle = () => profile.data?.username ?? undefined;
 
   const blocking = createMemo<ListSummary[]>(() => {
     const data = lists.data;
@@ -94,6 +103,7 @@ export function DeleteAccountSection() {
         kicker="Account löschen"
         title="Dein Account"
         body="Dein Profil, deine Listen und dein gesamter Fortschritt werden dauerhaft gelöscht. Das lässt sich nicht rückgängig machen."
+        confirmPhrase={handle()}
         confirmLabel="Account löschen"
         pending={mutation.isPending}
         onConfirm={() => mutation.mutate()}

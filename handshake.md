@@ -256,15 +256,12 @@ Kompaktes Ledger; durable „Warum"/Fallen leben in §Gotchas, Feature-Inventar 
 
 - **2026-06-01:** Login-Redesign (`feat/login` — Discord-Hero, Magic-Link-Disclosure, Auth-Modell verifiziert) · `UserChip` (`feat/user-chip`) · First-Login-Setup `/setup` (`feat/onboarding`, Migr. `…100000`) · Privacy-Fix globale `episode_watches`-Lane + Voll-Audit (`fix/episode-watches-privacy`, `…110000`) · Health-Audit Bundle 8 / AUD-1..11 (`fix/audit-findings` — u.a. `added_by_user_id`-Stempel) · Paging mit `Pager`+`createLiquidBubble` (`feat/paging`) · Detailseiten-Politur (`releaseLabel`, mobile Bento-Reihenfolge) · Confirms → `ConfirmDialog` (6 Stellen + `SyncToggle`) · Spiele/Steam (Thema 1c) · Content-Frame-Layout (1728px Cap, `ContentFrame`) · „Was kommt" ohne oberes Fenster · Empty-Canvas-Onboarding (`feat/empty-canvas`, `…120000`) · Pre-Launch-Härtung Bundle 9 (`…130000`).
 - **2026-06-02:** Tracken/Archiv-Fix `set_list_tracking` + latenter `trackedItemIds`-Leak (`fix/member-tracking-toggle`, `…140000`) · Visual Quick-Wins (Sakura heller, Dark-Dialoge `dark:bg-surface`; #10 Grain vertagt) (`feat/quick-wins-visual`) · Cover-Epos #1/#2/#3 (`feat/list-covers`, `…150000`+`…160000`).
+- **2026-06-02 (Quick-Wins Batch 2):** #4 ConfirmDialog durch `<Portal>` (Sortable-Row-`transform` sperrte `position:fixed` ein → Reset-Dialog jetzt viewport-zentriert) · #7 `confirmPhrase`-Prop = „tippe @handle zum Bestätigen" beim Account-Löschen · #10 Grain grob+entsättigt+sichtbar (`baseFrequency 0.65`, `saturate 0`, Opacity 0.04/0.06) · #12 verifiziert (war bereits da: `RouteError`-Boundary + 404-Seite + item/list-`NotFound` + delete-Block-Feedback). Branch `feat/quick-wins-batch-2`.
 
 ### Feature-Backlog (User-Liste) — offen
 
-Vom 16-Punkte-Backlog des Users erledigt: #14 (Tracken-Bug), #8/#9 (Sakura/Dialoge), #1/#2/#3 (Cover-Epos). **Offen, grob nach Aufwand:**
+Vom 16-Punkte-Backlog des Users erledigt: #14 (Tracken-Bug), #8/#9 (Sakura/Dialoge), #1/#2/#3 (Cover-Epos), **#4/#7/#10/#12 (Quick-Wins Batch 2)**. **Offen, grob nach Aufwand:**
 
-- **#4 Reset-Dialog-Bug (S):** der Zurücksetzen-Dialog in einer Item-Zeile öffnet sich „nicht über den ganzen Screen". Läuft bereits über `ConfirmDialog` (`RowActions.tsx:160`) — Ursache ist ein Render-/Overflow-Clip (Transform-Ancestor?), Root-Cause noch zu verifizieren.
-- **#7 Account-Löschen Handle-Confirm (S):** `DeleteAccountSection` + `ConfirmDialog` um „tippe @handle zum Bestätigen" erweitern (GitHub-Stil).
-- **#10 Grain-Textur (S):** siehe oben — gröberes/sichtbares Korn, vertagt.
-- **#12 Error-Seite (S–M):** `ErrorBoundary`-Fallback (`RouteError`) + ggf. `NotFound`-Politur. (Nebenbei: die `delete_account`-Blockade bei „besitzt geteilte Liste" gibt evtl. kein klares Feedback — hier mitnehmen.)
 - **#6 „Was kommt" mobil (M):** Cover werden mobil gequetscht (untereinander) → Galerie-Layout wie die Steam-`ScreenshotGallery` (aktive Card oben + swipebare Reihe mit Pfeilen, Edge-Clip statt schrumpfen, `scrollbar-none`).
 - **#5 Logbuch (M–L):** Staffel-Angabe bei Serien-Watch-Sätzen + Spiele/Filme-Events (`item_history` completed) als neue Discriminated-Union-Kind im Feed; wahrsch. `home_watch_bundles`-RPC erweitern.
 - **#13 Push Notifications / Release-Mail (L):** Web-Push (PWA SW) + Subscription-Tabelle + Edge-Function + Cron + VAPID + Permission-UX. E-Mail-Pfad hängt an der Resend-Domain (siehe §Geplant E-Mail-Prod).
