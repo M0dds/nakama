@@ -156,7 +156,8 @@ export default function Home() {
  * First click activates an inactive card; second click (same card)
  * navigates to the item.
  */
-const WAS_KOMMT_SHOWN = 4;
+const WAS_KOMMT_SHOWN = 4; // desktop page size + mobile initial count
+const WAS_KOMMT_ROW = 2; // mobile: cards revealed per "weitere"-tap (one row)
 
 function WasKommt(props: { items: UpcomingItem[] }) {
   const navigate = useNavigate();
@@ -164,12 +165,34 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     props.items[0]?.itemId ?? null,
   );
 
-  const visible = () => props.items.slice(0, WAS_KOMMT_SHOWN);
-  const hiddenCount = () =>
-    Math.max(0, props.items.length - WAS_KOMMT_SHOWN);
+  // Desktop pages through groups of 4 (numbered Pager, like Fortsetzen);
+  // mobile reveals one more row (2 cards) per tap on the "+N weitere" button.
+  // Two independent models, but only one layout is visible at a time.
+  const [page, setPage] = createSignal(1);
+  const [shown, setShown] = createSignal(WAS_KOMMT_SHOWN);
+
+  const pageCount = () =>
+    Math.max(1, Math.ceil(props.items.length / WAS_KOMMT_SHOWN));
+  const desktopVisible = () => {
+    const start = (page() - 1) * WAS_KOMMT_SHOWN;
+    return props.items.slice(start, start + WAS_KOMMT_SHOWN);
+  };
+  const mobileVisible = () => props.items.slice(0, shown());
+  const mobileRemaining = () => Math.max(0, props.items.length - shown());
+
+  // Desktop: on a page change focus the first card of the new page. Deferred so
+  // it fires only on navigation, not on every realtime refetch (which would
+  // clobber the user's selection). Mirrors Fortsetzen.
+  createEffect(
+    on(
+      page,
+      () => setActiveId(desktopVisible()[0]?.itemId ?? null),
+      { defer: true },
+    ),
+  );
 
   const activeIndex = () => {
-    const idx = visible().findIndex((it) => it.itemId === activeId());
+    const idx = desktopVisible().findIndex((it) => it.itemId === activeId());
     return idx >= 0 ? idx : 0;
   };
 
@@ -181,19 +204,64 @@ function WasKommt(props: { items: UpcomingItem[] }) {
       i === activeIndex() ? "2fr" : "1fr",
     ).join(" ");
 
+  // Mobile: a 2-up grid laid out in rows of two. Within each row the active
+  // card's column springs to 2fr (the others 1fr) — the same liquid accordion
+  // as the desktop single row, just wrapped two-up so portrait covers get
+  // width instead of being squashed flat across the full screen width.
+  const rows = () => {
+    const v = mobileVisible();
+    const out: UpcomingItem[][] = [];
+    for (let i = 0; i < v.length; i += 2) out.push(v.slice(i, i + 2));
+    return out;
+  };
+  const rowCols = (row: UpcomingItem[]) => {
+    const cols = row.map((it) => (it.itemId === activeId() ? "2fr" : "1fr"));
+    // A lone trailing card (odd count) gets a padded 2-column track: it keeps a
+    // normal column width (and still widens to 2fr when active) instead of
+    // stretching full-width; the second column stays empty.
+    if (cols.length === 1) cols.push("1fr");
+    return cols.join(" ");
+  };
+  // Exactly one "hero" (the globally-first item) so only it says "HEUTE".
+  const isHeroItem = (item: UpcomingItem) =>
+    item.itemId === props.items[0]?.itemId;
+
+  const SPRING = "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)";
+  const COLOR_T =
+    "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1), " +
+    "background-color 260ms cubic-bezier(0.16, 1, 0.3, 1)";
+
+  // Shared tap/keyboard/hover semantics for every card. First tap on an
+  // inactive card activates it (preventing nav); a second tap (now active)
+  // navigates. Hover-activate is gated to pointer devices — on touch a tap
+  // fires a synthetic mouseenter BEFORE the click, which would otherwise
+  // pre-activate the card and let the first tap navigate.
+  const onCardClick = (item: UpcomingItem, e: MouseEvent) => {
+    if (item.itemId !== activeId()) {
+      e.preventDefault();
+      setActiveId(item.itemId);
+    }
+  };
+  const onCardKey = (item: UpcomingItem, e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (item.itemId === activeId()) {
+        navigate(`/item/${item.type}/${item.slug}`);
+      } else {
+        setActiveId(item.itemId);
+      }
+    }
+  };
+  const onCardEnter = (item: UpcomingItem) => {
+    if (window.matchMedia("(hover: hover)").matches) setActiveId(item.itemId);
+  };
+
   return (
     <div>
+      {/* ── Desktop: single-row 2fr-1fr-1fr-1fr accordion ──────────── */}
       <div
-        class="flex flex-col gap-3 md:grid"
-        style={{
-          "grid-template-columns": gridCols(),
-          // Liquid spring (gentle overshoot, ~10%) instead of a plain ease-out
-          // — the active column bulges a hair past 2fr and settles back, so
-          // the accordion reads elastic/mercury like the nav bubble rather
-          // than a flat resize.
-          transition:
-            "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)",
-        }}
+        class="hidden gap-3 md:grid"
+        style={{ "grid-template-columns": gridCols(), transition: SPRING }}
         onMouseLeave={() => {
           // Snap the highlight back to the first card on hover-capable
           // devices only — touch's tap-to-activate stays sticky.
@@ -202,10 +270,9 @@ function WasKommt(props: { items: UpcomingItem[] }) {
           }
         }}
       >
-        <For each={visible()}>
+        <For each={desktopVisible()}>
           {(item, i) => {
             const active = () => item.itemId === activeId();
-            const isHero = () => i() === 0;
             return (
               <A
                 href={`/item/${item.type}/${item.slug}`}
@@ -213,119 +280,175 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                 aria-label={
                   active() ? `${item.title} öffnen` : `${item.title} ansehen`
                 }
-                onMouseEnter={() => setActiveId(item.itemId)}
-                onClick={(e) => {
-                  // First click on an inactive card just activates; second
-                  // click (now active) lets the navigation through.
-                  if (item.itemId !== activeId()) {
-                    e.preventDefault();
-                    setActiveId(item.itemId);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    if (item.itemId === activeId()) {
-                      navigate(`/item/${item.type}/${item.slug}`);
-                    } else {
-                      setActiveId(item.itemId);
-                    }
-                  }
-                }}
-                class="group relative flex w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none md:h-80"
+                onMouseEnter={() => onCardEnter(item)}
+                onClick={(e) => onCardClick(item, e)}
+                onKeyDown={(e) => onCardKey(item, e)}
+                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
                 classList={{
-                  "h-80 border-accent bg-accent": active(),
-                  "h-44 border-border bg-bg": !active(),
+                  "border-accent bg-accent": active(),
+                  "border-border bg-bg": !active(),
                 }}
-                style={{
-                  // Height (the mobile vertical accordion) springs with the
-                  // same overshoot as the grid; colours just ease out (an
-                  // overshoot on colour would over-saturate the accent fill).
-                  transition:
-                    "height 420ms cubic-bezier(0.22, 1.2, 0.36, 1), " +
-                    "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1), " +
-                    "background-color 260ms cubic-bezier(0.16, 1, 0.3, 1)",
-                }}
+                style={{ transition: COLOR_T }}
               >
-                {/* Cover fills above the caption; bg shows through as the
-                    placeholder for items without a real cover. */}
-                <div class="relative min-h-0 flex-1 overflow-hidden">
-                  <Show
-                    when={item.coverUrl}
-                    fallback={
-                      <div class="flex h-full items-center justify-center">
-                        <span
-                          class="font-mono text-mini font-medium opacity-60"
-                          classList={{
-                            "text-accent-on": active(),
-                            "text-text-muted": !active(),
-                          }}
-                        >
-                          {typeInitial(item.type)}
-                        </span>
-                      </div>
-                    }
-                  >
-                    {/* Was-kommt cards display covers at up to ~250×280 px
-                        (h-80 active), so the stored `/cover/medium/` URL
-                        (~230 px native) pixelates badly on hover-scale.
-                        highResCover swaps in the `/cover/large/` variant
-                        — same URL host, larger image. */}
-                    <img
-                      ref={fadeOnLoad}
-                      src={highResCover(item.coverUrl)!}
-                      alt=""
-                      class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
-                    />
-                  </Show>
-                </div>
-
-                {/* Caption */}
-                <div class="shrink-0 p-3">
-                  <DayTag
-                    airDate={item.airDate}
-                    type={item.type}
-                    isHero={isHero()}
-                    active={active()}
-                  />
-                  <h3
-                    class="mt-0.5 truncate text-body font-medium"
-                    classList={{
-                      "text-accent-on": active(),
-                      "text-text": !active(),
-                    }}
-                  >
-                    {item.title}
-                  </h3>
-                  <span
-                    class="block truncate font-mono text-mini"
-                    classList={{
-                      "text-accent-on/85": active(),
-                      "text-text-muted": !active(),
-                    }}
-                  >
-                    {/* Movies have no episode number → just the type label. */}
-                    <Show
-                      when={item.episodeNumber !== undefined}
-                      fallback={typeLabel(item.type)}
-                    >
-                      {episodeCode(item.episodeNumber!)}
-                      {active() ? ` · ${typeLabel(item.type)}` : ""}
-                    </Show>
-                  </span>
-                </div>
+                <WasKommtCardFace
+                  item={item}
+                  active={active()}
+                  isHero={i() === 0}
+                  coverClass="relative min-h-0 flex-1 overflow-hidden"
+                />
               </A>
             );
           }}
         </For>
       </div>
 
-      <Show when={hiddenCount() > 0}>
-        <p class="mt-2 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted">
-          +{hiddenCount()} weitere
-        </p>
+      {/* ── Mobile: 2-up grid, rows of two; active card springs wider ─ */}
+      <div class="flex flex-col gap-3 md:hidden">
+        <For each={rows()}>
+          {(row) => (
+            <div
+              class="grid gap-3"
+              style={{ "grid-template-columns": rowCols(row), transition: SPRING }}
+            >
+              <For each={row}>
+                {(item) => {
+                  const active = () => item.itemId === activeId();
+                  return (
+                    <A
+                      href={`/item/${item.type}/${item.slug}`}
+                      aria-expanded={active()}
+                      aria-label={
+                        active()
+                          ? `${item.title} öffnen`
+                          : `${item.title} ansehen`
+                      }
+                      onMouseEnter={() => onCardEnter(item)}
+                      onClick={(e) => onCardClick(item, e)}
+                      onKeyDown={(e) => onCardKey(item, e)}
+                      // Fixed height (like the desktop h-80 cards) → only the
+                      // WIDTH springs, so every card stays the same height and
+                      // the 2×2 always reads as a filled rectangle, never a gap.
+                      // The cover fills via object-cover: active (wide) ≈ square,
+                      // inactive (narrow) ≈ portrait.
+                      class="group relative flex h-72 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                      classList={{
+                        "border-accent bg-accent": active(),
+                        "border-border bg-bg": !active(),
+                      }}
+                      style={{ transition: COLOR_T }}
+                    >
+                      <WasKommtCardFace
+                        item={item}
+                        active={active()}
+                        isHero={isHeroItem(item)}
+                        coverClass="relative min-h-0 flex-1 overflow-hidden"
+                      />
+                    </A>
+                  );
+                }}
+              </For>
+            </div>
+          )}
+        </For>
+      </div>
+
+      {/* Desktop: numbered Pager (4 per page, like Fortsetzen). */}
+      <div class="hidden md:block">
+        <Pager page={page()} pageCount={pageCount()} onPage={setPage} />
+      </div>
+
+      {/* Mobile: reveal one more row (2 cards) per tap. */}
+      <Show when={mobileRemaining() > 0}>
+        <button
+          type="button"
+          onClick={() => setShown((s) => s + WAS_KOMMT_ROW)}
+          class="mt-3 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text md:hidden"
+        >
+          +{mobileRemaining()} weitere
+        </button>
       </Show>
     </div>
+  );
+}
+
+/**
+ * The cover + caption shared by every Was-kommt card. The cover-box sizing is
+ * passed in (`coverClass`): desktop fills the card height (flex-1), the mobile
+ * 2-up cards are 2:3 portrait — so covers keep a real aspect on each surface
+ * instead of being squashed flat.
+ */
+function WasKommtCardFace(props: {
+  item: UpcomingItem;
+  active: boolean;
+  isHero: boolean;
+  coverClass: string;
+}) {
+  return (
+    <>
+      {/* Cover above the caption; bg shows through as the placeholder for
+          items without a real cover. highResCover swaps the stored
+          `/cover/medium/` URL for the larger variant (same host) so it stays
+          crisp at hero size / on hover-scale. */}
+      <div class={props.coverClass}>
+        <Show
+          when={props.item.coverUrl}
+          fallback={
+            <div class="flex h-full items-center justify-center">
+              <span
+                class="font-mono text-mini font-medium opacity-60"
+                classList={{
+                  "text-accent-on": props.active,
+                  "text-text-muted": !props.active,
+                }}
+              >
+                {typeInitial(props.item.type)}
+              </span>
+            </div>
+          }
+        >
+          <img
+            ref={fadeOnLoad}
+            src={highResCover(props.item.coverUrl)!}
+            alt=""
+            class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
+          />
+        </Show>
+      </div>
+
+      <div class="shrink-0 p-3">
+        <DayTag
+          airDate={props.item.airDate}
+          type={props.item.type}
+          isHero={props.isHero}
+          active={props.active}
+        />
+        <h3
+          class="mt-0.5 truncate text-body font-medium"
+          classList={{
+            "text-accent-on": props.active,
+            "text-text": !props.active,
+          }}
+        >
+          {props.item.title}
+        </h3>
+        <span
+          class="block truncate font-mono text-mini"
+          classList={{
+            "text-accent-on/85": props.active,
+            "text-text-muted": !props.active,
+          }}
+        >
+          {/* Movies have no episode number → just the type label. */}
+          <Show
+            when={props.item.episodeNumber !== undefined}
+            fallback={typeLabel(props.item.type)}
+          >
+            {episodeCode(props.item.episodeNumber!)}
+            {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
+          </Show>
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -479,7 +602,14 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                   aria-label={
                     active() ? `${item.title} öffnen` : `${item.title} ansehen`
                   }
-                  onMouseEnter={() => setActiveId(key)}
+                  // Hover-activate on pointer devices only — see WasKommt:
+                  // touch's pre-click mouseenter would otherwise make the first
+                  // tap navigate instead of expanding the row.
+                  onMouseEnter={() => {
+                    if (window.matchMedia("(hover: hover)").matches) {
+                      setActiveId(key);
+                    }
+                  }}
                   onClick={(e) => {
                     if (key !== activeId()) {
                       e.preventDefault();
@@ -952,16 +1082,25 @@ function TransferSentence(props: { ev: TransferEvent }) {
 // Each mirrors its module's content shape so the real data drops in without
 // a layout shift — the frame stays, only the fill swaps.
 
-/** Was-kommt: the hero(2fr)+3 card row (vertical stack on mobile). */
+/** Was-kommt: the hero(2fr)+3 card row on desktop; 2-up portrait grid on
+ *  mobile — each skeleton mirrors the layout it replaces so the fill drops in
+ *  without a shift. */
 function WasKommtSkeleton() {
   return (
-    <div
-      class="flex flex-col gap-3 md:grid"
-      style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
-    >
-      <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-        {() => <Skeleton class="h-44 w-full md:h-80" />}
-      </For>
+    <div>
+      <div
+        class="hidden gap-3 md:grid"
+        style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
+      >
+        <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
+          {() => <Skeleton class="h-96 w-full" />}
+        </For>
+      </div>
+      <div class="grid grid-cols-2 gap-3 md:hidden">
+        <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
+          {() => <Skeleton class="h-72 w-full" />}
+        </For>
+      </div>
     </div>
   );
 }
