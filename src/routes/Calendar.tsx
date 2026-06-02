@@ -507,7 +507,7 @@ function WeekGrid(props: {
                 </div>
 
                 {/* Episodes for the day, or an em-dash placeholder. */}
-                <div class="min-w-0 flex-1 space-y-1 pt-0.5">
+                <div class="min-w-0 flex-1 space-y-0.5 pt-0.5">
                   <Show
                     when={evs().length > 0}
                     fallback={<span class="text-body text-text-muted">—</span>}
