@@ -1,4 +1,14 @@
-import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  For,
+  Index,
+  Match,
+  on,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js";
 import { A, useNavigate } from "@solidjs/router";
 import { createQuery } from "@tanstack/solid-query";
 import {
@@ -352,14 +362,51 @@ function WasKommt(props: { items: UpcomingItem[] }) {
       </div>
 
       {/* ── Mobile: 2-up grid, rows of two; active card springs wider ─ */}
+      {/* <Index> (keys by POSITION) not <For> (keys by reference): rows() is a
+          fresh array of fresh slices on every reveal, so <For> would remount
+          ALL rows (covers re-fade = flash). With <Index> the existing rows stay
+          mounted and only a newly-revealed index mounts — and the inner <For>
+          still keys by item reference (stable across reveals), so the cards
+          persist too. The new row's onMount then plays the enter animation. */}
       <div class="flex flex-col gap-3 md:hidden">
-        <For each={rows()}>
-          {(row) => (
+        <Index each={rows()}>
+          {(row, i) => {
+            let rowEl: HTMLDivElement | undefined;
+            // Animate rows revealed AFTER the initial render (index past the
+            // initial WAS_KOMMT_SHOWN rows) — they slide in from ABOVE and
+            // settle down (von oben nach unten), the vertical counterpart to the
+            // desktop pager's horizontal swap. Initial rows + reduced-motion
+            // skip it. onMount fires only for freshly-mounted indices (Index),
+            // so this targets exactly the newly-loaded row.
+            onMount(() => {
+              if (
+                i < WAS_KOMMT_SHOWN / WAS_KOMMT_ROW ||
+                window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
+                !rowEl
+              )
+                return;
+              rowEl.animate(
+                [
+                  { opacity: 0, transform: "translateY(-14px)" },
+                  { opacity: 1, transform: "translateY(0)" },
+                ],
+                {
+                  duration: 420,
+                  easing: "cubic-bezier(0.34, 1.5, 0.5, 1)",
+                  fill: "backwards",
+                },
+              );
+            });
+            return (
             <div
+              ref={rowEl}
               class="grid gap-3"
-              style={{ "grid-template-columns": rowCols(row), transition: SPRING }}
+              style={{
+                "grid-template-columns": rowCols(row()),
+                transition: SPRING,
+              }}
             >
-              <For each={row}>
+              <For each={row()}>
                 {(item) => {
                   const active = () => item.itemId === activeId();
                   return (
@@ -397,8 +444,9 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                 }}
               </For>
             </div>
-          )}
-        </For>
+            );
+          }}
+        </Index>
       </div>
 
       {/* Desktop: numbered Pager (4 per page, like Fortsetzen). */}
