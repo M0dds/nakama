@@ -46,6 +46,7 @@ import { useRealtimeInvalidation } from "@/lib/realtime";
 import {
   airDateHasClock,
   dateLabel,
+  dateLabelYear,
   dayOffset,
   hasAirTime,
   timeLabel,
@@ -1067,7 +1068,7 @@ function BinaryStatusRow(props: {
               <span class="text-accent">{tag()}</span>
             </Show>
             <span class="text-right text-text-muted">
-              {dateLabel(props.releaseDate!)}
+              {dateLabelYear(props.releaseDate!)}
             </span>
           </div>
         </Show>
@@ -1181,19 +1182,11 @@ function MoviePanel(props: {
 
   return (
     <>
-      <BinaryStatusRow
-        done={isSeen()}
-        verb="gesehen"
-        watchers={coWatchers.data ?? []}
-        releaseDate={details.data?.releaseDate ?? null}
-        onToggle={() => seenMut.mutate(!isSeen())}
-      />
-
       <Show when={props.item.source === "tmdb"}>
         <Show
           when={details.data}
           fallback={
-            <p class="mt-6 text-body text-text-muted">
+            <p class="text-body text-text-muted">
               {details.isLoading
                 ? "Lade Filmdaten …"
                 : "Keine Zusatzinfos verfügbar."}
@@ -1201,7 +1194,7 @@ function MoviePanel(props: {
           }
         >
           {(d) => (
-            <div class="mt-6 space-y-6 border-t border-border pt-6">
+            <div class="space-y-6">
               <Show when={d().tagline || d().overview}>
                 <div class="space-y-2">
                   <Show when={d().tagline}>
@@ -1239,6 +1232,18 @@ function MoviePanel(props: {
           )}
         </Show>
       </Show>
+
+      {/* Seen-toggle below the content, matching the game panel: the binary
+          state is the actionable footer of the panel. */}
+      <div class="mt-6 border-t border-border">
+        <BinaryStatusRow
+          done={isSeen()}
+          verb="gesehen"
+          watchers={coWatchers.data ?? []}
+          releaseDate={details.data?.releaseDate ?? null}
+          onToggle={() => seenMut.mutate(!isSeen())}
+        />
+      </div>
     </>
   );
 }

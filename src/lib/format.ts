@@ -122,6 +122,13 @@ export function dateLabel(iso: string): string {
   return `${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
 }
 
+/** "27. Mai 2025" — dateLabel with the year appended. For a release date shown
+ *  on its own (the movie/game seen/played toggle row), where a bare "27. Mai"
+ *  is ambiguous across years. Keeps the fixed-width 3-letter month. */
+export function dateLabelYear(iso: string): string {
+  return `${dateLabel(iso)} ${new Date(iso).getFullYear()}`;
+}
+
 /** "DI · 02. Jun" — weekday + day + 3-letter month (no trailing dot). Mono
  *  mini-caps in the UI, so it reads "DI · 02. JUN". Same day/month form as
  *  dateLabel, just with the weekday prefix. */
