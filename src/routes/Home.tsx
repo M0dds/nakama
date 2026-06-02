@@ -454,15 +454,29 @@ function WasKommt(props: { items: UpcomingItem[] }) {
         <Pager page={page()} pageCount={pageCount()} onPage={setPage} />
       </div>
 
-      {/* Mobile: reveal one more row (2 cards) per tap. */}
-      <Show when={mobileRemaining() > 0}>
-        <button
-          type="button"
-          onClick={() => setShown((s) => s + WAS_KOMMT_ROW)}
-          class="mt-3 flex w-full items-center justify-center rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text md:hidden"
-        >
-          +{mobileRemaining()} weitere
-        </button>
+      {/* Mobile: reveal one more row (2 cards) per tap, and collapse back to the
+          initial count once expanded. Same footer pattern as the Logbuch. */}
+      <Show when={mobileRemaining() > 0 || shown() > WAS_KOMMT_SHOWN}>
+        <div class="mt-3 flex items-center gap-2 md:hidden">
+          <Show when={mobileRemaining() > 0}>
+            <button
+              type="button"
+              onClick={() => setShown((s) => s + WAS_KOMMT_ROW)}
+              class="flex flex-1 items-center justify-center whitespace-nowrap rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+            >
+              +{mobileRemaining()} weitere
+            </button>
+          </Show>
+          <Show when={shown() > WAS_KOMMT_SHOWN}>
+            <button
+              type="button"
+              onClick={() => setShown(WAS_KOMMT_SHOWN)}
+              class="flex flex-1 items-center justify-center whitespace-nowrap rounded-xs py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+            >
+              Weniger anzeigen
+            </button>
+          </Show>
+        </div>
       </Show>
     </div>
   );
