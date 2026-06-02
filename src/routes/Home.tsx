@@ -203,26 +203,30 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     ),
   );
 
-  // Animate the desktop Pager page-swap: a short opacity-in + settle with a
-  // slight overshoot (the "bounce"), so blättern reads as a deliberate change
-  // instead of a hard cut. Deferred → the first render doesn't animate, only
-  // genuine page changes; reduced-motion-aware. A transform is safe here — the
-  // grid has no position:fixed descendants (the ColumnGuide lives at the Home
-  // level, outside this subtree).
+  // Animate the desktop Pager page-swap HORIZONTALLY, following the paging
+  // direction: forward (next page) the cards slide in from the RIGHT, backward
+  // from the LEFT — opacity-in + a slight overshoot past the resting point (the
+  // "bounce"). `on(page, (p, prev) => …)` hands us the previous page so we know
+  // the direction. Deferred → the first render doesn't animate, only genuine
+  // page changes; reduced-motion-aware. transform is safe here — the grid has no
+  // position:fixed descendants (the ColumnGuide lives at the Home level), and
+  // body has overflow-x:clip so the transient X-shift adds no scrollbar.
   let desktopGridEl: HTMLDivElement | undefined;
   createEffect(
     on(
       page,
-      () => {
+      (p, prev) => {
         if (
           window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
           !desktopGridEl
         )
           return;
+        const forward = p >= (prev ?? p);
+        const fromX = forward ? 28 : -28; // start to the right (fwd) / left (back)
         desktopGridEl.animate(
           [
-            { opacity: 0, transform: "translateY(12px)" },
-            { opacity: 1, transform: "translateY(0)" },
+            { opacity: 0, transform: `translateX(${fromX}px)` },
+            { opacity: 1, transform: "translateX(0)" },
           ],
           {
             duration: 420,
