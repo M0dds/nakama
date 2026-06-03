@@ -17,6 +17,7 @@
  */
 
 import type { MediaResult } from "@/lib/search";
+import { supabase } from "@/lib/supabase";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -38,14 +39,17 @@ async function steamGet<T>(
   signal?: AbortSignal,
 ): Promise<T | null> {
   try {
-    const res = await fetch(steamApiUrl(endpoint, params), {
-      // The Edge Function verifies the Supabase anon key; the Vite proxy
-      // ignores extra headers, so sending them in dev is harmless.
-      headers: import.meta.env.DEV
-        ? undefined
-        : { apikey: ANON_KEY ?? "", Authorization: `Bearer ${ANON_KEY ?? ""}` },
-      signal,
-    });
+    // The Edge Function authenticates the USER (auth.getUser), so prod calls
+    // send the live session access_token as the bearer — NOT the anon key
+    // (which would resolve to no user → 401). apikey stays the anon key for the
+    // Supabase gateway. The Vite dev proxy ignores headers, so dev skips this.
+    let headers: Record<string, string> | undefined;
+    if (!import.meta.env.DEV) {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? ANON_KEY ?? "";
+      headers = { apikey: ANON_KEY ?? "", Authorization: `Bearer ${token}` };
+    }
+    const res = await fetch(steamApiUrl(endpoint, params), { headers, signal });
     if (!res.ok) return null;
     return (await res.json().catch(() => null)) as T | null;
   } catch {
