@@ -61,6 +61,7 @@ import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
 import { SyncToggle } from "@/components/SyncToggle";
 import { Pager } from "@/components/Pager";
+import { ItemNotes } from "@/components/ItemNotes";
 
 /**
  * /item/:type/:slug — Item-Detail. Layout:
@@ -143,6 +144,10 @@ export default function ItemDetail() {
     if (!listItemId()) return resolvedLI.isFetched;
     return syncCtx.isFetched;
   };
+  // The list this item is opened through, if any — the scope of the shared
+  // notes board (section 03). Null on the global item page (Home/search/
+  // calendar entry), where there's no single list to attach notes to.
+  const notesListId = (): string | null => syncCtx.data?.listId ?? null;
 
   const item = createQuery(() => ({
     ...itemQueryOptions(params.type, params.slug),
@@ -262,6 +267,11 @@ export default function ItemDetail() {
       // caller's own seen-state flows the same way (own write also fires here).
       table: "item_history",
       invalidates: [["movie-co-watchers"], ["movie-seen"]],
+    },
+    {
+      // Shared notes board: a co-member adding/removing a note updates it live.
+      table: "item_notes",
+      invalidates: [["item-notes"]],
     },
   ]);
 
@@ -470,7 +480,7 @@ export default function ItemDetail() {
           <BentoModule
             label={isGame() ? "Spiel" : isMovie() ? "Film" : "Episoden"}
             number="01"
-            mobileNumber="02"
+            mobileNumber={notesListId() ? "03" : "02"}
           >
             <Show
               when={item.data}
@@ -609,6 +619,22 @@ export default function ItemDetail() {
               )}
             </Show>
           </BentoModule>
+
+          {/* Section 03 — shared notes (text + link blocks). Only with a list
+              context: notes attach to (list, item), so the global item page
+              (no single list) doesn't show it. A hairline separates it from
+              Details. mobileNumber 02 — on mobile it sits between Details (01)
+              and the episode/film/game section (03). */}
+          <Show when={notesListId() && item.data?.id}>
+            <BentoModule
+              label="Notizen"
+              number="03"
+              mobileNumber="02"
+              class="border-t border-border"
+            >
+              <ItemNotes listId={notesListId()!} itemId={item.data!.id} />
+            </BentoModule>
+          </Show>
         </div>
       </div>
     </main>
