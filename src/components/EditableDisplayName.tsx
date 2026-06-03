@@ -119,6 +119,7 @@ export function EditableDisplayName(props: {
       <input
         ref={inputRef!}
         type="text"
+        maxlength="80"
         value={draft()}
         placeholder={`@${props.handle}`}
         onInput={(e) => setDraft(e.currentTarget.value)}

@@ -155,6 +155,7 @@ export function EditableListName(props: {
       <input
         ref={inputRef!}
         type="text"
+        maxlength="120"
         value={draft()}
         onInput={(e) => setDraft(e.currentTarget.value)}
         onBlur={commit}

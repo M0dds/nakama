@@ -319,6 +319,7 @@ export default function Setup() {
                             value={handle()}
                             onInput={(e) => onHandleInput(e.currentTarget.value)}
                             placeholder="jm"
+                            maxlength="30"
                             autocapitalize="none"
                             autocomplete="off"
                             spellcheck={false}

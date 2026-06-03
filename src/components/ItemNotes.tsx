@@ -226,6 +226,7 @@ export function ItemNotes(props: { listId: string; itemId: string }) {
               value={text()}
               onInput={(e) => setText(e.currentTarget.value)}
               rows={3}
+              maxlength="5000"
               placeholder="Notiz schreiben …"
               autofocus
               class={`${inputCls} resize-y`}
@@ -251,6 +252,7 @@ export function ItemNotes(props: { listId: string; itemId: string }) {
             <input
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
+              maxlength="200"
               placeholder="Bezeichnung (z. B. „Trailer“)"
               autofocus
               class={inputCls}
@@ -261,6 +263,7 @@ export function ItemNotes(props: { listId: string; itemId: string }) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && linkValid()) submitLink();
               }}
+              maxlength="2048"
               placeholder="https://…"
               inputmode="url"
               class={inputCls}

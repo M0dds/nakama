@@ -80,6 +80,7 @@ export function CreateListForm() {
           id="list-name"
           name="name"
           required
+          maxlength="120"
           autocomplete="off"
           placeholder="z.B. Lieblings-Anime"
           value={name()}
@@ -94,6 +95,7 @@ export function CreateListForm() {
         <input
           id="list-desc"
           name="description"
+          maxlength="500"
           autocomplete="off"
           placeholder="Kurzer Hinweis worum es geht"
           value={description()}
