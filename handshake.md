@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand (2026-06-04):** App ist **live auf usenakama.app** (Cloudflare Workers, **Git-Auto-Deploy aus `main`**; `origin/main` aktuell — gelegentliche reine Docs-Commits reiten bewusst mit dem nächsten echten Deploy mit, weil ein Solo-Push über `__GIT_SHA__` ein Fehl-Update-Badge auslöst, siehe Memory `git-sha-triggers-update-toast`). Aktuelle Version **v0.10.2**. **Live:** Phasen 1-9 · alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam, Steam-Proxy als Edge-Function deployed) · Sync-Instanzen · First-Login-Setup · Cover-Epos · Pre-Launch-Features (Versionierung / Release-Notes / PWA-Install / stille Updates) · **Push Phase 1** (VAPID + `push_subscriptions` + `send-push`-Function + Profil-Toggle/Test, end-to-end verifiziert). **29 inkrementelle Migrationen** (+ `00000000000000_baseline`), alle gefahren + bestätigt (Liste → §Gotchas → Daten/RLS). Security-Audit durch — kein kritisches Finding, RLS-Schicht sauber (Report `SECURITY-AUDIT.md`). **Aktiver Backlog: `FEEDBACK-BACKLOG.md`** (Freundes-Feedback, 18 Punkte in R1-R5): **R1-R4 deployed** (v0.7.0–v0.10.0), **nächste Session startet bei R5** (Listen-Kategorien — ⚠️ Schema-Migration + eigene Plan-Runde). Versions-/Deploy-Historie → `PRE-LAUNCH-FEATURES.md` §Deploy-Historie; abgeschlossene Arbeit lebt in §Status + git. **Offen:** Push Phase 2 (Auto-Versand bei neuen Folgen / Cron) · E-Mail-Prod (Resend-Domain) → §Offene Punkte.
+**Stand (2026-06-05):** App ist **live auf usenakama.app** (Cloudflare Workers, **Git-Auto-Deploy aus `main`**; `origin/main` aktuell — gelegentliche reine Docs-Commits reiten bewusst mit dem nächsten echten Deploy mit, weil ein Solo-Push über `__GIT_SHA__` ein Fehl-Update-Badge auslöst, siehe Memory `git-sha-triggers-update-toast`). Aktuelle Version **v0.10.2**. **Live:** Phasen 1-9 · alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam, Steam-Proxy als Edge-Function deployed) · Sync-Instanzen · First-Login-Setup · Cover-Epos · Pre-Launch-Features (Versionierung / Release-Notes / PWA-Install / stille Updates) · **Push Phase 1** (VAPID + `push_subscriptions` + `send-push`-Function + Profil-Toggle/Test, end-to-end verifiziert). **29 inkrementelle Migrationen** (+ `00000000000000_baseline`), alle gefahren + bestätigt (Liste → §Gotchas → Daten/RLS). Security-Audit durch — kein kritisches Finding, RLS-Schicht sauber (Report `SECURITY-AUDIT.md`). **Aktiver Backlog: `FEEDBACK-BACKLOG.md`** (Freundes-Feedback, 18 Punkte in R1-R5): **R1-R4 deployed** (v0.7.0–v0.10.0; + Hotfixes bis v0.10.2: Fortsetzen-Dedupe, Logbuch 12/Seite), **nächste Session startet bei R5** (Listen-Kategorien — ⚠️ Schema-Migration + eigene Plan-Runde). Versions-/Deploy-Historie → `PRE-LAUNCH-FEATURES.md` §Deploy-Historie; abgeschlossene Arbeit lebt in §Status + git. **Offen:** Push Phase 2 (Auto-Versand bei neuen Folgen / Cron) · E-Mail-Prod (Resend-Domain) → §Offene Punkte.
 
 > **Wegweiser (eine Quelle je Sache):** Feature-Inventar je Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** + **`FEEDBACK-BACKLOG.md`** (aktiver Freundes-Feedback-Backlog) · durable Architektur + Fallen (Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher. Abgeschlossene Arbeit lebt in §Status + git, nicht als Fließtext hier.
 
@@ -97,7 +97,7 @@ Programmatic in `src/routes/index.tsx`. `lazy()` pro Route.
 
 **Theme-Switch:** `<html data-theme="..." class="dark?">`. `applyTheme(id, modePref)` in `src/lib/themes.ts` schreibt Attribut + Klasse + localStorage. No-FOUC-Script in `index.html` läuft vor Solid-Mount.
 
-**Storage-Keys:** `nakama:*` Prefix (`nakama:theme`, `nakama:mode`, `nakama:logbuch-self`). NICHT `logbook:*`.
+**Storage-Keys:** `nakama:*` Prefix (`nakama:theme`, `nakama:mode`, `nakama:logbuch-filters`). NICHT `logbook:*`.
 
 ---
 
@@ -150,7 +150,7 @@ Kurzbeschreibungen — Implementierungsdetails stehen im Source, durable Pattern
 - `LoadMore` (inline in `ItemDetail.tsx`) — KEIN Button-Optik, centered Mono-CAPS-Caption + ChevronDown + hover:bg-surface bis Spaltenrand
 - `ProgressBar` (inline in `ItemDetail.tsx`) — Hairline-Track + accent-Fill. Bei `total=0` → em-dash, leerer Track
 
-**Home-Dashboard (inline in `Home.tsx`):** `WasKommt` (4-col Accordion-Grid mit hero-2fr-1fr-1fr-1fr; first-click activate, second-click navigate), `Fortsetzen` (Accordion-Rows mit wachsendem Cover 2.25rem→4rem, initial 4 + `ShowMoreToggle`), `Logbuch` (Watch-Bundles + list_add Events, initial 8 + „+ Alle Ereignisse" + „Eigene ausblenden" mit `nakama:logbuch-self` localStorage), `DayTag`, `EventIcon`, `WatchSentence`, `ListAddSentence` (mit „Du hast" / „@user hat"-Konjugation), `Cover`, `TodayLabel`.
+**Home-Dashboard (inline in `Home.tsx`):** `WasKommt` (4-col Accordion-Grid mit hero-2fr-1fr-1fr-1fr; first-click activate, second-click navigate), `Fortsetzen` (Accordion-Rows mit wachsendem Cover 2.25rem→4rem, initial 4 + `ShowMoreToggle`), `Logbuch` (Events-Feed; R4: drei Filter-Toggles Releases/Aktivität/Eigene im Ghost-Button-Stil — Auge offen/durchgestrichen = ein-/ausgeblendet, Buckets nicht-überlappend; `Pager` 12/Seite; Auswahl in `nakama:logbuch-filters` localStorage), `DayTag`, `EventIcon`, `WatchSentence`, `ListAddSentence` (mit „Du hast" / „@user hat"-Konjugation), `Cover`, `TodayLabel`.
 
 ---
 
