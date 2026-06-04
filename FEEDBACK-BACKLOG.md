@@ -31,7 +31,8 @@ Alle Punkte live. F4 wurde als **geteiltes Hover-Overlay** gebaut (oben hochlade
 - **F11** ✨ Listen zeigen **max. 12 Items pro Seite** → Paging (`Pager`).
 - **F12** 🎁 Unter „Details" von **Serien/Anime/Manga**: Genre, Publisher/Studio, Release-Datum ergänzen.
 
-### Release 4 — Interaktion
+### ✓ Release 4 — Interaktion  *(deployed 2026-06-05 als v0.10.0)*
+Alle Punkte live. F1 wurde dabei umgestaltet: statt zwei Checkboxen drei unabhängige Toggles im Footer-Button-Stil (Releases · Aktivität · Eigene; Auge offen/durchgestrichen = ein-/ausgeblendet) + Pager. „Aktivität" = Aktionen anderer Mitglieder, „Eigene" = eigene → saubere Partition (kein Overlap). F7 ist auf Zeigegeräte gegated (Touch behält Scrollen + Handle-Drag). On top: BottomNav-Klick-Bug gefixt — der vollbreite Wrapper schluckte Klicks neben der Pille.
 - **F7** ✨ **Ganzes Item** per Drag & Drop bewegbar (nicht nur das Drag-Handle).
 - **F5** ✨ AddSheet: hinzugefügtes Item **wieder entfernen** können (Fehlauswahl rückgängig).
 - **F1** 🎁 Logbuch: oben zwei **Checkboxen** „Releases" + „Mitglieder-Aktivitäten" (wählen, was angezeigt wird) + **Paging** wie überall sonst. ⚠️ Mapping der Event-Arten klären.
