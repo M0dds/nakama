@@ -24,6 +24,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.7.1",
+    date: "2026-06-04",
+    title: "Update-Reload behoben",
+    changes: [
+      "Fehler behoben, bei dem direkt nach einem Update kurz ein Ladefehler erscheinen konnte und ein manuelles Neuladen nötig war. Updates greifen jetzt sauber.",
+    ],
+  },
+  {
     version: "0.7.0",
     date: "2026-06-04",
     title: "Feinschliff & Fixes",
