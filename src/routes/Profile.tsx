@@ -7,7 +7,7 @@ import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
-import { Badge } from "@/components/Badge";
+import { PushSettings } from "@/components/PushSettings";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { EditableAvatar } from "@/components/EditableAvatar";
@@ -118,26 +118,12 @@ export default function Profile() {
             <DeleteAccountSection />
           </BentoModule>
 
-          {/* Placeholder — push notifications are deferred (PRE-LAUNCH #4);
-              this fills the left column under Konto and signposts what's
-              coming. No wiring yet, just the "Demnächst" stamp. */}
           <BentoModule
             label="Benachrichtigungen"
             number="02"
             class="border-t border-rule"
           >
-            <div class="flex items-start justify-between gap-4">
-              <div class="min-w-0">
-                <p class="text-body text-text">Push-Benachrichtigungen</p>
-                <p class="mt-1 text-mini text-text-muted">
-                  Bekomm eine Nachricht, sobald eine neue Folge erscheint oder
-                  ein Film bzw. Spiel veröffentlicht wird.
-                </p>
-              </div>
-              <Badge class="shrink-0 border-border text-text-muted">
-                Demnächst
-              </Badge>
-            </div>
+            <PushSettings />
           </BentoModule>
         </div>
 
