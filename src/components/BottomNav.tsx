@@ -13,6 +13,7 @@ import { goBack as runBack } from "@/lib/navigation";
 import { useToast } from "@/lib/toast";
 import { myInvitationsOptions } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
+import { updateReady } from "@/lib/pwa-update";
 
 /** Fallback back target derived from the route — mirrors each detail page's
  *  header backHref. Only used for deep-links (when canGoBack() is false);
@@ -394,6 +395,8 @@ export function BottomNav(props: {
           label="Profil"
           href="/profile"
           isActive={isActive("/profile")}
+          badge={updateReady() ? 1 : 0}
+          badgeLabel="Update verfügbar"
         />
       </div>
     </nav>

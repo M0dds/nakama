@@ -23,6 +23,10 @@ interface NavButtonProps {
    *  `offsetLeft` to place the sliding bubble, and a layout-affecting badge
    *  would shift it. */
   badge?: number;
+  /** Screen-reader description for the badge (the badge is shared between
+   *  invitations and the update indicator). Defaults to the invitation
+   *  phrasing. */
+  badgeLabel?: string;
 }
 
 export function NavButton(props: NavButtonProps) {
@@ -31,7 +35,7 @@ export function NavButton(props: NavButtonProps) {
       href={props.href}
       aria-label={
         props.badge
-          ? `${props.label}, ${props.badge} neue Einladungen`
+          ? `${props.label}, ${props.badgeLabel ?? `${props.badge} neue Einladungen`}`
           : props.label
       }
       aria-current={props.isActive ? "page" : undefined}
