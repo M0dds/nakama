@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.10.0",
+    date: "2026-06-05",
+    title: "Interaktion",
+    changes: [
+      "Am Computer lassen sich Einträge und Listen jetzt am ganzen Element ziehen — nicht mehr nur am kleinen Griff.",
+      "Im Hinzufügen-Dialog kannst du eine versehentlich gewählte Sache direkt wieder entfernen.",
+      "Das Logbuch hat jetzt Filter — Releases, Aktivität und Eigene einzeln ein- und ausblenden — und blättert in Seiten.",
+      "Behoben: Am unteren Bildschirmrand wurden neben der Navigationsleiste manchmal Klicks verschluckt.",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-06-04",
     title: "Listen & Details",
