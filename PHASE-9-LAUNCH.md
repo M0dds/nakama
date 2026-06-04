@@ -22,7 +22,8 @@ ist die operative Deploy-Liste.
 ## 1 · Datenbank absichern & reproduzierbar machen
 
 - [x] 🧑 **Alle 27 Migrationen gefahren + bestätigt.** *(erledigt)*
-- [ ] 🧑🤖 **SEC-BASELINE — RLS-Modell in dieses Repo holen.** Die Basis-Policies + Helfer (`is_list_member`, `shares_list_with`, …) leben nur im Logbook-Repo. Für Reproduzierbarkeit: Live-DB-Schema per `pg_dump --schema-only` (oder Supabase-Export) ziehen → ich gieße es in **eine** self-contained Baseline-Migration in `supabase/migrations/`. *(HEALTH `SEC-BASELINE`)*
+- [x] 🧑🤖 **SEC-BASELINE — Sicherheits-Layer in dieses Repo geholt.** Alle Funktionen/RLS/Policies/Trigger live snapshottet → `supabase/migrations/00000000000000_baseline.sql` (per SQL-Editor-Introspektion, ohne Docker). Security-Modell ist jetzt aus diesem Repo allein reviewbar. *(2026-06-04)*
+- [ ] 🤖 *(optional, später)* **Tabellen-DDL nachziehen** für 100 % Self-Containment — per vollem `pg_dump --schema-only` (braucht Docker Desktop oder lokales `pg_dump`). Nicht launch-kritisch; die Live-DB ist vollständig.
 - [ ] 🧑 **DB-Verifikation.** Kurz prüfen, dass die Live-DB exakt dem Migrations-Stand entspricht (keine ad-hoc im SQL-Editor gemachten, undokumentierten Objekte mehr offen).
 
 ---
