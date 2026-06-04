@@ -1,8 +1,13 @@
-import { createSignal, Show, type ParentProps } from "solid-js";
+import { createSignal, onMount, Show, type ParentProps } from "solid-js";
 import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
 import { ContentFrame } from "@/components/ContentFrame";
+import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ToastProvider } from "@/lib/toast";
+import { APP_VERSION } from "@/lib/version";
+import { compareVersions, latestNote } from "@/lib/release-notes";
+
+const LAST_SEEN_VERSION_KEY = "nakama:last-seen-version";
 
 /**
  * Layout wrapper for every authed app surface (Home, Listen, Detailseiten,
@@ -51,6 +56,47 @@ export function AppShell(props: ParentProps) {
     window.setTimeout(() => setAddMounted(false), ANIM_MS);
   };
 
+  // ── "Was ist neu" auto-open ──────────────────────────────────────────────
+  // Compare the running version against the one the user last saw. On a real
+  // forward bump (and only when a changelog entry exists for it) the dialog
+  // pops once; we then record the new version so it won't repeat.
+  //
+  // A null/missing key means "never recorded" — a brand-new user (fresh signup)
+  // or someone from before this feature shipped. We seed silently WITHOUT
+  // popping: the "freshly updated" framing only makes sense for a returning
+  // user, and a first-launch user just finished onboarding. The full history
+  // stays reachable manually via the profile version label.
+  const [notesOpen, setNotesOpen] = createSignal(false);
+
+  onMount(() => {
+    const latest = latestNote();
+    if (!latest) return;
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(LAST_SEEN_VERSION_KEY);
+    } catch {
+      return; // storage blocked → skip, never block the app
+    }
+    const stamp = () => {
+      try {
+        localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
+      } catch {
+        /* ignore */
+      }
+    };
+    if (seen === null) {
+      stamp(); // first run → seed silently
+      return;
+    }
+    if (
+      compareVersions(APP_VERSION, seen) > 0 &&
+      latest.version === APP_VERSION
+    ) {
+      setNotesOpen(true);
+      stamp();
+    }
+  });
+
   return (
     <ToastProvider>
       {/* Centered, width-capped content frame (--content-max). On wide screens
@@ -66,6 +112,11 @@ export function AppShell(props: ParentProps) {
       <Show when={addMounted()}>
         <AddSheet visible={addVisible()} onClose={closeAdd} />
       </Show>
+      <ReleaseNotesDialog
+        open={notesOpen()}
+        mode="latest"
+        onClose={() => setNotesOpen(false)}
+      />
     </ToastProvider>
   );
 }

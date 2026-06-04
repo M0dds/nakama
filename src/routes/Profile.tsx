@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import { useNavigate } from "@solidjs/router";
 import { useAuth } from "@/lib/auth";
@@ -12,6 +12,8 @@ import { EditableAvatar } from "@/components/EditableAvatar";
 import { EditableDisplayName } from "@/components/EditableDisplayName";
 import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 import { Skeleton } from "@/components/Skeleton";
+import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
+import { VERSION_LABEL } from "@/lib/version";
 
 /**
  * Profile page. Konto module (left 2/3): editable identity — avatar upload
@@ -48,6 +50,8 @@ export default function Profile() {
     await signOut();
     navigate("/login", { replace: true });
   };
+
+  const [notesOpen, setNotesOpen] = createSignal(false);
 
   return (
     <main class="w-full">
@@ -117,6 +121,24 @@ export default function Profile() {
           </BentoModule>
         </div>
       </div>
+
+      {/* Version footer — click opens the full "Was ist neu" history. */}
+      <div class="border-t border-rule px-5 py-4">
+        <button
+          type="button"
+          onClick={() => setNotesOpen(true)}
+          class="font-mono text-mini tracking-wider text-text-muted transition-colors hover:text-accent"
+          title="Was ist neu"
+        >
+          Nakama {VERSION_LABEL}
+        </button>
+      </div>
+
+      <ReleaseNotesDialog
+        open={notesOpen()}
+        mode="all"
+        onClose={() => setNotesOpen(false)}
+      />
     </main>
   );
 }
