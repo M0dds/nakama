@@ -20,6 +20,7 @@ import {
   type ListSummary,
 } from "@/lib/queries/lists";
 import {
+  canDragRowBody,
   MovePointerSensor,
   reorderSection,
   sortableRowStyle,
@@ -434,7 +435,12 @@ function SortableListRow(props: {
       >
         <A
           href={`/lists/${props.list.shortCode}`}
-          class="flex min-w-0 flex-1 items-center gap-3"
+          // F7 — whole-row drag on pointer-fine devices (see canDragRowBody).
+          // Click navigates; movement starts a reorder. Touch keeps scroll/tap
+          // + drags via the grip handle.
+          draggable={false}
+          class="flex min-w-0 flex-1 select-none items-center gap-3"
+          {...(canDragRowBody ? sortable.dragActivators : {})}
         >
           <ListCover
             coverUrl={props.list.coverUrl}

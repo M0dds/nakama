@@ -36,6 +36,23 @@ type Transform = Parameters<typeof transformStyle>[0];
 export const SETTLE_MS = 220;
 
 /**
+ * Whole-row drag (F7) — attach `sortable.dragActivators` to the row BODY (the
+ * cover+title link), not just the grip handle, so the whole item is grabbable.
+ * Enabled ONLY where the primary pointer is fine (mouse/trackpad): on a touch
+ * device, drag activators on the body would fight native scrolling (the
+ * MovePointerSensor's 8px threshold can win the gesture before the browser
+ * cancels it), so a swipe could fail to scroll the list. On touch we therefore
+ * keep body = scroll + tap-navigate and reserve dragging for the grip handle
+ * (which carries `touch-none`). The link still gets `draggable={false}` so the
+ * browser's native anchor-drag (ghost URL) never fires on a mouse drag.
+ *
+ * Evaluated once at module load — pointer hardware doesn't change at runtime.
+ */
+export const canDragRowBody =
+  typeof window !== "undefined" &&
+  !!window.matchMedia?.("(pointer: fine)").matches;
+
+/**
  * Drag bookkeeping: a `dragSettling` signal that's true from drag-start
  * through SETTLE_MS after drop, plus the two handlers to wire into
  * `<DragDropProvider>`. The reorder logic is the caller's; we just wrap it

@@ -24,6 +24,7 @@ import {
   type ListEntry,
 } from "@/lib/queries/lists";
 import {
+  canDragRowBody,
   MovePointerSensor,
   reorderSection,
   sortableRowStyle,
@@ -618,7 +619,15 @@ function SortableEntryRow(props: {
             listItemId: props.entry.listItemId,
             syncEnabled: props.entry.syncEnabled,
           }}
-          class="flex min-w-0 flex-1 items-center gap-3"
+          // F7 — whole-row drag on pointer-fine devices: the body initiates a
+          // drag too, not just the grip handle. A plain click (no movement)
+          // still navigates; movement past the sensor threshold starts a
+          // reorder. `draggable={false}` suppresses the browser's native
+          // anchor-drag (ghost URL) during a mouse drag. Touch keeps
+          // scroll/tap (see canDragRowBody) and drags via the handle.
+          draggable={false}
+          class="flex min-w-0 flex-1 select-none items-center gap-3"
+          {...(canDragRowBody ? sortable.dragActivators : {})}
         >
           <div class="relative aspect-[2/3] w-11 shrink-0 overflow-hidden rounded-xs border border-border bg-surface">
             <Show
