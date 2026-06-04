@@ -18,7 +18,8 @@ export type ThemeId =
   | "biotech"
   | "maritime"
   | "onsen"
-  | "vesper";
+  | "vesper"
+  | "pond";
 
 /** The resolved mode actually applied to <html> (.dark or not). */
 export type ThemeMode = "light" | "dark";
@@ -72,13 +73,17 @@ export const THEMES: ThemeMeta[] = [
     },
   },
   {
+    // id stays "totoro" (the persisted localStorage value + the index.css
+    // [data-theme] selector) so renaming the label doesn't reset anyone who
+    // already picked it; only the display name changed (was "Totoro" — the
+    // Ghibli forest-green is gone, it's a warm cream + mango now).
     id: "totoro",
-    name: "Totoro",
-    description: "Ghibli — warmes Cream mit Waldgrün",
+    name: "Komorebi",
+    description: "Sonnenlicht durch Blätter — warmes Cream mit reifer Mango",
     primaryMode: "light",
     swatch: {
-      light: { bg: "#d8d1b3", accent: "#6b8a5a" },
-      dark: { bg: "#1d2620", accent: "#8da776" },
+      light: { bg: "#d8d1b3", accent: "#d07c1a" },
+      dark: { bg: "#1d2620", accent: "#f0b53e" },
     },
   },
   {
@@ -119,6 +124,16 @@ export const THEMES: ThemeMeta[] = [
     swatch: {
       light: { bg: "#e3dcea", accent: "#cf7a1d" },
       dark: { bg: "#15102a", accent: "#f0a52e" },
+    },
+  },
+  {
+    id: "pond",
+    name: "Teich",
+    description: "Stiller Teich — Wasserblau mit Seerosen-Grün",
+    primaryMode: "light",
+    swatch: {
+      light: { bg: "#d7e6ea", accent: "#1c8f5e" },
+      dark: { bg: "#0a2025", accent: "#46cf8c" },
     },
   },
 ];

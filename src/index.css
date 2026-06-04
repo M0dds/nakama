@@ -101,15 +101,20 @@
   --accent-on: #15090e;
 }
 
-/* ─── 4 · TOTORO — Ghibli pastoral (cream + forest green) ─────────────── */
+/* ─── 4 · KOMOREBI — warm cream + mango (selector stays "totoro") ─────── */
+/* Renamed from "Totoro": the accent was a muted forest green (#6b8a5a) that
+   blended into the cream bg — too little contrast (F16). Now a ripe-mango
+   marigold that actually pops on the cream; accent-on flips to the deep ink
+   because dark text reads on the warm yellow where white would wash out. The
+   [data-theme] key stays "totoro" so already-picked users aren't reset. */
 [data-theme="totoro"] {
   --bg: #d8d1b3;
   --surface: #ece5cc;
   --text: #2e3624;
   --text-muted: #7a7058;
   --border: rgba(74, 77, 42, 0.16);
-  --accent: #6b8a5a;
-  --accent-on: #ffffff;
+  --accent: #d07c1a;
+  --accent-on: #2e3624;
 }
 [data-theme="totoro"].dark {
   --bg: #1d2620;
@@ -117,7 +122,7 @@
   --text: #e8e0c8;
   --text-muted: #a8a08a;
   --border: rgba(232, 224, 200, 0.14);
-  --accent: #8da776;
+  --accent: #f0b53e;
   --accent-on: #1d2620;
 }
 
@@ -201,6 +206,26 @@
   --accent-on: #15102a;
 }
 
+/* ─── 9 · TEICH — still pond (blue water + lily-pad green) ────────────── */
+[data-theme="pond"] {
+  --bg: #d7e6ea;                 /* pale pond water, blue-leaning */
+  --surface: #e9f1f3;
+  --text: #0f2a30;               /* deep pondwater ink */
+  --text-muted: #587981;
+  --border: rgba(15, 42, 48, 0.13);
+  --accent: #1c8f5e;             /* lily-pad green floating on the blue */
+  --accent-on: #ffffff;
+}
+[data-theme="pond"].dark {
+  --bg: #0a2025;                 /* nocturnal pond */
+  --surface: #122e34;
+  --text: #daedef;
+  --text-muted: #7a9aa0;
+  --border: rgba(218, 237, 239, 0.12);
+  --accent: #46cf8c;             /* moonlit lily-pad green */
+  --accent-on: #0a2025;
+}
+
 /* =========================================================================
    Cross-theme nav colors — INVERTED relative to bg/surface so the floating
    nav stands out clearly. var() lookups are lazy, so each theme's --text
@@ -233,9 +258,14 @@
   --shadow-raised:
     0 2px 6px rgba(120, 119, 116, 0.05),
     0 8px 22px rgba(120, 119, 116, 0.08);
+  /* Floating tier (nav pill, dialogs, popovers) carried a near-invisible light
+     warm-grey shadow in light mode, while dark mode's black one read clearly —
+     the asymmetry was obvious on the floating nav. Darker, warm near-black tone
+     at higher alpha so the light-mode float actually casts. Resting/raised stay
+     whisper-light (flat card aesthetic); only the floating tier gets grounded. */
   --shadow-floating:
-    0 6px 16px rgba(120, 119, 116, 0.06),
-    0 20px 50px rgba(120, 119, 116, 0.10);
+    0 6px 16px rgba(38, 36, 32, 0.16),
+    0 20px 50px rgba(38, 36, 32, 0.22);
 }
 .dark {
   --shadow-resting:
