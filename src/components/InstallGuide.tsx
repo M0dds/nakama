@@ -101,7 +101,7 @@ export function InstallGuide() {
 
       {/* ── Fallback (desktop Firefox, prompt unavailable) ── */}
       <Match when={true}>
-        <p class="mx-auto max-w-xs text-body text-text-muted">
+        <p class="text-left text-body text-text-muted">
           Im Menü deines Browsers findest du „Installieren" bzw. „Zum
           Startbildschirm hinzufügen".
         </p>

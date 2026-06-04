@@ -128,13 +128,15 @@ export default function Profile() {
           </BentoModule>
 
           <BentoModule label="Über" number="03" class="border-t border-rule">
-            {/* Same list idiom as the Home Logbuch (right 1/3 column): full-
-                bleed rows (-mx-5) with a hairline above the first and between
-                each, and the hover fill as its own layer inset 1px on the LEFT
-                so it stops at the ColumnGuide instead of painting over it. */}
-            <ul class="-mx-5 border-t border-border">
+            {/* Full-bleed list (-mx-5) with a visible divider above the first
+                row and between each. Uses border-RULE, not border (the latter
+                is a 6% hairline that's effectively invisible here) so the lines
+                actually read — same weight as the section + column dividers.
+                The hover fill is its own layer inset 1px on the LEFT so it
+                stops at the ColumnGuide instead of painting over it. */}
+            <ul class="-mx-5 border-t border-rule">
               {/* Version → Release Notes */}
-              <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+              <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-rule last:after:hidden">
                 <button
                   type="button"
                   onClick={() => setNotesOpen(true)}
@@ -165,7 +167,7 @@ export default function Profile() {
 
               {/* App installieren (hidden once running standalone) */}
               <Show when={!isStandalone()}>
-                <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-rule last:after:hidden">
                   <button
                     type="button"
                     onClick={() => setInstallOpen(true)}
