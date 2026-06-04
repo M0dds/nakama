@@ -18,7 +18,8 @@ Alle Punkte live. Zusätzlich on top: seitliche Content-Frame-Hairlines erschein
 - **F15** ✨ HeaderBar **sticky**.
 - **F10** 🐞 PWA zeigt roten Header → soll sich **ans Theme anpassen** (`theme-color` dynamisch beim Theme-Wechsel).
 
-### Release 2 — Themes & Theme-Picker
+### ✓ Release 2 — Themes & Theme-Picker  *(deployed 2026-06-04 als v0.8.0)*
+Alle Punkte live. „Totoro" wurde dabei zu **„Komorebi"** umbenannt (id bleibt `totoro`). Zusätzlich on top: NavBar-/Floating-Schatten im Hell-Modus sichtbar gemacht (war near-invisible). Generierte Listen-Cover ziehen jetzt aus 9 Themes (einmaliges Neumischen, abgenickt).
 - **F16** 🎨 Totoro-Theme: zu wenig Kontrast, Primary → **Mango-Gelb** o.Ä.
 - **F17** 🎨 **Pond-Theme** ergänzen (Grün/Blau, Teich mit Wasserrosenblättern). ⚠️ Farben vorschlagen.
 - **F8** ✨ Theme-Auswahl: Name wird teils abgeschnitten → **3 pro Reihe**, mehrere Reihen (v.a. in der Registrierung). Passt gut hierher, da Pond den Picker um ein 9. Theme erweitert.
