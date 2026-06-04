@@ -31,7 +31,12 @@ export default defineConfig({
     solid(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" (not autoUpdate): a new SW waits instead of silently taking
+      // over, so we can surface a "neue Version · neu laden" toast and let the
+      // user choose when to refresh. Registration + the prompt live in
+      // src/components/PwaUpdater.tsx, so we disable the auto-injected one.
+      registerType: "prompt",
+      injectRegister: false,
       includeAssets: ["favicon.svg"],
       manifest: {
         name: "Nakama",

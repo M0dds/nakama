@@ -24,6 +24,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.3.0",
+    date: "2026-06-04",
+    title: "Automatische Update-Hinweise",
+    changes: [
+      "Neu: Sobald eine neue Version da ist, meldet sich die App mit einem Hinweis — ein Tipp auf „Neu laden“ und du bist aktuell, ganz ohne harten Reload.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-06-04",
     title: "Release Notes, App-Installation & Profil-Politur",
