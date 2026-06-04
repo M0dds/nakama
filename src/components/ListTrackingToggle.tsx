@@ -110,12 +110,17 @@ export function ListTrackingToggle(props: {
           { value: "archive", label: "Archiv" },
         ]}
       />
-      <p class="mt-2 text-mini text-text-muted">
-        <span class="text-text">Tracken:</span> Einträge dieser Liste erscheinen
-        in deinem Home, Kalender und Logbuch.{" "}
-        <span class="text-text">Archiv:</span> die Liste bleibt erhalten, taucht
-        dort aber nicht auf. Jedes Mitglied entscheidet für sich.
-      </p>
+      <div class="mt-2 space-y-1 text-mini text-text-muted">
+        <p>
+          <span class="text-text">Tracken:</span> Einträge dieser Liste
+          erscheinen in deinem Home, Kalender und Logbuch.
+        </p>
+        <p>
+          <span class="text-text">Archiv:</span> die Liste bleibt erhalten,
+          taucht dort aber nicht auf.
+        </p>
+        <p>Jedes Mitglied entscheidet für sich.</p>
+      </div>
     </div>
   );
 }
