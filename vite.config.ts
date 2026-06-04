@@ -37,6 +37,12 @@ export default defineConfig({
       // src/components/PwaUpdater.tsx, so we disable the auto-injected one.
       registerType: "prompt",
       injectRegister: false,
+      // Pull the Web-Push handlers (push / notificationclick) into the
+      // generated SW — keeps generateSW (precaching) without an injectManifest
+      // rewrite. self.importScripts("push-sw.js") resolves to /push-sw.js.
+      workbox: {
+        importScripts: ["push-sw.js"],
+      },
       includeAssets: [
         "favicon.svg",
         "pwa-icon-180.png",
