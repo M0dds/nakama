@@ -101,11 +101,11 @@ export function ReleaseNotesDialog(props: {
             }`}
           >
             <header class="flex shrink-0 items-center justify-between gap-3 border-b border-rule px-6 pb-4 pt-5">
-              <div class="flex items-center gap-2.5">
+              <div class="flex items-center gap-2">
                 <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
                 <h2
                   id="release-notes-title"
-                  class="text-heading font-medium tracking-tight text-text"
+                  class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted"
                 >
                   Release Notes
                 </h2>

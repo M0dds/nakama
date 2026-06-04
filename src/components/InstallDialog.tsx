@@ -74,20 +74,37 @@ export function InstallDialog(props: { open: boolean; onClose: () => void }) {
             }`}
           />
           <div
-            class={`relative w-full max-w-sm overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+            class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
               visible() ? "opacity-100" : "opacity-0"
             }`}
           >
-            <button
-              type="button"
-              onClick={props.onClose}
-              aria-label="Schließen"
-              class="absolute right-3 top-3 inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface dark:hover:bg-white/[0.07] hover:text-text"
-            >
-              <X class="size-4" strokeWidth={1.75} aria-hidden />
-            </button>
-            <div class="px-6 py-8">
-              <InstallGuide />
+            <header class="flex items-center justify-between gap-3 border-b border-rule px-6 pb-4 pt-5">
+              <div class="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  class="size-2 shrink-0 rounded-full bg-accent"
+                />
+                <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
+                  Installieren
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={props.onClose}
+                aria-label="Schließen"
+                class="-mr-1 inline-flex size-7 shrink-0 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface dark:hover:bg-white/[0.07] hover:text-text"
+              >
+                <X class="size-4" strokeWidth={1.75} aria-hidden />
+              </button>
+            </header>
+            <div class="px-6 py-6 text-center">
+              <p class="mx-auto max-w-xs text-body text-text-muted">
+                Hol dir Nakama als App auf den Home-Bildschirm — eigenes Icon,
+                voller Bildschirm, schneller Start.
+              </p>
+              <div class="mt-5">
+                <InstallGuide />
+              </div>
             </div>
           </div>
         </div>

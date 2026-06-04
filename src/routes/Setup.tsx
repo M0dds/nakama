@@ -384,7 +384,18 @@ export default function Setup() {
 
                 {/* ── Step 4 · App installieren ── */}
                 <Match when={step() === 4}>
-                  <InstallGuide />
+                  <div class="text-center">
+                    <h1 class="text-heading font-medium tracking-tight text-text">
+                      Nakama als App
+                    </h1>
+                    <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
+                      Hol dir Nakama auf den Home-Bildschirm — optional, du
+                      kannst es jederzeit im Profil nachholen.
+                    </p>
+                    <div class="mt-8">
+                      <InstallGuide />
+                    </div>
+                  </div>
                 </Match>
               </Switch>
             </div>

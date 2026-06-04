@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import { useNavigate } from "@solidjs/router";
-import { ChevronRight, Download } from "lucide-solid";
+import { ChevronRight } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
@@ -128,49 +128,73 @@ export default function Profile() {
           </BentoModule>
 
           <BentoModule label="Über" number="03" class="border-t border-rule">
-            <div class="-mx-5 -mb-5">
+            {/* Same list idiom as the Home Logbuch (right 1/3 column): full-
+                bleed rows (-mx-5) with a hairline above the first and between
+                each, and the hover fill as its own layer inset 1px on the LEFT
+                so it stops at the ColumnGuide instead of painting over it. */}
+            <ul class="-mx-5 border-t border-border">
               {/* Version → Release Notes */}
-              <button
-                type="button"
-                onClick={() => setNotesOpen(true)}
-                class="flex w-full items-center justify-between gap-3 border-t border-border px-5 py-3.5 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.04]"
-              >
-                <span class="min-w-0">
-                  <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
-                    Version
+              <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                <button
+                  type="button"
+                  onClick={() => setNotesOpen(true)}
+                  class="group/row relative isolate flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left focus:outline-none"
+                >
+                  <span
+                    aria-hidden
+                    class="pointer-events-none absolute inset-y-0 left-px right-0 -z-10 bg-surface opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover/row:opacity-100"
+                  />
+                  <span class="min-w-0">
+                    <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                      Version
+                    </span>
+                    <span class="mt-0.5 block font-mono text-label text-text">
+                      {VERSION_LABEL}
+                    </span>
                   </span>
-                  <span class="mt-0.5 block font-mono text-label text-text">
-                    {VERSION_LABEL}
+                  <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors group-hover/row:text-accent">
+                    Release Notes
+                    <ChevronRight
+                      class="size-3.5"
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
                   </span>
-                </span>
-                <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted">
-                  Release Notes
-                  <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
-                </span>
-              </button>
+                </button>
+              </li>
 
               {/* App installieren (hidden once running standalone) */}
               <Show when={!isStandalone()}>
-                <button
-                  type="button"
-                  onClick={() => setInstallOpen(true)}
-                  class="flex w-full items-center justify-between gap-3 border-t border-border px-5 py-3.5 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.04]"
-                >
-                  <span class="min-w-0">
-                    <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
-                      App
+                <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setInstallOpen(true)}
+                    class="group/row relative isolate flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left focus:outline-none"
+                  >
+                    <span
+                      aria-hidden
+                      class="pointer-events-none absolute inset-y-0 left-px right-0 -z-10 bg-surface opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover/row:opacity-100"
+                    />
+                    <span class="min-w-0">
+                      <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                        App
+                      </span>
+                      <span class="mt-0.5 block text-label text-text">
+                        Auf dem Home-Bildschirm
+                      </span>
                     </span>
-                    <span class="mt-0.5 block text-label text-text">
-                      Auf dem Home-Bildschirm
+                    <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors group-hover/row:text-accent">
+                      Installieren
+                      <ChevronRight
+                        class="size-3.5"
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
                     </span>
-                  </span>
-                  <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted">
-                    Installieren
-                    <Download class="size-4" strokeWidth={1.75} aria-hidden />
-                  </span>
-                </button>
+                  </button>
+                </li>
               </Show>
-            </div>
+            </ul>
           </BentoModule>
         </div>
       </div>

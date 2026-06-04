@@ -1,13 +1,5 @@
 import { createSignal, Match, Show, Switch } from "solid-js";
-import {
-  Check,
-  Download,
-  Loader2,
-  MonitorDown,
-  Plus,
-  Share,
-  Smartphone,
-} from "lucide-solid";
+import { Loader2 } from "lucide-solid";
 import { Button } from "@/components/Button";
 import {
   canInstall,
@@ -18,26 +10,24 @@ import {
 } from "@/lib/pwa-install";
 
 /**
- * Platform-aware "install Nakama as an app" guidance. Presentational + inline —
- * used both as the final /setup step and inside a profile dialog (InstallDialog).
+ * Platform-aware "install Nakama" action — the BODY only (no title/icon
+ * chrome). The context provides the heading: the /setup step renders a centered
+ * h1 above it, InstallDialog a kicker header. Kept minimal and on-brand: hard
+ * corners, hairlines, mono labels — no decorative icon badges.
  *
- * Every state leads with an accent-circle icon so the screen reads as a
- * deliberate panel, not a wall of text. Four paths:
- *   - already standalone (or installed this session) → a done state.
- *   - Chromium with a captured beforeinstallprompt (Android/desktop) → a single
- *     "Installieren" button that replays the native prompt.
- *   - iOS Safari (no install API at all) → manual "Teilen → Zum Home-Bildschirm"
- *     steps as a mock control rail.
- *   - anything else (desktop Firefox, prompt already consumed/not yet fired) →
- *     a short "über das Browser-Menü" hint.
+ * Four paths:
+ *   - already standalone → a one-line "nothing to do" note.
+ *   - Chromium with a captured beforeinstallprompt → a single primary button
+ *     that replays the native prompt.
+ *   - iOS Safari (no install API) → two numbered text steps.
+ *   - anything else (desktop Firefox, prompt not fired) → a browser-menu hint.
  *
  * Why bother on iOS: iOS only allows web-push from an INSTALLED PWA, so the
  * home-screen install is the gate for notifications later (PRE-LAUNCH #4).
  *
  * NOTE: the 1-click button only appears once the browser fires
- * `beforeinstallprompt` (Chromium, served over HTTPS with a registered SW) —
- * i.e. production / `npm run preview`, NOT the plain dev server. Browsers
- * forbid forcing the native install dialog otherwise.
+ * `beforeinstallprompt` (Chromium over HTTPS with a registered SW) — production
+ * / `npm run preview`, NOT the plain dev server.
  */
 export function InstallGuide() {
   const platform = getPlatform();
@@ -57,143 +47,65 @@ export function InstallGuide() {
   };
 
   return (
-    <div class="text-center">
-      <Switch>
-        {/* ── Already installed ── */}
-        <Match when={done()}>
-          <IconBadge>
-            <Check class="size-6 text-accent" strokeWidth={2} aria-hidden />
-          </IconBadge>
-          <h2 class="mt-4 text-heading font-medium tracking-tight text-text">
-            Läuft schon als App
-          </h2>
-          <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-            Du hast Nakama auf dem Home-Bildschirm — perfekt. Nichts weiter zu
-            tun.
-          </p>
-        </Match>
+    <Switch>
+      {/* ── Already installed ── */}
+      <Match when={done()}>
+        <p class="text-body text-text-muted">
+          Du hast Nakama schon als App auf dem Home-Bildschirm.
+        </p>
+      </Match>
 
-        {/* ── Chromium 1-click (Android / desktop) ── */}
-        <Match when={canInstall()}>
-          <IconBadge>
-            <Download
-              class="size-6 text-accent"
-              strokeWidth={1.75}
-              aria-hidden
-            />
-          </IconBadge>
-          <h2 class="mt-4 text-heading font-medium tracking-tight text-text">
-            Nakama als App
-          </h2>
-          <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-            Eigenes Icon, voller Bildschirm, schneller Start — ein Klick.
-          </p>
-          <div class="mt-6 flex justify-center">
-            <Button
-              variant="primary"
-              onClick={onInstall}
-              disabled={busy()}
-              class="inline-flex items-center gap-2"
-            >
-              <Show
-                when={!busy()}
-                fallback={<Loader2 class="size-4 animate-spin" />}
-              >
-                <Download class="size-4" strokeWidth={1.75} aria-hidden />
-              </Show>
-              Installieren
-            </Button>
-          </div>
+      {/* ── Chromium 1-click (Android / desktop) ── */}
+      <Match when={canInstall()}>
+        <div class="flex flex-col items-center gap-3">
+          <Button
+            variant="primary"
+            onClick={onInstall}
+            disabled={busy()}
+            class="inline-flex items-center gap-2"
+          >
+            <Show when={busy()}>
+              <Loader2 class="size-4 animate-spin" aria-hidden />
+            </Show>
+            Installieren
+          </Button>
           <Show when={dismissed()}>
-            <p class="mx-auto mt-3 max-w-xs text-mini text-text-muted">
-              Kein Problem — du kannst es später jederzeit im Profil nachholen.
+            <p class="text-mini text-text-muted">
+              Kein Problem — später jederzeit im Profil nachholbar.
             </p>
           </Show>
-        </Match>
+        </div>
+      </Match>
 
-        {/* ── iOS manual steps ── */}
-        <Match when={platform === "ios"}>
-          <IconBadge>
-            <Smartphone
-              class="size-6 text-accent"
-              strokeWidth={1.75}
-              aria-hidden
-            />
-          </IconBadge>
-          <h2 class="mt-4 text-heading font-medium tracking-tight text-text">
-            Nakama als App
-          </h2>
-          <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-            In zwei Schritten auf den Home-Bildschirm:
-          </p>
-          <ol class="mx-auto mt-6 max-w-xs space-y-2.5 text-left">
-            <Step n={1}>
-              <span class="flex flex-1 flex-wrap items-center gap-1.5 text-body text-text">
-                Tippe unten auf
-                <span class="inline-flex items-center gap-1 rounded-xs border border-border bg-surface px-1.5 py-0.5">
-                  <Share
-                    class="size-3.5 text-accent"
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  <span class="text-label">Teilen</span>
-                </span>
-              </span>
-            </Step>
-            <Step n={2}>
-              <span class="flex flex-1 flex-wrap items-center gap-1.5 text-body text-text">
-                Wähle
-                <span class="inline-flex items-center gap-1 rounded-xs border border-border bg-surface px-1.5 py-0.5">
-                  <Plus
-                    class="size-3.5 text-accent"
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  <span class="text-label">Zum Home-Bildschirm</span>
-                </span>
-              </span>
-            </Step>
-          </ol>
-        </Match>
+      {/* ── iOS manual steps ── */}
+      <Match when={platform === "ios"}>
+        <ol class="mx-auto max-w-xs space-y-2.5 text-left">
+          <li class="flex items-center gap-3">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded-xs border border-border font-mono text-mini text-text-muted">
+              1
+            </span>
+            <span class="text-body text-text">
+              Tippe unten auf <span class="text-accent">Teilen</span>.
+            </span>
+          </li>
+          <li class="flex items-center gap-3">
+            <span class="flex size-6 shrink-0 items-center justify-center rounded-xs border border-border font-mono text-mini text-text-muted">
+              2
+            </span>
+            <span class="text-body text-text">
+              Wähle <span class="text-accent">Zum Home-Bildschirm</span>.
+            </span>
+          </li>
+        </ol>
+      </Match>
 
-        {/* ── Fallback (desktop Firefox, prompt unavailable) ── */}
-        <Match when={true}>
-          <IconBadge>
-            <MonitorDown
-              class="size-6 text-accent"
-              strokeWidth={1.75}
-              aria-hidden
-            />
-          </IconBadge>
-          <h2 class="mt-4 text-heading font-medium tracking-tight text-text">
-            Nakama als App
-          </h2>
-          <p class="mx-auto mt-2 max-w-xs text-body text-text-muted">
-            Im Menü deines Browsers findest du „Installieren" bzw. „Zum
-            Startbildschirm hinzufügen" — dann startet Nakama wie eine eigene
-            App.
-          </p>
-        </Match>
-      </Switch>
-    </div>
-  );
-}
-
-function IconBadge(props: { children: import("solid-js").JSX.Element }) {
-  return (
-    <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-accent/10">
-      {props.children}
-    </div>
-  );
-}
-
-function Step(props: { n: number; children: import("solid-js").JSX.Element }) {
-  return (
-    <li class="flex items-center gap-3">
-      <span class="flex size-7 shrink-0 items-center justify-center rounded-xs border border-border font-mono text-mini text-text-muted">
-        {props.n}
-      </span>
-      {props.children}
-    </li>
+      {/* ── Fallback (desktop Firefox, prompt unavailable) ── */}
+      <Match when={true}>
+        <p class="mx-auto max-w-xs text-body text-text-muted">
+          Im Menü deines Browsers findest du „Installieren" bzw. „Zum
+          Startbildschirm hinzufügen".
+        </p>
+      </Match>
+    </Switch>
   );
 }
