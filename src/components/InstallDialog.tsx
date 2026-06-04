@@ -97,8 +97,10 @@ export function InstallDialog(props: { open: boolean; onClose: () => void }) {
                 <X class="size-4" strokeWidth={1.75} aria-hidden />
               </button>
             </header>
-            <div class="px-6 py-6 text-center">
-              <p class="mx-auto max-w-xs text-body text-text-muted">
+            {/* Left-aligned in the profile (the setup wizard keeps it
+                centered). Lead + the InstallGuide body share the alignment. */}
+            <div class="px-6 py-6 text-left">
+              <p class="text-body text-text-muted">
                 Hol dir Nakama als App auf den Home-Bildschirm — eigenes Icon,
                 voller Bildschirm, schneller Start.
               </p>

@@ -71,6 +71,19 @@ export function getPlatform(): Platform {
 }
 
 /**
+ * Firefox (incl. Firefox-based browsers like Zen). Desktop Firefox supports NO
+ * PWA install at all — no `beforeinstallprompt`, no "install" menu item — so
+ * the generic "use your browser menu" fallback is actively wrong there and we
+ * show a "not supported, use another browser" note instead. Firefox on Android
+ * DOES install via its menu, so we only special-case the desktop case at the
+ * call site (this just identifies the engine).
+ */
+export function isFirefox(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /firefox\//i.test(navigator.userAgent);
+}
+
+/**
  * Replay the captured prompt. Returns the user's choice, or null if there was
  * no deferred event (iOS, or already consumed). The event is single-use, so we
  * clear it and flip canInstall off after one call.

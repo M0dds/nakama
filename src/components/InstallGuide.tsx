@@ -5,6 +5,7 @@ import {
   canInstall,
   getPlatform,
   installed,
+  isFirefox,
   isStandalone,
   promptInstall,
 } from "@/lib/pwa-install";
@@ -99,9 +100,18 @@ export function InstallGuide() {
         </ol>
       </Match>
 
-      {/* ── Fallback (desktop Firefox, prompt unavailable) ── */}
+      {/* ── Desktop Firefox / Zen: no PWA install at all ── */}
+      <Match when={platform === "desktop" && isFirefox()}>
+        <p class="text-body text-text-muted">
+          Firefox unterstützt das Installieren als App am Desktop leider nicht.
+          Öffne Nakama in Chrome, Edge oder Safari, um es auf den
+          Home-Bildschirm zu legen.
+        </p>
+      </Match>
+
+      {/* ── Fallback (other browsers without a captured prompt) ── */}
       <Match when={true}>
-        <p class="text-left text-body text-text-muted">
+        <p class="text-body text-text-muted">
           Im Menü deines Browsers findest du „Installieren" bzw. „Zum
           Startbildschirm hinzufügen".
         </p>
