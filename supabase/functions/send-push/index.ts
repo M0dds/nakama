@@ -104,6 +104,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const body = JSON.stringify(payload);
   let sent = 0;
   const stale: string[] = [];
+  const errors: string[] = [];
   await Promise.all(
     (subs as SubRow[]).map(async (s) => {
       try {
@@ -113,9 +114,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         );
         sent++;
       } catch (err) {
-        const code = (err as { statusCode?: number }).statusCode;
+        const e = err as { statusCode?: number; body?: string; message?: string };
         // 404/410 = subscription gone → drop it so it stops being retried.
-        if (code === 404 || code === 410) stale.push(s.id);
+        if (e.statusCode === 404 || e.statusCode === 410) stale.push(s.id);
+        else
+          errors.push(
+            `${e.statusCode ?? "?"}: ${(e.body ?? e.message ?? String(err)).slice(0, 160)}`,
+          );
       }
     }),
   );
@@ -124,7 +129,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await supabase.from("push_subscriptions").delete().in("id", stale);
   }
 
-  return json({ sent, removed: stale.length }, 200, cors);
+  return json({ sent, total: subs.length, removed: stale.length, errors }, 200, cors);
 });
 
 function json(
