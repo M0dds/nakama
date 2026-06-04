@@ -32,16 +32,28 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       // "prompt" (not autoUpdate): a new SW waits instead of silently taking
-      // over, so we can surface a "neue Version · neu laden" toast and let the
-      // user choose when to refresh. Registration + the prompt live in
-      // src/components/PwaUpdater.tsx, so we disable the auto-injected one.
+      // over, so the app can surface a quiet "Update verfügbar" badge and let
+      // the user choose when to refresh. Registration + the update flow live in
+      // src/lib/pwa-update.ts (registerSW + applyUpdate); injectRegister:false
+      // because we register ourselves there.
       registerType: "prompt",
       injectRegister: false,
-      // Pull the Web-Push handlers (push / notificationclick) into the
-      // generated SW — keeps generateSW (precaching) without an injectManifest
-      // rewrite. self.importScripts("push-sw.js") resolves to /push-sw.js.
       workbox: {
+        // Pull the Web-Push handlers (push / notificationclick) into the
+        // generated SW — keeps generateSW (precaching) without an injectManifest
+        // rewrite. self.importScripts("push-sw.js") resolves to /push-sw.js.
         importScripts: ["push-sw.js"],
+        // Take control of open clients the moment the waiting SW activates (via
+        // our SKIP_WAITING message in pwa-update.ts). WITHOUT this, after
+        // skipWaiting the page stays bound to the OLD worker until a navigation,
+        // so `controllerchange` never fires — applyUpdate then falls back to a
+        // delayed reload INTO that old controller, whose precache
+        // cleanupOutdatedCaches has just wiped → a failed navigation
+        // ("Page can't be reached") that only a hard reload clears. clientsClaim
+        // makes the new SW claim immediately → controllerchange fires → we
+        // reload under the new, intact precache. (skipWaiting stays false: this
+        // is prompt mode, the user still chooses when to update.)
+        clientsClaim: true,
       },
       includeAssets: [
         "favicon.svg",
