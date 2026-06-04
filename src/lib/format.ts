@@ -129,6 +129,13 @@ export function dateLabelYear(iso: string): string {
   return `${dateLabel(iso)} ${new Date(iso).getFullYear()}`;
 }
 
+/** "27. Mai 25" — dateLabel plus the 2-digit year. The episode list uses this
+ *  so a finished anime's air dates aren't ambiguous across years (a bare
+ *  "27. Mai" silently reads as the current year). Fixed-width: DD. Mmm YY. */
+export function dateLabelShortYear(iso: string): string {
+  return `${dateLabel(iso)} ${String(new Date(iso).getFullYear()).slice(-2)}`;
+}
+
 /** "DI · 02. Jun" — weekday + day + 3-letter month (no trailing dot). Mono
  *  mini-caps in the UI, so it reads "DI · 02. JUN". Same day/month form as
  *  dateLabel, just with the weekday prefix. */
@@ -252,6 +259,15 @@ export function mondayOf(d: Date): Date {
 /** "Mai 2026" — long month + year, de-DE. */
 export function formatMonth(d: Date): string {
   return d.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+}
+
+/** "Mai 2026" with the fixed-width 3-letter month (reads "MAI 2026" once the
+ *  caller uppercases it). Every month renders to the same character width, so a
+ *  label sitting between prev/next chevrons doesn't shift when the month changes
+ *  — the long formatMonth ("September 2026" vs "Mai 2026") made the next-arrow
+ *  jump. */
+export function formatMonthAbbr(d: Date): string {
+  return `${MONTH_ABBR_3[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 /** "26.05. – 01.06." — Monday→Sunday of d's week, compact. */

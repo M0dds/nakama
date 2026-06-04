@@ -26,6 +26,7 @@ import {
   addMonths,
   airDateHasClock,
   formatMonth,
+  formatMonthAbbr,
   formatWeekRange,
   fromIsoDay,
   hasAirTime,
@@ -146,8 +147,14 @@ export default function Calendar() {
     setRefDate(d);
     setSelectedIso(isoDay(d));
   };
+  // Month view: 3-letter abbreviation (fixed width) so the "Weiter"-chevron
+  // doesn't jump as the month name length changes between steps (F6). The
+  // popover's own month label keeps the long form — it's centered between
+  // justify-between chevrons, so it never shifts them.
   const periodLabel = () =>
-    view() === "month" ? formatMonth(refDate()) : formatWeekRange(refDate());
+    view() === "month"
+      ? formatMonthAbbr(refDate())
+      : formatWeekRange(refDate());
 
   // The calendar is a read-only information surface (like "Was kommt"):
   // progress is shown — own watched dot + the co-member Mitseher eye — but NOT

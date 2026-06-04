@@ -45,7 +45,7 @@ import {
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import {
   airDateHasClock,
-  dateLabel,
+  dateLabelShortYear,
   dateLabelYear,
   dayOffset,
   hasAirTime,
@@ -975,9 +975,9 @@ function EpisodeListRow(props: {
             <Show when={tagLabel()}>
               <span class="text-accent">{tagLabel()}</span>
             </Show>
-            <span class="w-20 shrink-0 text-right text-text-muted">
+            <span class="w-24 shrink-0 text-right text-text-muted">
               <Show when={props.ep.airDate} fallback={<>—</>}>
-                {dateLabel(props.ep.airDate!)}
+                {dateLabelShortYear(props.ep.airDate!)}
               </Show>
             </span>
           </div>
