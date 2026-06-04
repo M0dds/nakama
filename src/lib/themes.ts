@@ -168,10 +168,32 @@ function paintFavicon(accent: string): void {
   link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-/** Repaint the favicon from the currently persisted theme + mode. Call once on
- *  mount — applyTheme handles every later switch. */
+/**
+ * Browser/PWA chrome colour — the iOS standalone status bar + Android address
+ * bar read <meta name="theme-color">. The manifest ships a static theme_color
+ * that can't track the live theme, which left every non-default theme with a
+ * mismatched (red) bar. We override the meta at runtime with the resolved
+ * background so the chrome blends into the app surface. Same lifecycle as the
+ * favicon: once on mount + after every applyTheme. Colour from the THEMES
+ * registry (not getComputedStyle) so it's exact and immune to the crossfade.
+ */
+function paintThemeColor(bg: string): void {
+  if (typeof document === "undefined") return;
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = bg;
+}
+
+/** Repaint the favicon + PWA theme-color from the currently persisted theme +
+ *  mode. Call once on mount — applyTheme handles every later switch. */
 export function syncFavicon(): void {
-  paintFavicon(getThemeMeta(readTheme()).swatch[resolveMode(readModePref())].accent);
+  const sw = getThemeMeta(readTheme()).swatch[resolveMode(readModePref())];
+  paintFavicon(sw.accent);
+  paintThemeColor(sw.bg);
 }
 
 /**
@@ -211,7 +233,9 @@ export function applyTheme(id: ThemeId, modePref: ThemeModePref): void {
 
   const resolved = resolveMode(modePref);
   root.classList.toggle("dark", resolved === "dark");
-  paintFavicon(getThemeMeta(id).swatch[resolved].accent);
+  const sw = getThemeMeta(id).swatch[resolved];
+  paintFavicon(sw.accent);
+  paintThemeColor(sw.bg);
 }
 
 /** Read the current persisted theme (falls back to default). */

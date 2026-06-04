@@ -54,7 +54,11 @@ export default defineConfig({
         short_name: "Nakama",
         description:
           "Media-Tracker für Anime, Manga, Serien, Filme, Spiele — gemeinsam schauen.",
-        theme_color: "#dc2626",
+        // Neutral baseline (= default theme background, matches background_color)
+        // so the install splash / pre-JS chrome isn't a stray red. At runtime
+        // the <meta name="theme-color"> in index.html overrides this per the
+        // live theme (themes.ts paintThemeColor).
+        theme_color: "#f7f6f3",
         background_color: "#f7f6f3",
         display: "standalone",
         start_url: "/",

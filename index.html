@@ -7,6 +7,11 @@
       name="description"
       content="Media-Tracker für Anime, Manga, Serien, Filme, Spiele — gemeinsam schauen."
     />
+    <!-- PWA / browser chrome colour. Seeded to the default theme's background
+         so the status bar isn't a stray red before JS runs; themes.ts
+         (syncFavicon + applyTheme) repaints it to the live theme on mount. The
+         bootstrap below swaps to the dark default when dark mode resolves. -->
+    <meta name="theme-color" content="#f7f6f3" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- iOS home-screen icon (PNG; iOS ignores SVG apple-touch-icons). -->
     <link rel="apple-touch-icon" href="/pwa-icon-180.png" />
@@ -35,6 +40,13 @@
               window.matchMedia &&
               window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (dark) root.classList.add("dark");
+          // Match the chrome colour to the resolved mode of the DEFAULT theme
+          // (the common case) so a dark launch doesn't flash a light bar; any
+          // non-default theme is corrected a frame later by syncFavicon().
+          if (dark) {
+            var tc = document.querySelector('meta[name="theme-color"]');
+            if (tc) tc.setAttribute("content", "#0c0c0c");
+          }
         } catch (e) {}
       })();
     </script>
