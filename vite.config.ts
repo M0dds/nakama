@@ -44,16 +44,25 @@ export default defineConfig({
         // rewrite. self.importScripts("push-sw.js") resolves to /push-sw.js.
         importScripts: ["push-sw.js"],
         // Take control of open clients the moment the waiting SW activates (via
-        // our SKIP_WAITING message in pwa-update.ts). WITHOUT this, after
-        // skipWaiting the page stays bound to the OLD worker until a navigation,
-        // so `controllerchange` never fires — applyUpdate then falls back to a
-        // delayed reload INTO that old controller, whose precache
-        // cleanupOutdatedCaches has just wiped → a failed navigation
-        // ("Page can't be reached") that only a hard reload clears. clientsClaim
-        // makes the new SW claim immediately → controllerchange fires → we
-        // reload under the new, intact precache. (skipWaiting stays false: this
-        // is prompt mode, the user still chooses when to update.)
+        // our SKIP_WAITING message in pwa-update.ts), so `controllerchange`
+        // fires deterministically and applyUpdate's reload runs under the new
+        // worker. (skipWaiting stays false: prompt mode, the user chooses when.)
         clientsClaim: true,
+        // Keep the SW OUT of the navigation path. By default vite-plugin-pwa
+        // registers a NavigationRoute that answers every document request from
+        // the precached index.html (cache-first). During a version swap that
+        // handler can reject — the update reload fires right as the controller
+        // changes — and the browser then shows "This site can't be reached" /
+        // ERR_FAILED for that one navigation, cleared only by a second (hard)
+        // reload. That's the once-per-update glitch friends hit. Setting
+        // navigateFallback to undefined removes that route, so document requests
+        // go straight to the network (Cloudflare serves index.html via its SPA
+        // fallback) and never hinge on SW state. Hashed assets stay precached
+        // (instant + revisioned) — only the HTML document is network-served. The
+        // app needs the network to be useful anyway, so the dropped offline
+        // shell costs nothing. (Object.assign merge in vite-plugin-pwa lets this
+        // explicit undefined override the plugin's "index.html" default.)
+        navigateFallback: undefined,
       },
       includeAssets: [
         "favicon.svg",
