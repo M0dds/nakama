@@ -3,7 +3,6 @@ import { BottomNav } from "@/components/BottomNav";
 import { AddSheet } from "@/components/AddSheet";
 import { ContentFrame } from "@/components/ContentFrame";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
-import { PwaUpdater } from "@/components/PwaUpdater";
 import { ToastProvider } from "@/lib/toast";
 import { APP_VERSION } from "@/lib/version";
 import { compareVersions, latestNote } from "@/lib/release-notes";
@@ -117,7 +116,6 @@ export function AppShell(props: ParentProps) {
         open={notesOpen()}
         onClose={() => setNotesOpen(false)}
       />
-      <PwaUpdater />
     </ToastProvider>
   );
 }

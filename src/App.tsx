@@ -4,6 +4,9 @@ import { useTrackNavigation } from "@/lib/navigation";
 // (the event fires early and once — see pwa-install.ts) so the InstallGuide,
 // which mounts late, can still offer a 1-click install.
 import "@/lib/pwa-install";
+// Side-effect import: registers the service worker at app startup and exposes
+// the silent `updateReady` flag (badge on the profile nav + profile row).
+import "@/lib/pwa-update";
 
 /**
  * Root layout wrapper around every route. The grain overlay sits as a fixed
