@@ -40,6 +40,7 @@ import {
   type WatchBundle,
 } from "@/lib/queries/home";
 import { listsQueryOptions } from "@/lib/queries/lists";
+import { myProfileOptions } from "@/lib/queries/profile";
 import {
   airDateHasClock,
   dateLabel,
@@ -106,6 +107,17 @@ export default function Home() {
     listsQ.data.private.length === 0 &&
     listsQ.data.shared.length === 0;
 
+  // Greeting name for the header. The AppLayout gate already preloads this same
+  // query (onboarding check), so it's warm in cache → no flash. Display name is
+  // the app-wide primary label; fall back to the @handle, then to a bare
+  // "Willkommen." while loading or if neither is set.
+  const profileQ = createQuery(() => ({
+    ...myProfileOptions(auth.user()!),
+    enabled: !!auth.user(),
+  }));
+  const greetingName = () =>
+    profileQ.data?.displayName?.trim() || profileQ.data?.username?.trim() || null;
+
   useRealtimeInvalidation("home", [
     { table: "episode_watches", invalidates: [homeQueryKey] },
     { table: "episodes", invalidates: [homeQueryKey] },
@@ -117,7 +129,14 @@ export default function Home() {
 
   return (
     <main class="w-full">
-      <PageHeader title="Willkommen." aside={<TodayLabel />} />
+      <PageHeader
+        title={
+          <Show when={greetingName()} fallback={<>Willkommen.</>}>
+            {(name) => <>Willkommen, {name()}.</>}
+          </Show>
+        }
+        aside={<TodayLabel />}
+      />
 
       <ColumnGuide />
 
