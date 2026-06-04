@@ -14,8 +14,10 @@ import { Segmented } from "@/components/Segmented";
  * Styleguide. Persists via applyTheme() (writes localStorage + the no-FOUC
  * script reads it on the next page load).
  *
- * Theme grid: 4-column responsive grid of swatch buttons; the swatch shows
- * the theme's light-mode bg + accent so the user gets a glance at the palette.
+ * Theme grid: 3-column responsive grid of swatch buttons (2 on narrow phones);
+ * 3-up keeps the theme name from truncating and lays the 9 themes out as a
+ * clean 3×3. The swatch shows the theme's light-mode bg + accent so the user
+ * gets a glance at the palette.
  * Mode toggle: 3-way segment control (Hell / Dunkel / System). "System"
  * tracks the OS color-scheme media query.
  */
@@ -65,7 +67,7 @@ export function ThemeSwitcher(props: {
         <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
           Theme
         </p>
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <For each={THEMES}>
             {(t) => (
               <button
