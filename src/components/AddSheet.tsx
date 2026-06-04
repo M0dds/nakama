@@ -513,9 +513,18 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           }}
         >
           <div
-            class={`flex w-full items-center gap-2 px-5 transition-opacity duration-300 ease-out ${
-              props.visible ? "opacity-100 delay-150" : "opacity-0"
-            }`}
+            class="flex w-full items-center gap-2 px-5"
+            style={{
+              // Open: fade in after the pill has started expanding (150ms delay).
+              // Close: fade out FAST and at the very start, so the input + icon
+              // are gone before the pill morphs back to the nav `+` — otherwise
+              // the content visibly lingers/slides inside the still-morphing pill
+              // (the documented tech-debt).
+              opacity: props.visible ? "1" : "0",
+              transition: props.visible
+                ? "opacity 300ms ease-out 150ms"
+                : "opacity 120ms ease-out 0ms",
+            }}
           >
             <Search
               aria-hidden
