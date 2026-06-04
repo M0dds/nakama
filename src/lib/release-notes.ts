@@ -24,6 +24,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.8.0",
+    date: "2026-06-04",
+    title: "Neues Theme & Theme-Politur",
+    changes: [
+      "Neues Theme „Teich“ — blaues Wasser mit Seerosen-Grün, in Hell & Dunkel.",
+      "„Totoro“ heißt jetzt „Komorebi“ und bekommt eine kräftige Mango-Akzentfarbe — vorher war der Kontrast zu schwach.",
+      "Theme-Auswahl aufgeräumt: drei pro Reihe, die Namen werden nicht mehr abgeschnitten.",
+      "Die schwebende Navigationsleiste wirft im hellen Modus jetzt einen sichtbaren Schatten.",
+      "Durch das neue Theme mischen sich die automatisch generierten Listen-Cover einmalig neu.",
+    ],
+  },
+  {
     version: "0.7.2",
     date: "2026-06-04",
     title: "Update-Reload nachgebessert",
