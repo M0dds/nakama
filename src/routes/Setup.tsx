@@ -25,17 +25,19 @@ import { Avatar } from "@/components/Avatar";
 import { AvatarCropDialog } from "@/components/AvatarCropDialog";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Button } from "@/components/Button";
+import { InstallGuide } from "@/components/InstallGuide";
 
-const STEPS = 3;
+const STEPS = 4;
 const HANDLE_DEBOUNCE = 350;
 
 /**
- * First-login setup — a 3-step wizard (Avatar → Identität → Theme) shown once,
- * before the app, while `profiles.onboarded_at` is null (the AppLayout gate
- * routes here). Focal screen like /login: no shell. Reuses the real write paths
- * (uploadAvatar, updateDisplayName, setUsername) + AvatarCropDialog +
- * ThemeSwitcher; the theme persists immediately, identity commits on leaving
- * step 2, and "Los geht's" stamps onboarded_at and drops the user into Home.
+ * First-login setup — a 4-step wizard (Identität → Avatar → Theme → App
+ * installieren) shown once, before the app, while `profiles.onboarded_at` is
+ * null (the AppLayout gate routes here). Focal screen like /login: no shell.
+ * Reuses the real write paths (uploadAvatar, updateDisplayName, setUsername) +
+ * AvatarCropDialog + ThemeSwitcher; the theme persists immediately, identity
+ * commits on leaving step 1, and "Los geht's" (step 4, after the optional
+ * PWA install nudge) stamps onboarded_at and drops the user into Home.
  *
  * Steps slide in right→left with a slight overshoot (back-out easing) — forward
  * enters from the right, Zurück from the left. Skipped under reduced motion.
@@ -379,6 +381,11 @@ export default function Setup() {
                     </div>
                   </div>
                 </Match>
+
+                {/* ── Step 4 · App installieren ── */}
+                <Match when={step() === 4}>
+                  <InstallGuide />
+                </Match>
               </Switch>
             </div>
 
@@ -415,6 +422,11 @@ export default function Setup() {
                   </Button>
                 </Match>
                 <Match when={step() === 3}>
+                  <Button variant="primary" onClick={() => go(4)}>
+                    Weiter
+                  </Button>
+                </Match>
+                <Match when={step() === 4}>
                   <Button
                     variant="primary"
                     disabled={committing()}

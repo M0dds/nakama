@@ -13,7 +13,9 @@ import { EditableDisplayName } from "@/components/EditableDisplayName";
 import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 import { Skeleton } from "@/components/Skeleton";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
+import { InstallDialog } from "@/components/InstallDialog";
 import { VERSION_LABEL } from "@/lib/version";
+import { isStandalone } from "@/lib/pwa-install";
 
 /**
  * Profile page. Konto module (left 2/3): editable identity — avatar upload
@@ -52,6 +54,7 @@ export default function Profile() {
   };
 
   const [notesOpen, setNotesOpen] = createSignal(false);
+  const [installOpen, setInstallOpen] = createSignal(false);
 
   return (
     <main class="w-full">
@@ -122,8 +125,8 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Version footer — click opens the full "Was ist neu" history. */}
-      <div class="border-t border-rule px-5 py-4">
+      {/* Footer — version (opens the "Was ist neu" history) + install nudge. */}
+      <div class="flex items-center justify-between gap-3 border-t border-rule px-5 py-4">
         <button
           type="button"
           onClick={() => setNotesOpen(true)}
@@ -132,12 +135,25 @@ export default function Profile() {
         >
           Nakama {VERSION_LABEL}
         </button>
+        <Show when={!isStandalone()}>
+          <button
+            type="button"
+            onClick={() => setInstallOpen(true)}
+            class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+          >
+            Als App installieren
+          </button>
+        </Show>
       </div>
 
       <ReleaseNotesDialog
         open={notesOpen()}
         mode="all"
         onClose={() => setNotesOpen(false)}
+      />
+      <InstallDialog
+        open={installOpen()}
+        onClose={() => setInstallOpen(false)}
       />
     </main>
   );

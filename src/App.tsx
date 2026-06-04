@@ -1,5 +1,9 @@
 import { ErrorBoundary, type ParentProps } from "solid-js";
 import { useTrackNavigation } from "@/lib/navigation";
+// Side-effect import: attaches the beforeinstallprompt listener at app startup
+// (the event fires early and once — see pwa-install.ts) so the InstallGuide,
+// which mounts late, can still offer a 1-click install.
+import "@/lib/pwa-install";
 
 /**
  * Root layout wrapper around every route. The grain overlay sits as a fixed
