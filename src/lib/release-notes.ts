@@ -24,6 +24,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.5.0",
+    date: "2026-06-04",
+    title: "Push-Benachrichtigungen",
+    changes: [
+      "Neu: Push-Benachrichtigungen lassen sich im Profil aktivieren — mit Test-Knopf. Der automatische Versand bei neuen Folgen kommt als Nächstes.",
+      "Auf dem iPhone musst du Nakama dafür zuerst als App installieren.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-06-04",
     title: "Spielesuche & Feinschliff",
