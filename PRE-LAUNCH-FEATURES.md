@@ -6,12 +6,25 @@
 
 ## Liste (Reihenfolge = empfohlene Baufolge)
 
-1. [ ] **Versionierung** (S)
-2. [ ] **Release Notes** (S–M)
-3. [ ] **PWA-Install-Guide** (M)
-4. [ ] **Push-Notifications** (L, phasen — auf iOS abhängig von #3)
+1. [x] **Versionierung** (S) — `feat/pre-launch-versioning`, erledigt 2026-06-04
+2. [x] **Release Notes** (S–M) — erledigt 2026-06-04
+3. [x] **PWA-Install-Guide** (M) — erledigt 2026-06-04
+4. [ ] **Push-Notifications** (L) — **verschoben** (Entscheidung 2026-06-04: erst #1–#3 ausliefern)
 
 > Reihenfolge-Logik: #1 ist die Grundlage für #2 („was ist neu in v…"). #3 muss vor #4 stehen, weil iOS Web-Push **nur in der installierten PWA** erlaubt (s.u.).
+
+### Erledigt 2026-06-04 (Branch `feat/pre-launch-versioning`, noch nicht in `main`)
+
+Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle → **Code-Changelog**, Start-Version → **`0.1.0`**.
+
+- **#1 Versionierung** — `package.json` 0.1.0; `vite.config.ts` `define` inlinet `__APP_VERSION__`/`__BUILD_DATE__`/`__GIT_SHA__`; `src/lib/version.ts` (`VERSION_LABEL`); dezenter Footer im Profil.
+- **#2 Release Notes** — `src/lib/release-notes.ts` (Changelog, neueste zuerst, v0.1.0-Eintrag) + `compareVersions`/`latestNote`; `ReleaseNotesDialog` (Modi `latest`/`all`, gemeinsames Modal-Scaffold). Auto-Open in `AppShell` bei echtem Versions-Sprung über `nakama:last-seen-version`; **null-Key (Erstnutzer/Pre-Feature) seedet still, kein Popup**. Manuell über die Versionsnummer im Profil (`all`-Modus).
+- **#3 PWA-Install-Guide** — `src/lib/pwa-install.ts` (fängt `beforeinstallprompt` beim App-Start in `App.tsx`, Plattform-Erkennung, `promptInstall`); `InstallGuide` (1-Klick auf Chromium, iOS-Teilen→Home-Schritte, „läuft schon"-State, Browser-Menü-Fallback). **Als letzter `/setup`-Schritt** (Wunsch User: PWA-Empfehlung am Ende der Registrierung; STEPS 3→4) + Profil-Footer-Eintrag (`InstallDialog`). `apple-touch-icon`+Title in `index.html`.
+
+**Offen / Follow-ups:**
+- **Push nach `main` löst Auto-Deploy** — bewusst noch nicht gepusht (User entscheidet wann live).
+- **PWA-Icons:** Manifest + `apple-touch-icon` referenzieren nur `favicon.svg`. Für scharfes Home-Screen-Icon (v.a. ältere iOS) echte PNGs (180×180 Apple, 192/512 Android maskable) nach `/public` legen + in `vite.config.ts`-Manifest/`index.html` verdrahten. Design-Asset → User.
+- Künftige Release-Notes-Einträge: oben in `RELEASE_NOTES` ergänzen, `version` == `package.json`-Version beim Deploy.
 
 ---
 
