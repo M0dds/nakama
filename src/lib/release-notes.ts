@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.2.0",
+    date: "2026-06-04",
+    title: "Release Notes, App-Installation & Profil-Politur",
+    changes: [
+      "Neu: „Was ist neu“ — dieser Verlauf hält dich über jedes Update auf dem Laufenden.",
+      "Nakama lässt sich jetzt als App auf den Home-Bildschirm installieren — auch direkt beim Einrichten.",
+      "Die App-Version steht im Profil; ein Tippen öffnet die Release Notes.",
+      "Profil aufgeräumt: neuer „Über“-Bereich und ein dezenteres Konto-Löschen.",
+    ],
+  },
+  {
     version: "0.1.0",
     date: "2026-06-04",
     title: "Nakama ist da — die Beta für Freunde",

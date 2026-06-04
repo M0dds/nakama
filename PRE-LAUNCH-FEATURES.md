@@ -13,18 +13,19 @@
 
 > Reihenfolge-Logik: #1 ist die Grundlage für #2 („was ist neu in v…"). #3 muss vor #4 stehen, weil iOS Web-Push **nur in der installierten PWA** erlaubt (s.u.).
 
-### Erledigt 2026-06-04 (Branch `feat/pre-launch-versioning`, noch nicht in `main`)
+### Erledigt 2026-06-04 (Branch `feat/pre-launch-versioning` → **in `main`, deployed**)
 
-Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle → **Code-Changelog**, Start-Version → **`0.1.0`**.
+Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle → **Code-Changelog**, Versionierung: **`0.1.0` = Launch-Baseline, dieses Update = `0.2.0`** (eigener Changelog-Eintrag, eigene Nummer).
 
-- **#1 Versionierung** — `package.json` 0.1.0; `vite.config.ts` `define` inlinet `__APP_VERSION__`/`__BUILD_DATE__`/`__GIT_SHA__`; `src/lib/version.ts` (`VERSION_LABEL`); dezenter Footer im Profil.
-- **#2 Release Notes** — `src/lib/release-notes.ts` (Changelog, neueste zuerst, v0.1.0-Eintrag) + `compareVersions`/`latestNote`; `ReleaseNotesDialog` (Modi `latest`/`all`, gemeinsames Modal-Scaffold). Auto-Open in `AppShell` bei echtem Versions-Sprung über `nakama:last-seen-version`; **null-Key (Erstnutzer/Pre-Feature) seedet still, kein Popup**. Manuell über die Versionsnummer im Profil (`all`-Modus).
-- **#3 PWA-Install-Guide** — `src/lib/pwa-install.ts` (fängt `beforeinstallprompt` beim App-Start in `App.tsx`, Plattform-Erkennung, `promptInstall`); `InstallGuide` (1-Klick auf Chromium, iOS-Teilen→Home-Schritte, „läuft schon"-State, Browser-Menü-Fallback). **Als letzter `/setup`-Schritt** (Wunsch User: PWA-Empfehlung am Ende der Registrierung; STEPS 3→4) + Profil-Footer-Eintrag (`InstallDialog`). `apple-touch-icon`+Title in `index.html`.
+- **#1 Versionierung** — `package.json` **0.2.0** (Baseline-Eintrag 0.1.0 = Launch); `vite.config.ts` `define` inlinet `__APP_VERSION__`/`__BUILD_DATE__`/`__GIT_SHA__`; `src/lib/version.ts` (`VERSION_LABEL`); Versions-Zeile im Profil-„Über"-Modul.
+- **#2 Release Notes** — `src/lib/release-notes.ts` (Changelog, neueste zuerst, v0.1.0-Eintrag) + `compareVersions`/`latestNote`; `ReleaseNotesDialog` (eine Oberfläche, **scrollbares Akkordeon**: nur eine offen, aktuelle default; Header = Akzent-Punkt + Mono-Kicker „Release Notes"). Auto-Open in `AppShell` bei echtem Versions-Sprung über `nakama:last-seen-version`; **null-Key (Erstnutzer/Pre-Feature) seedet still, kein Popup**. Manuell über die Versionsnummer im Profil.
+- **#3 PWA-Install-Guide** — `src/lib/pwa-install.ts` (fängt `beforeinstallprompt` beim App-Start in `App.tsx`, Plattform-Erkennung, `promptInstall`); `InstallGuide` (minimalistisch, body-only: 1-Klick-Button auf Chromium, iOS-Teilen→Home-Schritte als nummerierte Zeilen, „läuft schon"-State, Browser-Menü-Fallback links). **Als letzter `/setup`-Schritt** (Wunsch User: PWA-Empfehlung am Ende der Registrierung; STEPS 3→4) + `InstallDialog` (Kicker-Header) aus dem Profil. `apple-touch-icon`+Title in `index.html`.
+- **Profil-Politur** — Version/Install aus schwebenden Footer-Buttons in ein eigenes **„Über"-Modul** (rechte Spalte, exakt Logbuch-Listen-Idiom: kein Strich unter Titel, eingerückte Hairline-Trenner, Hover stoppt an der Column-Guide). **„Benachrichtigungen"-Platzhalter** (Section 02, linke Spalte, „Demnächst"-Badge) für den verschobenen Push. **„Account löschen"** vom großen Akzent-Button zum dezenten Mono-Link (wie das „Abmelden"-Aside).
 
 **Offen / Follow-ups:**
-- **Push nach `main` löst Auto-Deploy** — bewusst noch nicht gepusht (User entscheidet wann live).
 - **PWA-Icons:** Manifest + `apple-touch-icon` referenzieren nur `favicon.svg`. Für scharfes Home-Screen-Icon (v.a. ältere iOS) echte PNGs (180×180 Apple, 192/512 Android maskable) nach `/public` legen + in `vite.config.ts`-Manifest/`index.html` verdrahten. Design-Asset → User.
 - Künftige Release-Notes-Einträge: oben in `RELEASE_NOTES` ergänzen, `version` == `package.json`-Version beim Deploy.
+- **Push (#4)** bleibt der nächste große Brocken (der Platzhalter im Profil wird dann der echte Toggle).
 
 ---
 
