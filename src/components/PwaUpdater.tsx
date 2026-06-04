@@ -34,7 +34,17 @@ export function PwaUpdater() {
         toast("Neue Version verfügbar.", {
           icon: RefreshCw,
           durationMs: 0, // sticky — the user decides when to reload
-          action: { label: "Neu laden", onClick: () => void updateSW(true) },
+          action: {
+            label: "Neu laden",
+            onClick: () => {
+              // updateSW(true) skip-waits the new SW and reloads on
+              // controllerchange. Safety net: if that path stalls (odd SW
+              // transition states), force a reload after a beat so the click
+              // is never a silent no-op.
+              void updateSW(true);
+              window.setTimeout(() => window.location.reload(), 1500);
+            },
+          },
         });
       },
       onRegisteredSW(_swUrl, r) {
