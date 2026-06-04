@@ -24,6 +24,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.4.0",
+    date: "2026-06-04",
+    title: "Spielesuche & Feinschliff",
+    changes: [
+      "Die Spielesuche (Steam) funktioniert jetzt zuverlässig.",
+      "Schärferes App-Icon auf dem Home-Bildschirm.",
+      "Spiele-Cover in „Was kommt“ werden nicht mehr beschnitten.",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-06-04",
     title: "Automatische Update-Hinweise",
