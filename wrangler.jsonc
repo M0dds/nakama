@@ -1,0 +1,15 @@
+{
+  // Cloudflare Workers + Static Assets config for the Nakama SPA.
+  // Git-connected deploys run `npm run build` (→ dist/) then `wrangler deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nakama",
+  "compatibility_date": "2026-06-04",
+  "assets": {
+    "directory": "./dist",
+    // SPA fallback: serve index.html (HTTP 200) for any path that doesn't match
+    // a built asset, so the client-side Solid router handles deep-links/reloads.
+    // Replaces the classic Pages `_redirects` catch-all (the new Assets platform's
+    // _redirects validator rejects `/* /index.html 200` as a redirect loop).
+    "not_found_handling": "single-page-application"
+  }
+}
