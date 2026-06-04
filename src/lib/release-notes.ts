@@ -24,6 +24,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.10.1",
+    date: "2026-06-05",
+    title: "Kleine Fixes",
+    changes: [
+      "Behoben: Eine in einer geteilten Liste synchronisierte Serie tauchte unter „Fortsetzen“ doppelt auf — einmal mit Liste, einmal ohne. Sie erscheint jetzt nur noch doppelt, wenn du sie wirklich getrennt verfolgst (z. B. solo und zusätzlich mit jemandem zusammen).",
+      "„Fortsetzen“: Das Symbol vor dem Listennamen ist jetzt ein Listen-Icon statt der Sync-Pfeile.",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-06-05",
     title: "Interaktion",
