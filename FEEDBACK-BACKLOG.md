@@ -8,7 +8,8 @@
 
 ## Deployment-Plan (Vorschlag, in Reihenfolge)
 
-### Release 1 — Feinschliff & Fixes  *(klein, schnell, kein Schema)*
+### ✓ Release 1 — Feinschliff & Fixes  *(deployed 2026-06-04 als v0.7.0)*
+Alle Punkte live. Zusätzlich on top: seitliche Content-Frame-Hairlines erscheinen nur noch oberhalb von `--content-max` (kein Strich mehr am Viewport-Rand). PwaUpdater-Leiche (0.6.0-Rest) entfernt.
 - **F2** 🐞 Listen-Empty-State („Noch keine Einträge") nicht im Stil der anderen Empty-States + **falscher Text**.
 - **F13** 🐞 „Auf Home tracken"-Beschreibung: Tracken/Archiv laufen als Fließtext ohne Umbruch → Umbrüche fixen.
 - **F6** 🐞 Kalender: „nächster Monat"-Pfeil springt je nach Monatsnamen-Länge → Monatsname **3-Buchstaben-Abkürzung** (feste Breite).
