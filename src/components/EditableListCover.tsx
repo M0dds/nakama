@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Camera, Loader2 } from "lucide-solid";
+import { Camera, Loader2, RotateCcw } from "lucide-solid";
+import { Show } from "solid-js";
 import { useToast } from "@/lib/toast";
 import {
   uploadListCover,
@@ -81,6 +82,28 @@ export function EditableListCover(props: {
     onSettled: () => setUploading(false),
   }));
 
+  // Reset to the generated default: clears cover_url (keeps cover_seed, so the
+  // SAME generated pattern the list had before the upload comes back — F4 design
+  // call). Optimistic null patch, rolled back on RLS block / error.
+  const resetMutation = createMutation(() => ({
+    mutationFn: async () => {
+      const res = await setListCover({ listId: props.listId, coverUrl: null });
+      if (res.blocked) throw new Error("blocked");
+    },
+    onMutate: () => {
+      const prevDetail = queryClient.getQueryData<ListSummary | null>(detailKey());
+      patchCaches(null);
+      return { prevDetail };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevDetail !== undefined)
+        queryClient.setQueryData(detailKey(), ctx.prevDetail);
+      queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      toast("Cover konnte nicht zurückgesetzt werden.");
+    },
+    onSuccess: () => toast("Cover zurückgesetzt.", { icon: RotateCcw }),
+  }));
+
   const onPick = (e: Event & { currentTarget: HTMLInputElement }) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = ""; // allow re-picking the same file
@@ -112,25 +135,59 @@ export function EditableListCover(props: {
           alt=""
           class="size-full"
         />
-        <label
-          class="absolute inset-0 flex cursor-pointer items-center justify-center text-transparent transition-colors group-hover:bg-black/45 group-hover:text-white"
-          classList={{ "bg-black/45 text-white": uploading() }}
-          title="Cover ändern"
-          aria-label="Cover ändern"
+
+        {/* Hover overlay, revealed on cover-hover. With a custom cover it splits
+            into two stacked zones — TOP uploads, BOTTOM resets to the generated
+            default; a base dim shows both, and the hovered zone deepens so the
+            target is unambiguous. Without a custom cover the reset zone is
+            absent, so the upload label fills the cover (flex-1, sole child).
+            Stays visible while either op is pending so the spinner shows. */}
+        <div
+          class="pointer-events-none absolute inset-0 flex flex-col opacity-0 transition-opacity group-hover:opacity-100"
+          classList={{ "opacity-100": uploading() || resetMutation.isPending }}
         >
-          {uploading() ? (
-            <Loader2 class="size-6 animate-spin" strokeWidth={1.75} />
-          ) : (
-            <Camera class="size-6" strokeWidth={1.75} />
-          )}
-          <input
-            type="file"
-            accept="image/*"
-            class="sr-only"
-            disabled={uploading()}
-            onChange={onPick}
-          />
-        </label>
+          <div class="pointer-events-none absolute inset-0 bg-black/40" aria-hidden />
+          <label
+            class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30"
+            title="Neues Cover hochladen"
+            aria-label="Neues Cover hochladen"
+          >
+            {uploading() ? (
+              <Loader2 class="size-5 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <Camera class="size-5" strokeWidth={1.75} aria-hidden />
+            )}
+            <span class="font-mono text-mini uppercase tracking-wider">
+              Hochladen
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              class="sr-only"
+              disabled={uploading() || resetMutation.isPending}
+              onChange={onPick}
+            />
+          </label>
+          <Show when={props.coverUrl}>
+            <button
+              type="button"
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending || uploading()}
+              class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              title="Auf generiertes Cover zurücksetzen"
+              aria-label="Auf generiertes Cover zurücksetzen"
+            >
+              {resetMutation.isPending ? (
+                <Loader2 class="size-5 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <RotateCcw class="size-5" strokeWidth={1.75} aria-hidden />
+              )}
+              <span class="font-mono text-mini uppercase tracking-wider">
+                Zurücksetzen
+              </span>
+            </button>
+          </Show>
+        </div>
       </div>
 
       <AvatarCropDialog
