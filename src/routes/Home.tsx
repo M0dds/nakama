@@ -19,8 +19,8 @@ import {
   EyeOff,
   Film,
   Gamepad2,
+  List,
   ListPlus,
-  RefreshCw,
 } from "lucide-solid";
 import { highResCover } from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -832,13 +832,10 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
 
                   <div class="flex shrink-0 items-center gap-1.5 font-mono text-mini text-text-muted">
                     {/* Sync-instance marker, left of the count and dot-joined:
-                        "⟳ Reisegruppe · 3/23". Absent for global entries. */}
+                        "▤ Reisegruppe · 3/23" — a list icon (this entry belongs
+                        to that shared list). Absent for global entries. */}
                     <Show when={item.listName}>
-                      <RefreshCw
-                        class="size-3 shrink-0"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
+                      <List class="size-3 shrink-0" strokeWidth={2} aria-hidden />
                       <span class="max-w-[8rem] truncate uppercase">
                         {item.listName}
                       </span>
