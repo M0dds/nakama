@@ -24,6 +24,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.7.0",
+    date: "2026-06-04",
+    title: "Feinschliff & Fixes",
+    changes: [
+      "Das Home begrüßt dich jetzt mit deinem Namen.",
+      "Die Kopfzeile bleibt beim Scrollen oben sichtbar.",
+      "App- und Browserleiste übernehmen jetzt die Farbe deines Themes statt durchgehend rot zu sein.",
+      "Episoden-Daten zeigen jetzt das Jahr — eindeutig auch bei älteren Serien & Anime.",
+      "Kalender: Der Pfeil zum Monatswechsel springt nicht mehr hin und her.",
+      "Kleinere Politur an leeren Listen, der Tracken-Erklärung und den seitlichen Rahmenlinien.",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-06-04",
     title: "Stille Updates",
