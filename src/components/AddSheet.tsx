@@ -9,7 +9,7 @@ import {
 } from "solid-js";
 import { useLocation } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, Loader2, Plus, Search, X } from "lucide-solid";
+import { Check, Loader2, Minus, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { searchMedia, type MediaResult } from "@/lib/search";
 import { typeInitial, typeLabel } from "@/lib/format";
@@ -702,7 +702,7 @@ function ResultRow(props: {
             aria-hidden
             class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border transition-colors ${
               props.added
-                ? "border-accent bg-accent text-accent-on group-hover:border-border group-hover:bg-surface group-hover:text-text"
+                ? "border-accent bg-accent text-accent-on"
                 : "border-border text-text-muted group-hover:border-accent group-hover:bg-accent group-hover:text-accent-on"
             }`}
           >
@@ -716,10 +716,11 @@ function ResultRow(props: {
                 when={props.added}
                 fallback={<Plus class="size-4" strokeWidth={1.75} />}
               >
-                {/* ✓ at rest; on hover it previews the ✕ — the row stays
-                    clickable and a tap removes the item again (F5). */}
+                {/* ✓ at rest; on hover it previews a − to signal "click to
+                    remove" (F5) — same primary fill as the add affordance,
+                    minus instead of plus. */}
                 <Check class="size-4 group-hover:hidden" strokeWidth={2} />
-                <X class="hidden size-4 group-hover:block" strokeWidth={2} />
+                <Minus class="hidden size-4 group-hover:block" strokeWidth={2} />
               </Show>
             </Show>
           </span>
