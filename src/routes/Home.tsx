@@ -474,7 +474,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
       </div>
 
       {/* Mobile: reveal one more row (2 cards) per tap, and collapse back to the
-          initial count once expanded. Same footer pattern as the Logbuch. */}
+          initial count once expanded. */}
       <Show when={mobileRemaining() > 0 || shown() > WAS_KOMMT_SHOWN}>
         <div class="mt-3 flex items-center gap-2 md:hidden">
           <Show when={mobileRemaining() > 0}>
@@ -894,40 +894,150 @@ function EmptyContinue(props: { firstRun: boolean }) {
 /**
  * Bundled-watch feed. Each event is a (actor, item, session) bundle — so a
  * cascade of 1100 episodes reads as one line "Du hast E1–E1100 von One Piece
- * gesehen" instead of 1100 orphan rows that would blow the row cap and
- * surface only outliers. Initially shows 8 events with a "+ Alle Ereignisse"
- * reveal; an "Eigene ausblenden" toggle hides self-watches (persisted to
- * localStorage so the preference survives reloads).
+ * gesehen" instead of 1100 orphan rows that would blow the row cap and surface
+ * only outliers. Three independent filter toggles (Releases / Aktivität /
+ * Eigene, tab-switcher look) pick which buckets show; the numbered Pager
+ * (8/page) walks the rest. The active set persists to localStorage.
  */
-const LOGBUCH_VISIBLE = 8;
-const LOGBUCH_SELF_KEY = "nakama:logbuch-self";
+const LOGBUCH_PER_PAGE = 8;
+const LOGBUCH_FILTERS_KEY = "nakama:logbuch-filters";
+
+/** The feed partitions into three NON-overlapping buckets, each toggled by its
+ *  own button (multi-select): "releases" = the missed-release nudges (never
+ *  self); "aktivitaet" = OTHER members' activity (watches, adds, completions,
+ *  transfers); "eigene" = your own such activity. An event shows when its
+ *  bucket is active. */
+type LogbuchBucket = "releases" | "aktivitaet" | "eigene";
+
+const LOGBUCH_BUCKETS: { key: LogbuchBucket; label: string }[] = [
+  { key: "releases", label: "Releases" },
+  { key: "aktivitaet", label: "Aktivität" },
+  { key: "eigene", label: "Eigene" },
+];
+
+const bucketOf = (e: LogbookEvent): LogbuchBucket =>
+  e.kind === "missed" ? "releases" : e.isSelf ? "eigene" : "aktivitaet";
+
+/** One-time reduced-motion read — the bucket toggles just fade their fill
+ *  (no scale bounce) when the user prefers reduced motion. */
+const BUCKET_REDUCE_MOTION =
+  typeof window !== "undefined" &&
+  !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 function Logbuch(props: { events: LogbookEvent[] }) {
-  const [expanded, setExpanded] = createSignal(false);
-  // Read the persisted preference synchronously at setup, not in onMount —
-  // an onMount read lands AFTER the first paint, so the feed would flash the
-  // default (self-events visible) for a frame before hiding them (B6).
-  const [showSelf, setShowSelf] = createSignal(
-    localStorage.getItem(LOGBUCH_SELF_KEY) !== "0",
-  );
-
-  const toggleSelf = () => {
-    setShowSelf((prev) => {
-      const next = !prev;
-      localStorage.setItem(LOGBUCH_SELF_KEY, next ? "1" : "0");
+  // Active buckets — read synchronously at setup (not onMount) so the feed
+  // never flashes the default for a frame before the persisted choice applies.
+  // No stored value → all three on (show everything); a stored empty string is
+  // a valid "all off".
+  const stored = localStorage.getItem(LOGBUCH_FILTERS_KEY);
+  const initial: Set<LogbuchBucket> =
+    stored === null
+      ? new Set<LogbuchBucket>(["releases", "aktivitaet", "eigene"])
+      : new Set(
+          stored
+            .split(",")
+            .filter(
+              (s): s is LogbuchBucket =>
+                s === "releases" || s === "aktivitaet" || s === "eigene",
+            ),
+        );
+  const [active, setActive] = createSignal<Set<LogbuchBucket>>(initial);
+  const isOn = (b: LogbuchBucket) => active().has(b);
+  const toggle = (b: LogbuchBucket) => {
+    setActive((prev) => {
+      const next = new Set(prev);
+      if (next.has(b)) next.delete(b);
+      else next.add(b);
+      localStorage.setItem(LOGBUCH_FILTERS_KEY, [...next].join(","));
       return next;
     });
   };
 
-  const hasSelf = () => props.events.some((e) => e.isSelf);
-  const filtered = () =>
-    showSelf() ? props.events : props.events.filter((e) => !e.isSelf);
-  const hasMore = () => filtered().length > LOGBUCH_VISIBLE;
-  const shown = () =>
-    expanded() || !hasMore() ? filtered() : filtered().slice(0, LOGBUCH_VISIBLE);
+  const filtered = () => props.events.filter((e) => active().has(bucketOf(e)));
+
+  const [page, setPage] = createSignal(1);
+  const pageCount = () =>
+    Math.max(1, Math.ceil(filtered().length / LOGBUCH_PER_PAGE));
+  // Clamp at read time — a toggle can shrink the list below the current page;
+  // the reset-to-1 effect below covers user toggles, this guards the realtime-
+  // refetch case.
+  const shown = () => {
+    const p = Math.min(page(), pageCount());
+    const start = (p - 1) * LOGBUCH_PER_PAGE;
+    return filtered().slice(start, start + LOGBUCH_PER_PAGE);
+  };
+
+  // Toggling a bucket re-scopes the feed → back to page 1 (old offset is
+  // meaningless). Deferred so a realtime refetch doesn't yank the reader up.
+  createEffect(on(active, () => setPage(1), { defer: true }));
 
   return (
     <div>
+      {/* Filter — three frameless ghost toggles in the same style as the old
+          footer buttons (mono mini-caps, hover lifts to surface, no frame/fill)
+          so the control stays as quiet as the rest of the chrome. Each carries
+          an eye that's open when its bucket shows and crossed when hidden (the
+          old "Eigene ausblenden" metaphor); a hidden one also greys further.
+          Toggling gives a small back-out pop; reduced motion skips it. */}
+      <div role="group" aria-label="Logbuch filtern" class="mb-3 flex gap-1">
+        <For each={LOGBUCH_BUCKETS}>
+          {(b) => {
+            let contentEl: HTMLSpanElement | undefined;
+            // Tactile back-out pop on toggle (either direction) — the bounce.
+            // Deferred so it fires only on a real toggle, not on mount; skipped
+            // under reduced motion.
+            createEffect(
+              on(
+                () => isOn(b.key),
+                () => {
+                  if (contentEl && !BUCKET_REDUCE_MOTION) {
+                    contentEl.animate(
+                      [{ transform: "scale(0.9)" }, { transform: "scale(1)" }],
+                      {
+                        duration: 320,
+                        easing: "cubic-bezier(0.34, 1.5, 0.5, 1)",
+                      },
+                    );
+                  }
+                },
+                { defer: true },
+              ),
+            );
+            return (
+              <button
+                type="button"
+                aria-pressed={isOn(b.key)}
+                onClick={() => toggle(b.key)}
+                class="flex flex-1 items-center justify-center rounded-xs py-2 font-mono text-mini uppercase tracking-wider transition hover:bg-surface"
+                classList={{
+                  "text-text": isOn(b.key),
+                  "text-text-muted opacity-60 hover:text-text hover:opacity-100":
+                    !isOn(b.key),
+                }}
+              >
+                {/* aktiv = eingeblendet → offenes Auge; inaktiv = ausgeblendet
+                    → durchgestrichenes Auge (the old "Eigene ausblenden"
+                    visibility metaphor). */}
+                <span ref={contentEl} class="flex items-center gap-1.5">
+                  <Show
+                    when={isOn(b.key)}
+                    fallback={
+                      <EyeOff
+                        class="size-3.5 shrink-0"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    }
+                  >
+                    <Eye class="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  </Show>
+                  {b.label}
+                </span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
       <ul class="-mx-5">
         <For each={shown()}>
           {(ev) => (
@@ -974,45 +1084,14 @@ function Logbuch(props: { events: LogbookEvent[] }) {
         </For>
         <Show when={shown().length === 0}>
           <li class="px-5 py-4 text-center text-body text-text-muted">
-            Eigene Aktionen ausgeblendet.
+            Nichts in dieser Auswahl.
           </li>
         </Show>
       </ul>
 
-      {/* Footer controls — reveal-all + the self-actions toggle. */}
-      <div class="mt-1 flex items-center gap-2">
-        <Show when={hasMore()}>
-          <button
-            type="button"
-            onClick={() => setExpanded((p) => !p)}
-            aria-expanded={expanded()}
-            class="flex flex-1 items-center justify-center whitespace-nowrap rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
-          >
-            {expanded() ? "Weniger anzeigen" : "+ Alle Ereignisse"}
-          </button>
-        </Show>
-        <Show when={hasSelf()}>
-          <button
-            type="button"
-            onClick={toggleSelf}
-            aria-pressed={!showSelf()}
-            class="flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xs py-2 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
-          >
-            <Show
-              when={showSelf()}
-              fallback={
-                <>
-                  <Eye class="size-3.5" strokeWidth={2} aria-hidden />
-                  Eigene einblenden
-                </>
-              }
-            >
-              <EyeOff class="size-3.5" strokeWidth={2} aria-hidden />
-              Eigene ausblenden
-            </Show>
-          </button>
-        </Show>
-      </div>
+      {/* Paging — same numbered Pager as everywhere else; replaces the old
+          "+ Alle Ereignisse" reveal. */}
+      <Pager page={page()} pageCount={pageCount()} onPage={setPage} />
     </div>
   );
 }
@@ -1322,7 +1401,7 @@ function FortsetzenSkeleton() {
 function LogbuchSkeleton() {
   return (
     <ul class="-mx-5">
-      <For each={Array.from({ length: LOGBUCH_VISIBLE })}>
+      <For each={Array.from({ length: LOGBUCH_PER_PAGE })}>
         {() => (
           <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
             <div class="flex items-start gap-3 px-5 py-3">
