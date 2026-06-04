@@ -8,6 +8,20 @@ ist die operative Deploy-Liste.
 
 ---
 
+## ✅ Erreicht (2026-06-04) — App ist LIVE
+
+- **Hosting:** Cloudflare (Workers + Static Assets), **Git-Auto-Deploy** aus `main` (`M0dds/nakama`). Push nach `main` → automatischer Rebuild + Deploy.
+- **Domain:** `usenakama.app` (bei Porkbun gekauft) → Nameserver auf Cloudflare, als Custom Domain am Worker, SSL aktiv. Läuft.
+- **SPA-Fallback:** über `wrangler.jsonc` (`assets.not_found_handling: single-page-application`) — `_redirects` verworfen (Workers-Assets-Validator lehnt den Catch-all ab).
+- **Node:** `.nvmrc` = 22 (Vite-8-Build deterministisch).
+- **Build-Env-Vars:** `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_TMDB_TOKEN` als **Build-Variablen** in Cloudflare (nicht Runtime — die sind bei Assets-only gesperrt).
+- **Supabase-Auth:** Site URL + Redirect URLs auf `usenakama.app` (+ `localhost:5173`) gesetzt; **Discord-Login getestet ✓**.
+- **Test-User gelöscht** → frischer Start für die Neu-User-Sicht.
+
+**Noch offen Richtung öffentlicher Launch:** `www`-Subdomain (optional, angefangen), **steam-proxy deployen** (Block 4, noch nicht live → Spiele-Suche in Prod erst danach), **E-Mail-Prod/Resend** (Block 2), **Pre-Launch-Features** (Versionierung, Release Notes, PWA-Install-Guide, Push — siehe `PRE-LAUNCH-FEATURES.md`).
+
+---
+
 ## 0 · Entscheidungen (zuerst — sie prägen den Rest)
 
 - [ ] 🧑 **Hosting-Anbieter wählen.** Nakama ist eine statische Vite-SPA + PWA → jeder Static-Host reicht. Empfehlung (alle können SPA-Fallback + HTTPS + Env-Vars out of the box):
