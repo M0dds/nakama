@@ -128,15 +128,15 @@ export default function Profile() {
           </BentoModule>
 
           <BentoModule label="Über" number="03" class="border-t border-rule">
-            {/* Full-bleed list (-mx-5) with a visible divider above the first
-                row and between each. Uses border-RULE, not border (the latter
-                is a 6% hairline that's effectively invisible here) so the lines
-                actually read — same weight as the section + column dividers.
-                The hover fill is its own layer inset 1px on the LEFT so it
-                stops at the ColumnGuide instead of painting over it. */}
-            <ul class="-mx-5 border-t border-rule">
+            {/* Exact Home-Logbuch list idiom: no divider under the section
+                header, hairline dividers BETWEEN rows only, inset to the px-5
+                content (after:inset-x-5) so they align with the text and don't
+                touch the column line on the left. The hover fill is its own
+                layer inset 1px on the left so it stops at the ColumnGuide
+                instead of painting over it. */}
+            <ul class="-mx-5">
               {/* Version → Release Notes */}
-              <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-rule last:after:hidden">
+              <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                 <button
                   type="button"
                   onClick={() => setNotesOpen(true)}
@@ -167,7 +167,7 @@ export default function Profile() {
 
               {/* App installieren (hidden once running standalone) */}
               <Show when={!isStandalone()}>
-                <li class="relative after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-rule last:after:hidden">
+                <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                   <button
                     type="button"
                     onClick={() => setInstallOpen(true)}
