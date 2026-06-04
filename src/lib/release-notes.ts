@@ -30,7 +30,6 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     changes: [
       "Die Spielesuche (Steam) funktioniert jetzt zuverlässig.",
       "Schärferes App-Icon auf dem Home-Bildschirm.",
-      "Spiele-Cover in „Was kommt“ werden nicht mehr beschnitten.",
     ],
   },
   {

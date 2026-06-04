@@ -521,15 +521,11 @@ function WasKommtCardFace(props: {
             ref={fadeOnLoad}
             src={highResCover(props.item.coverUrl)!}
             alt=""
-            // Posters (anime/series/film) are portrait → object-cover fills the
-            // slot. Game covers are Steam's landscape capsule → object-cover
-            // would butcher them in the tall slot, so contain them (full art,
-            // centered, card bg around). Type-aware like the detail page.
-            classList={{
-              "h-full w-full transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]": true,
-              "object-contain": props.item.type === "game",
-              "object-cover": props.item.type !== "game",
-            }}
+            // object-cover fills the slot for every type — a filled grid reads
+            // calmer than letterboxed gaps. Game covers (Steam's landscape
+            // capsule) get cropped to a central strip here; the detail page is
+            // where they show in full (design call: fill > complete).
+            class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
           />
         </Show>
       </div>
