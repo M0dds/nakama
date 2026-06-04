@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.9.0",
+    date: "2026-06-04",
+    title: "Listen & Details",
+    changes: [
+      "Listenbeschreibungen lassen sich jetzt direkt bearbeiten — und hinzufügen, wenn noch keine da ist.",
+      "Eigene Listen-Cover kannst du aufs generierte Muster zurücksetzen (untere Hälfte beim Hovern über dem Cover).",
+      "Lange Listen blättern jetzt in Seiten zu je 12 Einträgen.",
+      "Bei Serien, Anime & Manga zeigen die Details jetzt Genre, Studio/Sender und Erscheinungsjahr.",
+    ],
+  },
+  {
     version: "0.8.0",
     date: "2026-06-04",
     title: "Neues Theme & Theme-Politur",
