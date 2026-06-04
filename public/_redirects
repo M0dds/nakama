@@ -1,0 +1,5 @@
+# SPA-Fallback für Cloudflare Pages: jede nicht-existente Route auf index.html
+# umschreiben (HTTP 200), damit der clientseitige Solid-Router Deep-Links/Reloads
+# bedienen kann. Echte Assets (sw.js, /assets/*, Bilder) matchen vorher und werden
+# direkt ausgeliefert — der Catch-all greift nur, wenn keine Datei passt.
+/*    /index.html   200
