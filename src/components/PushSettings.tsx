@@ -13,7 +13,9 @@ import {
   type PushPermission,
 } from "@/lib/queries/push";
 import { Button } from "@/components/Button";
-import { Badge } from "@/components/Badge";
+import { Segmented } from "@/components/Segmented";
+
+type PushValue = "on" | "off";
 
 /**
  * The functional "Benachrichtigungen" section (replaces the placeholder).
@@ -108,39 +110,26 @@ export function PushSettings() {
               Eine Nachricht bei neuen Folgen oder Releases.
             </p>
           </div>
-          <Show
-            when={subscribed()}
-            fallback={
-              <Button
-                variant="primary"
-                onClick={enable}
-                disabled={busy()}
-                class="shrink-0"
-              >
-                {busy() ? "Moment …" : "Aktivieren"}
-              </Button>
-            }
-          >
-            <Badge tone="accent" class="shrink-0">
-              Aktiv
-            </Badge>
-          </Show>
+          <div class="shrink-0">
+            <Segmented<PushValue>
+              value={subscribed() ? "on" : "off"}
+              onChange={(v) => (v === "on" ? enable() : disable())}
+              disabled={busy()}
+              options={[
+                { value: "on", label: "An" },
+                { value: "off", label: "Aus" },
+              ]}
+              ariaLabel="Push-Benachrichtigungen"
+            />
+          </div>
         </div>
 
         <Show when={subscribed()}>
-          <div class="mt-4 flex items-center gap-4">
+          <div class="mt-4">
             <Button variant="secondary" onClick={test} disabled={busy()}>
               <Bell class="size-4" strokeWidth={1.75} aria-hidden />
               Test senden
             </Button>
-            <button
-              type="button"
-              onClick={disable}
-              disabled={busy()}
-              class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent disabled:opacity-40"
-            >
-              Deaktivieren
-            </button>
           </div>
         </Show>
 

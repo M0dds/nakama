@@ -7,6 +7,7 @@ import { signOut } from "@/lib/auth-actions";
 import { useToast } from "@/lib/toast";
 import { listsQueryOptions, type ListSummary } from "@/lib/queries/lists";
 import { deleteAccount, myProfileOptions } from "@/lib/queries/profile";
+import { Button } from "@/components/Button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 /**
@@ -89,17 +90,17 @@ export function DeleteAccountSection() {
         </div>
       </Show>
 
-      {/* Subtle text link, same affordance as the "Abmelden" aside — the
-          confirm dialog (type your @handle) is the real safety, so a quiet
-          link is enough. */}
-      <button
-        type="button"
+      {/* Ghost button — understated, since the confirm dialog (type your
+          @handle) carries the real safety. */}
+      <Button
+        variant="ghost"
         disabled={blocking().length > 0}
         onClick={() => setConfirming(true)}
-        class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-text-muted"
+        class="-ml-4"
       >
+        <Trash2 class="size-4" strokeWidth={1.75} aria-hidden />
         Account löschen
-      </button>
+      </Button>
       <ConfirmDialog
         open={confirming()}
         kicker="Account löschen"
