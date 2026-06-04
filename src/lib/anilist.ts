@@ -221,6 +221,54 @@ async function anilistRequest(
   }
 }
 
+/** Extra catalogue facts for the detail page's Details column (F12): genres,
+ *  the main production studio(s), and the start year. NOT stored in
+ *  items.metadata (only format + year are) — fetched live like the movie facts,
+ *  cached by TanStack. Manga have no studios → studios is empty. */
+export interface AniListDetails {
+  genres: string[];
+  studios: string[];
+  year: number | null;
+}
+
+export async function fetchAniListDetails(
+  sourceId: string,
+): Promise<AniListDetails | null> {
+  const id = Number(sourceId);
+  if (!Number.isFinite(id)) return null;
+  const query = `query ($id: Int) {
+    Media(id: $id) {
+      genres
+      startDate { year }
+      studios { edges { isMain node { name } } }
+    }
+  }`;
+  const json = (await anilistRequest(query, { id })) as {
+    data?: {
+      Media?: {
+        genres?: string[] | null;
+        startDate?: { year: number | null } | null;
+        studios?: {
+          edges?: Array<{ isMain: boolean; node: { name: string } }> | null;
+        } | null;
+      } | null;
+    };
+  } | null;
+  const media = json?.data?.Media;
+  if (!media) return null;
+  const edges = media.studios?.edges ?? [];
+  // Prefer the main animation studio; fall back to whatever is listed.
+  const mains = edges.filter((e) => e.isMain).map((e) => e.node.name);
+  const studios = (mains.length ? mains : edges.map((e) => e.node.name)).filter(
+    Boolean,
+  );
+  return {
+    genres: media.genres ?? [],
+    studios,
+    year: media.startDate?.year ?? null,
+  };
+}
+
 /** AniList stores streamingEpisodes as e.g.
  *    "Episode 12 - Whose Side Are You On?"
  *    "Episode 5. Title"

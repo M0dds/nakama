@@ -7,9 +7,18 @@ import {
 } from "@tanstack/solid-query";
 import { ChevronLeft, ChevronRight } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
-import { highResCover } from "@/lib/anilist";
+import {
+  highResCover,
+  fetchAniListDetails,
+  type AniListDetails,
+} from "@/lib/anilist";
 import { fadeOnLoad } from "@/lib/image-fade";
-import { fetchTmdbMovieDetails, type TmdbCastMember } from "@/lib/tmdb";
+import {
+  fetchTmdbMovieDetails,
+  fetchTmdbSeriesDetails,
+  type TmdbCastMember,
+  type TmdbSeriesDetails,
+} from "@/lib/tmdb";
 import {
   fetchSteamGameDetails,
   steamHiResCover,
@@ -593,6 +602,11 @@ export default function ItemDetail() {
                         </div>
                       )}
                     </Show>
+                    {/* Genre / Studio / Erschienen for series/anime/manga — the
+                        episodic counterpart to MovieFacts/GameFacts (F12). */}
+                    <Show when={!isBinary()}>
+                      <EpisodicFacts item={data()} />
+                    </Show>
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class={`${dtClass} shrink-0`}>Quelle</dt>
                       <dd class="min-w-0 truncate text-right font-mono text-mini uppercase tracking-wider text-text">
@@ -1041,6 +1055,57 @@ function Fact(props: { label: string; value: string }) {
       <dt class={`${DT_CLASS} shrink-0`}>{props.label}</dt>
       <dd class="min-w-0 text-right text-text">{props.value}</dd>
     </div>
+  );
+}
+
+/** Live catalogue facts for the episodic types — Genre, Studio (anime) /
+ *  Sender (series), Erschienen-Jahr — so series/anime/manga get the same rich
+ *  Details a film/game has (F12). Not in items.metadata; fetched on demand
+ *  (AniList for anime/manga, TMDB /tv for series) + cached a day. Each row only
+ *  renders once its value resolves, so they fade in without a layout gap; manga
+ *  simply has no studio row. */
+function episodicDetailsQueryOptions(item: ItemDetails) {
+  const isSeries = item.type === "series";
+  return {
+    queryKey: ["episodic-details", item.source, item.sourceId] as const,
+    // Explicit union return — the conditional otherwise infers as just the
+    // AniList shape and the TMDB branch fails to assign.
+    queryFn: (): Promise<AniListDetails | TmdbSeriesDetails | null> =>
+      isSeries
+        ? fetchTmdbSeriesDetails(item.sourceId)
+        : fetchAniListDetails(item.sourceId),
+    enabled: !!item.sourceId,
+    staleTime: 1000 * 60 * 60 * 24,
+  };
+}
+
+function EpisodicFacts(props: { item: ItemDetails }) {
+  const q = createQuery(() => episodicDetailsQueryOptions(props.item));
+  const isSeries = () => props.item.type === "series";
+  const genres = () => q.data?.genres ?? [];
+  // Studio (anime) vs broadcasting network (series); manga has neither. `in`
+  // narrows the union without an unsafe cast between the two shapes.
+  const org = () => {
+    const d = q.data;
+    if (!d) return null;
+    if ("networks" in d) return d.networks[0] ?? null;
+    if ("studios" in d) return d.studios[0] ?? null;
+    return null;
+  };
+  const year = () => (q.data?.year != null ? String(q.data.year) : null);
+
+  return (
+    <>
+      <Show when={year()}>
+        {(y) => <Fact label="Erschienen" value={y()} />}
+      </Show>
+      <Show when={genres().length > 0}>
+        <Fact label="Genre" value={genres().slice(0, 3).join(", ")} />
+      </Show>
+      <Show when={org()}>
+        {(o) => <Fact label={isSeries() ? "Sender" : "Studio"} value={o()} />}
+      </Show>
+    </>
   );
 }
 

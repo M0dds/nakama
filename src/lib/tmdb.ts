@@ -382,3 +382,31 @@ export async function fetchTmdbSeriesEpisodes(
   }
   return episodes;
 }
+
+/** Extra catalogue facts for the detail page's Details column (F12): genres,
+ *  the broadcasting network(s), and the first-air year. One lean /tv/{id} call
+ *  (no per-season fetch, unlike fetchTmdbSeriesEpisodes); not stored in
+ *  items.metadata, fetched live + TanStack-cached. */
+export interface TmdbSeriesDetails {
+  genres: string[];
+  networks: string[];
+  year: number | null;
+}
+
+export async function fetchTmdbSeriesDetails(
+  sourceId: string,
+): Promise<TmdbSeriesDetails | null> {
+  const id = Number(sourceId);
+  if (!Number.isFinite(id)) return null;
+  const d = await tmdbGet<{
+    genres?: Array<{ name: string }>;
+    networks?: Array<{ name: string }>;
+    first_air_date?: string | null;
+  }>(`/tv/${id}`);
+  if (!d) return null;
+  return {
+    genres: (d.genres ?? []).map((g) => g.name),
+    networks: (d.networks ?? []).map((n) => n.name),
+    year: yearOf(d.first_air_date ?? null),
+  };
+}
