@@ -88,7 +88,7 @@ export async function addItemToList(input: {
    *  stays NULL (no default, no trigger) and the Logbuch builder skips the
    *  row entirely, so Nakama adds never showed up in the feed. */
   userId: string;
-}): Promise<void> {
+}): Promise<string> {
   const { source } = input;
 
   // Step 1 — upsert the canonical item row. source.source carries the
@@ -139,6 +139,28 @@ export async function addItemToList(input: {
   if (linkError && linkError.code !== "23505") {
     throw linkError;
   }
+
+  // Hand the canonical item id back so the caller (AddSheet) can offer an undo
+  // (F5) — removeItemFromList deletes the (list_id, item_id) link by this id.
+  return itemId as string;
+}
+
+/** Undo an add (F5) — delete the list_items link for (listId, itemId). The
+ *  mirror of addItemToList's step 2, used by the AddSheet to take back a
+ *  mis-tap. `.select()` so a silent RLS block surfaces as an error instead of
+ *  a no-op that leaves the ✓ stuck (the Logbook lesson). Deleting a row that's
+ *  already gone (double-tap) is a benign no-op — not an error. */
+export async function removeItemFromList(input: {
+  listId: string;
+  itemId: string;
+}): Promise<void> {
+  const { error } = await supabase
+    .from("list_items")
+    .delete()
+    .eq("list_id", input.listId)
+    .eq("item_id", input.itemId)
+    .select("id");
+  if (error) throw error;
 }
 
 /** Backfill/refresh a movie's release date in items.metadata (merged, so

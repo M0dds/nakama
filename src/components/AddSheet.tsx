@@ -15,7 +15,7 @@ import { searchMedia, type MediaResult } from "@/lib/search";
 import { typeInitial, typeLabel } from "@/lib/format";
 import type { MediaType } from "@/lib/queries/home";
 import { fadeOnLoad } from "@/lib/image-fade";
-import { addItemToList } from "@/lib/queries/items";
+import { addItemToList, removeItemFromList } from "@/lib/queries/items";
 import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
@@ -172,9 +172,12 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   });
 
   // ── Add a result ───────────────────────────────────────────────────────
-  /** Tracks which sourceIds were added in THIS session, scoped to the list
-   *  they were added to (so switching lists doesn't carry the ✓ over). */
-  const [added, setAdded] = createSignal<Set<string>>(new Set());
+  /** Maps `addedKey(listId, sourceId)` → the canonical item id of what was
+   *  added in THIS session, scoped to its target list (so switching lists
+   *  doesn't carry the ✓ over). The item id is kept so a mis-tap can be undone
+   *  (F5) via removeItemFromList — clicking an already-added (✓) row removes it
+   *  again. */
+  const [added, setAdded] = createSignal<Map<string, string>>(new Map());
   // A SET, not a single id: two results can be added in quick succession, and
   // a single-string pending let the first add's onSettled clear the spinner of
   // the second (still in flight). Keyed by sourceId.
@@ -187,7 +190,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   // ticks belong to the old list and would be misleading on the new one.
   createEffect(() => {
     void targetListId();
-    setAdded(new Set<string>());
+    setAdded(new Map<string, string>());
   });
 
   const addMutation = createMutation(() => ({
@@ -200,10 +203,10 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
         source: input.source,
         userId: auth.user()!.id,
       }),
-    onSuccess: (_, input) => {
+    onSuccess: (itemId, input) => {
       setAdded((prev) => {
-        const next = new Set(prev);
-        next.add(addedKey(input.listId, input.source.sourceId));
+        const next = new Map(prev);
+        next.set(addedKey(input.listId, input.source.sourceId), itemId);
         return next;
       });
       // Counts ripple across three places: the overview (listsQueryKey),
@@ -223,13 +226,43 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     },
   }));
 
-  const onAdd = (r: MediaResult) => {
+  // Undo a mis-tap (F5): remove the just-added item from the target list. The
+  // item id rides in from the `added` map captured at add time, so removal
+  // doesn't need to re-resolve the source.
+  const removeMutation = createMutation(() => ({
+    mutationFn: (input: { source: MediaResult; listId: string; itemId: string }) =>
+      removeItemFromList({ listId: input.listId, itemId: input.itemId }),
+    onSuccess: (_, input) => {
+      setAdded((prev) => {
+        const next = new Map(prev);
+        next.delete(addedKey(input.listId, input.source.sourceId));
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
+    },
+    onSettled: (_d, _e, input) => {
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(input.source.sourceId);
+        return next;
+      });
+    },
+  }));
+
+  // One tap on a result toggles its membership in the target list: add when
+  // it's not in yet, remove (undo) when it already carries the ✓.
+  const onToggle = (r: MediaResult) => {
     const listId = targetListId();
     if (!listId) return;
-    if (added().has(addedKey(listId, r.sourceId))) return;
     if (pending().has(r.sourceId)) return;
+    const itemId = added().get(addedKey(listId, r.sourceId));
     setPending((prev) => new Set(prev).add(r.sourceId));
-    addMutation.mutate({ source: r, listId });
+    if (itemId) {
+      removeMutation.mutate({ source: r, listId, itemId });
+    } else {
+      addMutation.mutate({ source: r, listId });
+    }
   };
 
   // ── Entry/exit transition ──────────────────────────────────────────────
@@ -474,7 +507,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
                 added().has(addedKey(targetListId(), r.sourceId))
               }
               canAdd={!!targetListId() && listOptions().length > 0}
-              onAdd={onAdd}
+              onToggle={onToggle}
             />
           </Show>
         </div>
@@ -557,7 +590,7 @@ function ResultsBody(props: {
   isPending: (r: MediaResult) => boolean;
   isAdded: (r: MediaResult) => boolean;
   canAdd: boolean;
-  onAdd: (r: MediaResult) => void;
+  onToggle: (r: MediaResult) => void;
 }) {
   return (
     <Show
@@ -600,7 +633,7 @@ function ResultsBody(props: {
                   added={props.isAdded(r)}
                   pending={props.isPending(r)}
                   canAdd={props.canAdd}
-                  onAdd={() => props.onAdd(r)}
+                  onToggle={() => props.onToggle(r)}
                 />
               )}
             </For>
@@ -616,23 +649,25 @@ function ResultRow(props: {
   added: boolean;
   pending: boolean;
   canAdd: boolean;
-  onAdd: () => void;
+  onToggle: () => void;
 }) {
   // Whole row is the affordance — same shape as the list rows on /lists.
   // The indicator on the right is a visual status, not a separate button
   // (nested interactive elements aren't great for a11y anyway). Hover lifts
   // the row a tier DOWN to bg (the panel itself is on surface), and the
   // indicator flips to accent via group-hover so the action has a clear
-  // pre-commit signal.
+  // pre-commit signal. Once added (✓), the row stays clickable: a second tap
+  // removes it again (F5 — undo a mis-tap), with the indicator previewing a ✕
+  // on hover.
   return (
     <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
       <button
         type="button"
-        onClick={props.onAdd}
-        disabled={!props.canAdd || props.added || props.pending}
+        onClick={props.onToggle}
+        disabled={!props.canAdd || props.pending}
         aria-label={
           props.added
-            ? `${props.result.title} – bereits hinzugefügt`
+            ? `${props.result.title} wieder aus der Liste entfernen`
             : `${props.result.title} zur Liste hinzufügen`
         }
         class="group block w-full text-left transition-colors hover:bg-surface disabled:cursor-default disabled:hover:bg-transparent"
@@ -667,7 +702,7 @@ function ResultRow(props: {
             aria-hidden
             class={`relative inline-flex size-8 shrink-0 items-center justify-center rounded-xs border transition-colors ${
               props.added
-                ? "border-accent bg-accent text-accent-on"
+                ? "border-accent bg-accent text-accent-on group-hover:border-border group-hover:bg-surface group-hover:text-text"
                 : "border-border text-text-muted group-hover:border-accent group-hover:bg-accent group-hover:text-accent-on"
             }`}
           >
@@ -681,7 +716,10 @@ function ResultRow(props: {
                 when={props.added}
                 fallback={<Plus class="size-4" strokeWidth={1.75} />}
               >
-                <Check class="size-4" strokeWidth={2} />
+                {/* ✓ at rest; on hover it previews the ✕ — the row stays
+                    clickable and a tap removes the item again (F5). */}
+                <Check class="size-4 group-hover:hidden" strokeWidth={2} />
+                <X class="hidden size-4 group-hover:block" strokeWidth={2} />
               </Show>
             </Show>
           </span>
