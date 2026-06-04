@@ -486,11 +486,11 @@ function DetailsSkeleton() {
 
 function EntriesEmpty() {
   return (
-    <div class="px-4 py-8">
-      <p class="text-body-lg text-text">Noch keine Einträge.</p>
-      <p class="mt-1.5 max-w-md text-body text-text-muted">
-        Über das <span class="font-mono">+</span> in der Navigation suchst du
-        Anime &amp; Manga und legst sie hier ab.
+    <div class="rounded-sm border border-border px-5 py-6 text-center">
+      <p class="text-body text-text">Noch keine Einträge.</p>
+      <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
+        Tippe unten in der Navigation auf <span class="font-mono">+</span> und
+        such Anime, Manga, Serien, Filme oder Spiele — sie landen direkt hier.
       </p>
     </div>
   );
