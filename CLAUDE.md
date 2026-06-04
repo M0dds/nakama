@@ -2,7 +2,7 @@
 
 **Master spec:** `handshake.md` — read it first on every session. It defines the full architecture (Solid SPA + TanStack Query + Supabase, with the Logbook backend reused), the design tokens + primitives, the animation patterns we've worked out, and the workflow conventions with the user.
 
-**Stand (Kurzfassung):** App ist **live auf usenakama.app** (v0.10.0, Git-Auto-Deploy aus `main`). Phasen 1-9 + alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam) + Sync-Instanzen + Cover-Epos + Push Phase 1 sind live; 28 Migrationen gefahren; Security-Audit durch. Aktiver Backlog: `FEEDBACK-BACKLOG.md` (R1-R4 deployed, **nächste Session bei R5**). **Der vollständige Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Stand · §Status · §Offene Punkte** (+ `FEEDBACK-BACKLOG.md`). Hier NICHT duplizieren — sonst driftet's auseinander.
+**Stand (Kurzfassung):** App ist **live auf usenakama.app** (v0.10.1, Git-Auto-Deploy aus `main`). Phasen 1-9 + alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam) + Sync-Instanzen + Cover-Epos + Push Phase 1 sind live; 29 Migrationen gefahren; Security-Audit durch. Aktiver Backlog: `FEEDBACK-BACKLOG.md` (R1-R4 deployed, **nächste Session bei R5**). **Der vollständige Stand + die nächsten Schritte leben an genau einer Stelle: `handshake.md` §Stand · §Status · §Offene Punkte** (+ `FEEDBACK-BACKLOG.md`). Hier NICHT duplizieren — sonst driftet's auseinander.
 
 **Design tokens** live in `src/index.css` (CSS vars + Tailwind v4 `@theme inline`). Names mirror the handshake (`--bg`, `--accent`, `--text-mini`, etc.). Storage keys are prefixed `nakama:*` (NOT `logbook:*`).
 
