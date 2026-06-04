@@ -598,6 +598,29 @@ export async function renameList(input: {
   return { name: (data as { name: string } | null)?.name ?? null };
 }
 
+/** Set (or clear) a list's description. Owner-only via RLS (lists_update_owner);
+ *  mirrors renameList. Unlike the name, an empty value is legal — it clears the
+ *  description (stored as null). `.select()` + the 0-row check distinguishes a
+ *  legit null result (cleared) from an RLS-silently-blocked write. */
+export async function updateListDescription(input: {
+  listId: string;
+  description: string | null;
+}): Promise<{ description: string | null; blocked: boolean }> {
+  const next = input.description?.trim() || null;
+  const { data, error } = await supabase
+    .from("lists")
+    .update({ description: next })
+    .eq("id", input.listId)
+    .select("description")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { description: null, blocked: true };
+  return {
+    description: (data as { description: string | null }).description,
+    blocked: false,
+  };
+}
+
 /** Delete a list. RLS (lists_delete_owner) restricts to the creator; the
  *  cascade on list_items / list_members / list_invitations cleans the rest.
  *

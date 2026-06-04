@@ -47,6 +47,8 @@ import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
 import { ListCover, PinBadge } from "@/components/GeneratedCover";
 import { EditableListCover } from "@/components/EditableListCover";
+import { EditableListDescription } from "@/components/EditableListDescription";
+import { Pager } from "@/components/Pager";
 
 /**
  * /lists/:id — detail view. Layout mirrors the Logbook handshake:
@@ -326,12 +328,15 @@ export default function ListDetail() {
         {/* Einträge — left 2/3 */}
         <div class="md:w-2/3">
           <BentoModule label="Einträge" number="01">
-            <Show
-              when={list.data?.description}
-            >
-              <p class="mb-5 text-body text-text-muted">
-                {list.data!.description}
-              </p>
+            <Show when={list.data}>
+              {(data) => (
+                <EditableListDescription
+                  listId={data().id}
+                  shortCode={params.shortCode}
+                  initialDescription={data().description}
+                  isOwner={data().isOwner}
+                />
+              )}
             </Show>
             <Show when={!items.isLoading} fallback={<ItemRowsSkeleton />}>
               <Show
@@ -515,6 +520,14 @@ function newEpisodeLabel(entry: ListEntry): string | null {
  *  (NICHT im <a> verschachtelt — Buttons in einem Anchor sind ungültiges
  *  HTML + verhalten sich unzuverlässig beim Klick). Default ohne Chevron;
  *  die ge-faded-in Action-Icons sind die hover-affordance. */
+/** Pinned items are always shown on top (they're a deliberate handful); the
+ *  unpinned tail paginates at 12/page so a long list doesn't render everything
+ *  at once (F11). Drag-reorder stays page-local: the onDragEnd handler in the
+ *  parent reorders within the FULL section read from the cache, and a drag can
+ *  only happen between two on-screen rows, so reordering within the visible
+ *  page is correct — cross-page drags are naturally impossible. */
+const UNPINNED_PER_PAGE = 12;
+
 function ListEntries(props: {
   items: ListEntry[];
   listShortCode: string;
@@ -526,39 +539,44 @@ function ListEntries(props: {
   const pinned = () => props.items.filter((e) => e.pinned);
   const unpinned = () => props.items.filter((e) => !e.pinned);
   const pinnedIds = () => pinned().map((e) => e.listItemId);
-  const unpinnedIds = () => unpinned().map((e) => e.listItemId);
+
+  const [page, setPage] = createSignal(1);
+  const pageCount = () =>
+    Math.max(1, Math.ceil(unpinned().length / UNPINNED_PER_PAGE));
+  // Clamp at read-time (not via an effect) so a shrinking list — realtime, a
+  // removal, a pin — never strands the view on an empty page; the raw signal
+  // may hold a higher value but every read goes through safePage.
+  const safePage = () => Math.min(page(), pageCount());
+  const visibleUnpinned = () => {
+    const start = (safePage() - 1) * UNPINNED_PER_PAGE;
+    return unpinned().slice(start, start + UNPINNED_PER_PAGE);
+  };
+  const visibleUnpinnedIds = () => visibleUnpinned().map((e) => e.listItemId);
+
+  const row = (entry: ListEntry) => (
+    <SortableEntryRow
+      entry={entry}
+      listShortCode={props.listShortCode}
+      tracksHome={props.tracksHome}
+      dragSettling={props.dragSettling}
+      onRequestMove={props.onRequestMove}
+      onTogglePin={props.onTogglePin}
+    />
+  );
 
   return (
-    <ul class="-mx-5">
-      <SortableProvider ids={pinnedIds()}>
-        <For each={pinned()}>
-          {(entry) => (
-            <SortableEntryRow
-              entry={entry}
-              listShortCode={props.listShortCode}
-              tracksHome={props.tracksHome}
-              dragSettling={props.dragSettling}
-              onRequestMove={props.onRequestMove}
-              onTogglePin={props.onTogglePin}
-            />
-          )}
-        </For>
-      </SortableProvider>
-      <SortableProvider ids={unpinnedIds()}>
-        <For each={unpinned()}>
-          {(entry) => (
-            <SortableEntryRow
-              entry={entry}
-              listShortCode={props.listShortCode}
-              tracksHome={props.tracksHome}
-              dragSettling={props.dragSettling}
-              onRequestMove={props.onRequestMove}
-              onTogglePin={props.onTogglePin}
-            />
-          )}
-        </For>
-      </SortableProvider>
-    </ul>
+    <>
+      <ul class="-mx-5">
+        <SortableProvider ids={pinnedIds()}>
+          <For each={pinned()}>{row}</For>
+        </SortableProvider>
+        <SortableProvider ids={visibleUnpinnedIds()}>
+          <For each={visibleUnpinned()}>{row}</For>
+        </SortableProvider>
+      </ul>
+      {/* Renders nothing at a single page. */}
+      <Pager page={safePage()} pageCount={pageCount()} onPage={setPage} />
+    </>
   );
 }
 
