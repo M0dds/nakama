@@ -1,0 +1,53 @@
+# Nakama — Feedback-Backlog (Freunde, 2026-06-04)
+
+18 Punkte aus dem Freundes-Feedback, kategorisiert und in Deployment-Batches sortiert.
+
+**Legende:** 🐞 Bug · ✨ UX/Politur · 🎁 Feature · 🎨 Theme · ⚠️ braucht Entscheidung/Migration vor dem Bau
+
+---
+
+## Deployment-Plan (Vorschlag, in Reihenfolge)
+
+### Release 1 — Feinschliff & Fixes  *(klein, schnell, kein Schema)*
+- **F2** 🐞 Listen-Empty-State („Noch keine Einträge") nicht im Stil der anderen Empty-States + **falscher Text**.
+- **F13** 🐞 „Auf Home tracken"-Beschreibung: Tracken/Archiv laufen als Fließtext ohne Umbruch → Umbrüche fixen.
+- **F6** 🐞 Kalender: „nächster Monat"-Pfeil springt je nach Monatsnamen-Länge → Monatsname **3-Buchstaben-Abkürzung** (feste Breite).
+- **F18** ✨ Episoden-Datum: aktuell nur Tag+Monat (verwirrt bei fertig releaseten Anime) → **Jahr ergänzen** (letzte 2 Stellen).
+- **F14** ✨ Username im „Willkommen" der HeaderBar (Home) ergänzen.
+- **F15** ✨ HeaderBar **sticky**.
+- **F10** 🐞 PWA zeigt roten Header → soll sich **ans Theme anpassen** (`theme-color` dynamisch beim Theme-Wechsel).
+
+### Release 2 — Themes & Theme-Picker
+- **F16** 🎨 Totoro-Theme: zu wenig Kontrast, Primary → **Mango-Gelb** o.Ä.
+- **F17** 🎨 **Pond-Theme** ergänzen (Grün/Blau, Teich mit Wasserrosenblättern). ⚠️ Farben vorschlagen.
+- **F8** ✨ Theme-Auswahl: Name wird teils abgeschnitten → **3 pro Reihe**, mehrere Reihen (v.a. in der Registrierung). Passt gut hierher, da Pond den Picker um ein 9. Theme erweitert.
+
+### Release 3 — Listen & Item-Details  *(kein Schema)*
+- **F3** 🐞 Beschreibung **persönlicher** Listen lässt sich nicht ändern.
+- **F4** ✨ Listen-Cover **zurücksetzen** (Button) auf den generierten Default.
+- **F11** ✨ Listen zeigen **max. 12 Items pro Seite** → Paging (`Pager`).
+- **F12** 🎁 Unter „Details" von **Serien/Anime/Manga**: Genre, Publisher/Studio, Release-Datum ergänzen.
+
+### Release 4 — Interaktion
+- **F7** ✨ **Ganzes Item** per Drag & Drop bewegbar (nicht nur das Drag-Handle).
+- **F5** ✨ AddSheet: hinzugefügtes Item **wieder entfernen** können (Fehlauswahl rückgängig).
+- **F1** 🎁 Logbuch: oben zwei **Checkboxen** „Releases" + „Mitglieder-Aktivitäten" (wählen, was angezeigt wird) + **Paging** wie überall sonst. ⚠️ Mapping der Event-Arten klären.
+
+### Release 5 — Listen-Kategorien  *(groß, ⚠️ Schema-Migration)*
+- **F9** 🎁 Kategorie pro Liste (Anime/Manga/Serien/Filme/Spiele): legt fest, was rein darf. AddSheet in einer Liste wählt die Kategorie vor. **Übersicht neu sektioniert:** Default nur „Meine Listen" (privat+geteilt zusammen); kategorisierte Listen kriegen eigene Sections („Anime 02", …) mit fortlaufender Nummerierung; Detail berücksichtigt das. → braucht `lists.category`-Spalte (Migration) + Design-Entscheidungen.
+
+---
+
+## ⚠️ Vor dem Bau zu klären
+
+- **F9 (Kategorien):** (a) `lists.category`-Migration nötig. (b) Wenn man die Kategorie einer Liste mit gemischten Items nachträglich setzt — bestehende „falsche" Items rauswerfen, blocken oder dulden? (c) Liste **ohne** Kategorie → bleibt in „Meine Listen"? (d) Erzwingen wir die Kategorie hart beim Hinzufügen, oder nur Vorauswahl? — **Eigene Plan-/Design-Runde, bevor R5 startet.**
+- **F1 (Logbuch-Filter):** Wie mappen die zwei Checkboxen auf die heutigen Event-Arten? Vorschlag: **„Releases"** = neue/verpasste Folgen-Releases (`missed` + Release-Events), **„Mitglieder-Aktivitäten"** = Watches/Hinzugefügt/Abschlüsse/Übergaben. Und wie kombiniert sich das mit dem bestehenden „Eigene ausblenden"-Toggle?
+- **F4 (Cover-Reset):** Auf den generierten Default zurück (`cover_url` = null) — Seed beibehalten oder neu würfeln?
+- **F17 (Pond):** Farbwerte (Light/Dark) schlage ich vor, du gibst grün/rot.
+
+---
+
+## Hinweise
+- Reihenfolge-Logik: R1 (Bugs/Quick-Wins → sofort Wert für Freunde) → R2 (Themes, sichtbar, risikoarm) → R3 (Listen/Details) → R4 (Interaktion) → R5 (Kategorien, größter Brocken, Schema + eigene Planung).
+- Jeder Release: kurzlebiger Branch → `main`, atomare Commits, **Localhost-Test vor Deploy**, Live-Verifikation + Changelog-Eintrag.
+- Schöner Nebeneffekt: Schon **R1** ist der erste Deploy nach 0.6.0 → dabei siehst du das **stille Update-Badge** (statt Toast) zum ersten Mal in Aktion.
