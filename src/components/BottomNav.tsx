@@ -277,13 +277,18 @@ export function BottomNav(props: {
   return (
     <nav
       aria-label="Hauptnavigation"
-      class="fixed inset-x-0 bottom-[26px] z-30 flex justify-center px-4"
+      // pointer-events-none on the full-width wrapper so its transparent sides
+      // don't swallow clicks meant for page content sitting at the nav's height
+      // band (e.g. a pager row); only the centered pill below re-enables them.
+      class="pointer-events-none fixed inset-x-0 bottom-[26px] z-30 flex justify-center px-4"
     >
       <div
         ref={pillEl!}
         data-add-anchor
         class={`relative flex items-center gap-1 rounded-full bg-nav-bg p-1.5 shadow-floating ${
-          props.addSheetOpen ? "pointer-events-none opacity-0" : "opacity-100"
+          props.addSheetOpen
+            ? "pointer-events-none opacity-0"
+            : "pointer-events-auto opacity-100"
         }`}
         style={{
           // Sequential handoff with the search-pill in AddSheet — see the
