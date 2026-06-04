@@ -78,7 +78,7 @@ export function PushSettings() {
     if (res.ok)
       toast(
         res.sent
-          ? "Test gesendet — gleich poppt die Benachrichtigung."
+          ? `Test an ${res.sent} Push-Abo${res.sent === 1 ? "" : "s"} gesendet.`
           : "Kein aktives Abo gefunden.",
         { icon: Bell },
       );
