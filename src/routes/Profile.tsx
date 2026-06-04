@@ -1,6 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import { useNavigate } from "@solidjs/router";
+import { ChevronRight, Download } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
@@ -117,38 +118,65 @@ export default function Profile() {
           </BentoModule>
         </div>
 
-        {/* Erscheinungsbild — right 1/3 */}
+        {/* Right 1/3: Erscheinungsbild stacked over Über — the two short
+            modules together balance the taller Konto column, so the page reads
+            as filled rather than a sparse two-column header with floating
+            footer buttons. */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
           <BentoModule label="Erscheinungsbild" number="02">
             <ThemeSwitcher />
           </BentoModule>
-        </div>
-      </div>
 
-      {/* Footer — version (opens the "Was ist neu" history) + install nudge. */}
-      <div class="flex items-center justify-between gap-3 border-t border-rule px-5 py-4">
-        <button
-          type="button"
-          onClick={() => setNotesOpen(true)}
-          class="font-mono text-mini tracking-wider text-text-muted transition-colors hover:text-accent"
-          title="Was ist neu"
-        >
-          Nakama {VERSION_LABEL}
-        </button>
-        <Show when={!isStandalone()}>
-          <button
-            type="button"
-            onClick={() => setInstallOpen(true)}
-            class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-          >
-            Als App installieren
-          </button>
-        </Show>
+          <BentoModule label="Über" number="03" class="border-t border-rule">
+            <div class="-mx-5 -mb-5">
+              {/* Version → Release Notes */}
+              <button
+                type="button"
+                onClick={() => setNotesOpen(true)}
+                class="flex w-full items-center justify-between gap-3 border-t border-border px-5 py-3.5 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.04]"
+              >
+                <span class="min-w-0">
+                  <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                    Version
+                  </span>
+                  <span class="mt-0.5 block font-mono text-label text-text">
+                    {VERSION_LABEL}
+                  </span>
+                </span>
+                <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted">
+                  Release Notes
+                  <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
+                </span>
+              </button>
+
+              {/* App installieren (hidden once running standalone) */}
+              <Show when={!isStandalone()}>
+                <button
+                  type="button"
+                  onClick={() => setInstallOpen(true)}
+                  class="flex w-full items-center justify-between gap-3 border-t border-border px-5 py-3.5 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.04]"
+                >
+                  <span class="min-w-0">
+                    <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                      App
+                    </span>
+                    <span class="mt-0.5 block text-label text-text">
+                      Auf dem Home-Bildschirm
+                    </span>
+                  </span>
+                  <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted">
+                    Installieren
+                    <Download class="size-4" strokeWidth={1.75} aria-hidden />
+                  </span>
+                </button>
+              </Show>
+            </div>
+          </BentoModule>
+        </div>
       </div>
 
       <ReleaseNotesDialog
         open={notesOpen()}
-        mode="all"
         onClose={() => setNotesOpen(false)}
       />
       <InstallDialog

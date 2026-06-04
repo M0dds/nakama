@@ -114,7 +114,6 @@ export function AppShell(props: ParentProps) {
       </Show>
       <ReleaseNotesDialog
         open={notesOpen()}
-        mode="latest"
         onClose={() => setNotesOpen(false)}
       />
     </ToastProvider>
