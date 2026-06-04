@@ -9,7 +9,7 @@
 1. [x] **Versionierung** (S) — `feat/pre-launch-versioning`, erledigt 2026-06-04
 2. [x] **Release Notes** (S–M) — erledigt 2026-06-04
 3. [x] **PWA-Install-Guide** (M) — erledigt 2026-06-04
-4. [ ] **Push-Notifications** (L) — **verschoben** (Entscheidung 2026-06-04: erst #1–#3 ausliefern)
+4. [~] **Push-Notifications** (L) — **Phase 1 LIVE (0.5.0)**: Opt-in-Toggle im Profil + Test-Versand, end-to-end verifiziert. **Phase 2 offen** (Auto-Versand bei neuen Folgen: Cron).
 
 > Reihenfolge-Logik: #1 ist die Grundlage für #2 („was ist neu in v…"). #3 muss vor #4 stehen, weil iOS Web-Push **nur in der installierten PWA** erlaubt (s.u.).
 
@@ -23,9 +23,24 @@ Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle →
 - **Profil-Politur** — Version/Install aus schwebenden Footer-Buttons in ein eigenes **„Über"-Modul** (rechte Spalte, exakt Logbuch-Listen-Idiom: kein Strich unter Titel, eingerückte Hairline-Trenner, Hover stoppt an der Column-Guide). **„Benachrichtigungen"-Platzhalter** (Section 02, linke Spalte, „Demnächst"-Badge) für den verschobenen Push. **„Account löschen"** vom großen Akzent-Button zum dezenten Mono-Link (wie das „Abmelden"-Aside).
 
 **Offen / Follow-ups:**
-- **PWA-Icons:** Manifest + `apple-touch-icon` referenzieren nur `favicon.svg`. Für scharfes Home-Screen-Icon (v.a. ältere iOS) echte PNGs (180×180 Apple, 192/512 Android maskable) nach `/public` legen + in `vite.config.ts`-Manifest/`index.html` verdrahten. Design-Asset → User.
 - Künftige Release-Notes-Einträge: oben in `RELEASE_NOTES` ergänzen, `version` == `package.json`-Version beim Deploy.
-- **Push (#4)** bleibt der nächste große Brocken (der Platzhalter im Profil wird dann der echte Toggle).
+
+### Deploy-Historie (2026-06-04, alle live auf usenakama.app)
+`0.2.0` Pre-Launch-Features (Versionierung/Release-Notes/Install) · `0.2.1` Install-Hotfix (Profil linksbündig, Firefox-Desktop-Hinweis) · `0.3.0` Update-Hinweis-Toast (registerType prompt + PwaUpdater) · `0.4.0` Steam-Suche live (steam-proxy deployed) + PNG-Icons + Politur · `0.4.1` robuster „Neu laden"-Handler (explizites skip-waiting + controllerchange + Backstop) · `0.5.0` **Push Phase 1** + Ghost-Delete-Button + Push-An/Aus-Segmented.
+
+### Push Phase 1 — gebaut & live (0.5.0)
+- **VAPID**-Paar erzeugt; Public-Key Client-Konstante (`queries/push.ts`), Private-Key + Subject als **Supabase-Secrets**.
+- **`push_subscriptions`**-Tabelle (Migration gefahren) · RLS own-only.
+- **SW-Handler** `public/push-sw.js` (push→showNotification, click→focus/open) via `workbox.importScripts` (bleibt generateSW).
+- **`send-push`** Edge-Function (Deno + `npm:web-push`, VAPID-signiert, caller-auth, 410-Cleanup) — **deployed**. CORS-Allowlist erweitert um `localhost:5173/4173` fürs Preview-Testen.
+- **UI** `PushSettings` (An/Aus-Segmented + „Test senden"; iOS-/denied-/unsupported-States).
+- **Gotcha gelöst:** „Test gesendet"/FCM `201`, aber keine Anzeige — lag NICHT am Code. Chromes Push-Empfangs­verbindung (`chrome://gcm-internals` → `CONNECTING` statt `CONNECTED`) hing; **Chrome-Neustart** → alle gepufferten Pushes kamen. Reines Umgebungs-/Netz-Thema.
+
+### Offen
+- **Push Phase 2:** Auto-Versand bei neuen Folgen (Cron + „neue Folge"-Erkennung wie beim Badge wiederverwenden). Der nächste große Brocken.
+- **PWA-Icons** als designtes Asset (der Hinomaru-Stopgap aus 0.4.0 läuft; ersetzbar).
+- **Resend-Domain** für E-Mail/Magic-Link-Login (Dashboard, → handshake §Offene Punkte).
+- **Deploy-Nebenwirkung:** Jeder Push nach `main` ändert den Bundle-Hash (`__GIT_SHA__` inlined) → triggert den „Neue Version"-Toast, **auch bei reinen Docs-Commits**. Darum Docs-only nicht einzeln pushen (sonst Fehl-Toast ohne echte Änderung) — mit dem nächsten Versions-Deploy mitnehmen. Siehe Memory `git-sha-triggers-update-toast`.
 
 ---
 
