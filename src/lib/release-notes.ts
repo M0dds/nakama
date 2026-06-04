@@ -24,6 +24,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.6.0",
+    date: "2026-06-04",
+    title: "Stille Updates",
+    changes: [
+      "Neue Versionen melden sich jetzt still per Badge am Profil statt per Pop-up; ein Tipp auf „Update verfügbar“ im Profil lädt neu.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-06-04",
     title: "Push-Benachrichtigungen",
