@@ -24,6 +24,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.10.2",
+    date: "2026-06-05",
+    title: "Mehr Logbuch pro Seite",
+    changes: [
+      "Das Logbuch zeigt jetzt 12 statt 8 Einträge pro Seite.",
+    ],
+  },
+  {
     version: "0.10.1",
     date: "2026-06-05",
     title: "Kleine Fixes",
