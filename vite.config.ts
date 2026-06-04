@@ -1,10 +1,32 @@
 import { defineConfig } from "vite";
 import path from "node:path";
+import { execSync } from "node:child_process";
+import { createRequire } from "node:module";
 import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const require = createRequire(import.meta.url);
+const pkg = require("./package.json") as { version: string };
+
+// Build-time stamps inlined into the bundle (see src/env.d.ts for the globals
+// + src/lib/version.ts for the consumer). Build date is the day we compile;
+// the short git SHA is best-effort (empty on a shallow/no-git build, e.g. some
+// CI checkouts — never let it fail the build).
+const buildDate = new Date().toISOString().slice(0, 10);
+let gitSha = "";
+try {
+  gitSha = execSync("git rev-parse --short HEAD").toString().trim();
+} catch {
+  gitSha = "";
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_DATE__: JSON.stringify(buildDate),
+    __GIT_SHA__: JSON.stringify(gitSha),
+  },
   plugins: [
     solid(),
     tailwindcss(),
