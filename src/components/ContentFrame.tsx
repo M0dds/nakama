@@ -1,15 +1,24 @@
 /**
  * The two vertical hairlines that frame the capped content area, left + right,
- * bleeding the full viewport height (like the ColumnGuide). They sit exactly at
- * the content frame's edges — the same `max(0, (100vw − --content-max) / 2)`
- * gutter the centered AppShell frame produces.
+ * bleeding the full viewport height (like the ColumnGuide). They mark the edges
+ * of the centered, --content-max-capped frame — and ONLY appear once that frame
+ * margin actually opens.
  *
- * On a viewport NARROWER than --content-max the gutter is 0, so both lines sit
- * flush at the viewport edges (effectively invisible) — the page reads
- * edge-to-edge as before. On a WIDER viewport the lines pull in to the gutter,
- * turning the side margin into a deliberate frame: content reads as bounded
- * (its hover fills, rows and the ColumnGuide all stop at an intentional edge)
- * rather than floating with lopsided padding.
+ * Each line lives on the INNER edge of a gutter-wide, full-height clip box
+ * anchored to the viewport edge. The gutter is `max(0, (100vw − --content-max)
+ * / 2)` — the same margin the centered AppShell frame produces:
+ *
+ *   - Viewport ≤ --content-max → gutter is 0 → the clip box collapses to 0
+ *     width and `overflow: hidden` clips the hairline away entirely. No stray
+ *     rule hugging the screen edge; the page reads edge-to-edge.
+ *   - Viewport > --content-max → the box opens to the gutter width and the
+ *     hairline lands exactly at the content frame's edge, turning the side
+ *     margin into a deliberate frame (content, hover fills, ColumnGuide all stop
+ *     at an intentional boundary instead of floating with lopsided padding).
+ *
+ * Driving visibility off the gutter (not a hardcoded media-query breakpoint)
+ * keeps --content-max the single source of truth — change the token and the
+ * frame follows.
  *
  * `position: fixed` (not borders on a container) so the rules span top-to-
  * bottom regardless of content height — the instrument-panel read. `z-index:
@@ -22,14 +31,18 @@ export function ContentFrame() {
     <>
       <div
         aria-hidden
-        class="pointer-events-none fixed inset-y-0 w-px bg-rule"
-        style={{ left: gutter, "z-index": -5 }}
-      />
+        class="pointer-events-none fixed inset-y-0 left-0 overflow-hidden"
+        style={{ width: gutter, "z-index": -5 }}
+      >
+        <span class="absolute inset-y-0 right-0 w-px bg-rule" />
+      </div>
       <div
         aria-hidden
-        class="pointer-events-none fixed inset-y-0 w-px bg-rule"
-        style={{ right: gutter, "z-index": -5 }}
-      />
+        class="pointer-events-none fixed inset-y-0 right-0 overflow-hidden"
+        style={{ width: gutter, "z-index": -5 }}
+      >
+        <span class="absolute inset-y-0 left-0 w-px bg-rule" />
+      </div>
     </>
   );
 }
