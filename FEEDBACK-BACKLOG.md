@@ -24,7 +24,8 @@ Alle Punkte live. „Totoro" wurde dabei zu **„Komorebi"** umbenannt (id bleib
 - **F17** 🎨 **Pond-Theme** ergänzen (Grün/Blau, Teich mit Wasserrosenblättern). ⚠️ Farben vorschlagen.
 - **F8** ✨ Theme-Auswahl: Name wird teils abgeschnitten → **3 pro Reihe**, mehrere Reihen (v.a. in der Registrierung). Passt gut hierher, da Pond den Picker um ein 9. Theme erweitert.
 
-### Release 3 — Listen & Item-Details  *(kein Schema)*
+### ✓ Release 3 — Listen & Item-Details  *(deployed 2026-06-04 als v0.9.0)*
+Alle Punkte live. F4 wurde als **geteiltes Hover-Overlay** gebaut (oben hochladen, unten zurücksetzen) statt Button unter dem Cover; Reset behält den Seed. F12 holt Genre/Studio/Sender/Jahr **live** (AniList/TMDB). On top: **Push-Doppel-Subscription-Härtung** (`UNIQUE(endpoint)`, Migr. `20260604130000`) — das Doppel-Notification-Thema des Users war ein **2-Origin-Test-Artefakt** (localhost + Live), kein echter Bug für Freunde.
 - **F3** 🐞 Beschreibung **persönlicher** Listen lässt sich nicht ändern.
 - **F4** ✨ Listen-Cover **zurücksetzen** (Button) auf den generierten Default.
 - **F11** ✨ Listen zeigen **max. 12 Items pro Seite** → Paging (`Pager`).
