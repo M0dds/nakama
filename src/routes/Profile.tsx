@@ -7,6 +7,7 @@ import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
+import { Badge } from "@/components/Badge";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { EditableAvatar } from "@/components/EditableAvatar";
@@ -116,6 +117,28 @@ export default function Profile() {
 
             <DeleteAccountSection />
           </BentoModule>
+
+          {/* Placeholder — push notifications are deferred (PRE-LAUNCH #4);
+              this fills the left column under Konto and signposts what's
+              coming. No wiring yet, just the "Demnächst" stamp. */}
+          <BentoModule
+            label="Benachrichtigungen"
+            number="02"
+            class="border-t border-rule"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <p class="text-body text-text">Push-Benachrichtigungen</p>
+                <p class="mt-1 text-mini text-text-muted">
+                  Bekomm eine Nachricht, sobald eine neue Folge erscheint oder
+                  ein Film bzw. Spiel veröffentlicht wird.
+                </p>
+              </div>
+              <Badge class="shrink-0 border-border text-text-muted">
+                Demnächst
+              </Badge>
+            </div>
+          </BentoModule>
         </div>
 
         {/* Right 1/3: Erscheinungsbild stacked over Über — the two short
@@ -123,11 +146,11 @@ export default function Profile() {
             as filled rather than a sparse two-column header with floating
             footer buttons. */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
-          <BentoModule label="Erscheinungsbild" number="02">
+          <BentoModule label="Erscheinungsbild" number="03">
             <ThemeSwitcher />
           </BentoModule>
 
-          <BentoModule label="Über" number="03" class="border-t border-rule">
+          <BentoModule label="Über" number="04" class="border-t border-rule">
             {/* Exact Home-Logbuch list idiom: no divider under the section
                 header, hairline dividers BETWEEN rows only, inset to the px-5
                 content (after:inset-x-5) so they align with the text and don't
