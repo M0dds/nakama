@@ -896,7 +896,7 @@ function EmptyContinue(props: { firstRun: boolean }) {
  * Eigene, tab-switcher look) pick which buckets show; the numbered Pager
  * (8/page) walks the rest. The active set persists to localStorage.
  */
-const LOGBUCH_PER_PAGE = 8;
+const LOGBUCH_PER_PAGE = 12;
 const LOGBUCH_FILTERS_KEY = "nakama:logbuch-filters";
 
 /** The feed partitions into three NON-overlapping buckets, each toggled by its
