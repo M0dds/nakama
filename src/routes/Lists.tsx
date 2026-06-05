@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import {
   createMutation,
@@ -13,10 +13,12 @@ import {
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
 import {
+  LIST_CATEGORIES,
   listsQueryKey,
   listsQueryOptions,
   reorderLists,
   setListPin,
+  type ListCategory,
   type ListSummary,
 } from "@/lib/queries/lists";
 import {
@@ -39,13 +41,16 @@ import { Skeleton } from "@/components/Skeleton";
 import { ListCover } from "@/components/GeneratedCover";
 
 /**
- * /lists — overview. Left 2/3: "Deine Listen" (private) + "Geteilte Listen"
- * (shared, with anyone else). Right 1/3: "Neue Liste" create form, always
- * available. Sharing-related modules (incoming invitations) land in Phase 7.
+ * /lists — overview. Left 2/3: category-first sections — "Meine Listen"
+ * (uncategorized, private + shared together) followed by one section per
+ * non-empty category ("Anime", "Serien", …) in a fixed order, with
+ * consecutive Bento numbering. Right 1/3: "Neue Liste" create form, always
+ * available (numbered after the last left-column section).
  *
- * Split is by `is_shared`, not ownership: a list YOU created becomes
- * "geteilt" the moment you invite someone, but you stay the owner. So this
- * UI is forward-compatible.
+ * Category is the primary grouping axis (F9): private/shared is now just a
+ * marker in each row's meta line, not a section of its own. The drag-reorder
+ * machinery groups by (category × pin-state) — a list's category is changed
+ * deliberately on its detail page, never by dragging across sections.
  */
 export default function Lists() {
   const auth = useAuth();
@@ -58,10 +63,10 @@ export default function Lists() {
     enabled: !!auth.user(),
   }));
 
-  // Live updates: a partner creating a list, joining, leaving, or
-  // toggling tracks_home anywhere reflects here without a refresh.
-  // The episode tables drive the "Neue Folge" badge — new episodes
-  // appearing OR the caller's ticks invalidate the per-list count.
+  // Live updates: a partner creating a list, joining, leaving, recategorising,
+  // or toggling tracks_home anywhere reflects here without a refresh. The
+  // episode tables drive the "Neue Folge" badge — new episodes appearing OR
+  // the caller's ticks invalidate the per-list count.
   useRealtimeInvalidation("lists-overview", [
     { table: "lists", invalidates: [listsQueryKey] },
     { table: "list_members", invalidates: [listsQueryKey] },
@@ -75,6 +80,24 @@ export default function Lists() {
       invalidates: [["invitations", "mine"], listsQueryKey],
     },
   ]);
+
+  // The visible, non-empty sections in fixed order, each pre-sorted by
+  // (pinned, sortOrder). Memoised so the per-category filter+sort runs once
+  // per data change, not once per consumer (numbering, border, render).
+  const sections = createMemo<SectionGroup[]>(() => {
+    const data = lists.data;
+    if (!data) return [];
+    const all = [...data.private, ...data.shared];
+    const out: SectionGroup[] = [];
+    for (const s of SECTION_ORDER) {
+      const ls = all.filter((l) => catOf(l) === s.cat).sort(byPinThenSort);
+      if (ls.length > 0) out.push({ cat: s.cat, label: s.label, lists: ls });
+    }
+    return out;
+  });
+  // "Neue Liste" sits after the last left section. With zero lists we still
+  // render the "Meine Listen" empty card as 01, so the form is 02.
+  const rightNumber = () => Math.max(1, sections().length) + 1;
 
   // Pin toggle. Optimistic: flip pinned + bump sortOrder to MIN(target
   // section)-1 so the row jumps to the top of its new section instantly.
@@ -107,10 +130,7 @@ export default function Lists() {
               ? { ...l, pinned: input.pinned, sortOrder: input.sortOrder }
               : l,
           )
-          .sort((a, b) => {
-            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            return a.sortOrder - b.sortOrder;
-          });
+          .sort(byPinThenSort);
       queryClient.setQueryData(listsQueryKey, {
         private: patch(prev.private),
         shared: patch(prev.shared),
@@ -126,13 +146,18 @@ export default function Lists() {
   }));
 
   // Pin toggle: float the freshly-(un)pinned row to the top of its new
-  // section. sortOrder math is shared with /lists/:short — see topOfSection.
+  // section. The section is scoped to the list's OWN category (the primary
+  // axis now) — pinning a list floats it above that category's pinned rows,
+  // not across the whole overview.
   const handleTogglePin = (list: ListSummary) => {
     const data = lists.data;
     if (!data) return;
+    const all = [...data.private, ...data.shared];
     const targetPinned = !list.pinned;
-    const targetSection = [...data.private, ...data.shared].filter(
-      (l) => l.pinned === targetPinned && l.id !== list.id,
+    const cat = catOf(list);
+    const targetSection = all.filter(
+      (l) =>
+        catOf(l) === cat && l.pinned === targetPinned && l.id !== list.id,
     );
     pinMut.mutate({
       list,
@@ -141,12 +166,11 @@ export default function Lists() {
     });
   };
 
-  // Drag-reorder. Source of truth = the cached lists array; we slice it
-  // by (visibility, pinned) into 4 sortable sections and let each section
-  // own its own SortableProvider so drag-swap is bounded within section.
-  // On drop, build the new ordered ID list for the affected section, patch
-  // the cache optimistically (sort_order = i+1 in that section), then push
-  // the same payload to the server.
+  // Drag-reorder. Source of truth = the cached lists arrays; we slice them
+  // by (category, pinned) into sortable sections and let each section own its
+  // own SortableProvider so drag-swap is bounded within section. On drop,
+  // build the new ordered ID list for the affected section, patch the cache
+  // optimistically, then push the same payload to the server.
   const reorderMut = createMutation(() => ({
     mutationFn: (input: {
       orderedListIds: string[];
@@ -170,8 +194,9 @@ export default function Lists() {
 
   // Drag-reorder + hover-bg suppression. The hook owns dragSettling + the
   // unconditional settle scheduling; we provide only the actual reorder
-  // logic. Refuse cross-section drops (pinned/unpinned stay separate;
-  // pin-state changes go through the pin click, not the drag).
+  // logic. Refuse cross-section drops (category/pin sections stay separate;
+  // category changes go through the detail page, pin-state through the pin
+  // click — neither happens by dragging across a section boundary).
   const { dragSettling, onDragStart, onDragEnd, settle } = useDragSettling(
     ({ draggable, droppable }) => {
       if (!droppable || draggable.id === droppable.id) return;
@@ -185,9 +210,14 @@ export default function Lists() {
       }>(listsQueryKey);
       if (!data) return;
 
-      const { visibility, pinned } = sectionParts(fromSection);
-      const arr = visibility === "private" ? data.private : data.shared;
-      const sectionRows = arr.filter((l) => l.pinned === pinned);
+      const { cat, pinned } = sectionParts(fromSection);
+      // The section spans both private and shared lists of this category, so
+      // we slice from the union and patch the sortOrder back into whichever
+      // array each list lives in.
+      const all = [...data.private, ...data.shared];
+      const sectionRows = all
+        .filter((l) => catOf(l) === cat && l.pinned === pinned)
+        .sort(byPinThenSort);
 
       const reordered = reorderSection(
         sectionRows,
@@ -203,18 +233,15 @@ export default function Lists() {
           .map((l) =>
             sortMap.has(l.id) ? { ...l, sortOrder: sortMap.get(l.id)! } : l,
           )
-          .sort((a, b) => {
-            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            return a.sortOrder - b.sortOrder;
-          });
+          .sort(byPinThenSort);
 
       // `data` is the pre-patch snapshot (patch() returns fresh arrays, so the
       // original object's arrays are untouched) — hand it to the mutation as
       // the rollback target before overwriting the cache.
       const prev = data;
       queryClient.setQueryData(listsQueryKey, {
-        private: visibility === "private" ? patch(data.private) : data.private,
-        shared: visibility === "shared" ? patch(data.shared) : data.shared,
+        private: patch(data.private),
+        shared: patch(data.shared),
       });
 
       reorderMut.mutate({ orderedListIds: nextSection.map((l) => l.id), prev });
@@ -234,59 +261,52 @@ export default function Lists() {
       >
         <MovePointerSensor />
         <div class="flex flex-col md:flex-row md:items-start">
-          {/* Linke Spalte 2/3 — Einladungen + Deine Listen + Geteilte Listen */}
+          {/* Linke Spalte 2/3 — Einladungen + Kategorie-Sektionen */}
           <div class="md:w-2/3">
             <InvitationsInbox />
             <Show
               when={lists.data}
               fallback={
-                <BentoModule label="Deine Listen" number="01">
+                <BentoModule label="Meine Listen" number="01">
                   <ListRowsSkeleton />
                 </BentoModule>
               }
             >
-              {(data) => (
-                <>
-                  <BentoModule
-                    label="Deine Listen"
-                    number="01"
-                    class={
-                      data().shared.length > 0
-                        ? "border-b border-rule"
-                        : undefined
-                    }
-                  >
-                    <Show
-                      when={data().private.length > 0}
-                      fallback={<PrivateEmpty />}
+              <Show
+                when={sections().length > 0}
+                fallback={
+                  <BentoModule label="Meine Listen" number="01">
+                    <PrivateEmpty />
+                  </BentoModule>
+                }
+              >
+                <For each={sections()}>
+                  {(section, i) => (
+                    <BentoModule
+                      label={section.label}
+                      number={pad2(i() + 1)}
+                      class={
+                        i() < sections().length - 1
+                          ? "border-b border-rule"
+                          : undefined
+                      }
                     >
                       <ListRows
-                        lists={data().private}
-                        visibility="private"
-                        dragSettling={dragSettling}
-                        onTogglePin={handleTogglePin}
-                      />
-                    </Show>
-                  </BentoModule>
-
-                  <Show when={data().shared.length > 0}>
-                    <BentoModule label="Geteilte Listen" number="02">
-                      <ListRows
-                        lists={data().shared}
-                        visibility="shared"
+                        lists={section.lists}
+                        cat={section.cat}
                         dragSettling={dragSettling}
                         onTogglePin={handleTogglePin}
                       />
                     </BentoModule>
-                  </Show>
-                </>
-              )}
+                  )}
+                </For>
+              </Show>
             </Show>
           </div>
 
           {/* Rechte Spalte 1/3 — Neue Liste */}
           <div class="border-t border-rule md:w-1/3 md:border-t-0">
-            <BentoModule label="Neue Liste" number="03">
+            <BentoModule label="Neue Liste" number={pad2(rightNumber())}>
               <CreateListForm />
             </BentoModule>
           </div>
@@ -296,29 +316,48 @@ export default function Lists() {
   );
 }
 
-// Section keys identify which of the four sortable groups a draggable
-// belongs to (visibility × pin-state). They live in solid-dnd's per-
-// draggable data so onDragEnd can refuse cross-section drops.
-type Visibility = "private" | "shared";
-type SectionKey =
-  | "private-pinned"
-  | "private-unpinned"
-  | "shared-pinned"
-  | "shared-unpinned";
+// Category sections are the grouping axis. CatKey is a list's category, or
+// "none" for the uncategorized "Meine Listen" bucket. The drag SectionKey
+// pairs that with pin-state so onDragEnd can refuse cross-section drops.
+type CatKey = "none" | ListCategory;
+type SectionKey = `${CatKey}-pinned` | `${CatKey}-unpinned`;
 
-function sectionKey(visibility: Visibility, pinned: boolean): SectionKey {
-  return `${visibility}-${pinned ? "pinned" : "unpinned"}` as SectionKey;
+interface SectionGroup {
+  cat: CatKey;
+  label: string;
+  lists: ListSummary[];
 }
 
-function sectionParts(key: SectionKey): { visibility: Visibility; pinned: boolean } {
-  const [visibility, state] = key.split("-") as [Visibility, "pinned" | "unpinned"];
-  return { visibility, pinned: state === "pinned" };
+/** Fixed render order: uncategorized first, then the five categories. Only
+ *  non-empty sections are shown; numbering is consecutive over those. */
+const SECTION_ORDER: { cat: CatKey; label: string }[] = [
+  { cat: "none", label: "Meine Listen" },
+  ...LIST_CATEGORIES.map((c) => ({ cat: c.value as CatKey, label: c.label })),
+];
+
+function catOf(list: ListSummary): CatKey {
+  return list.category ?? "none";
 }
 
-/** Accent label next to the list name when items in it have recent
- *  released-but-unwatched episodes/chapters. Singular vs plural + type-aware;
- *  mixed lists fall back to a neutral "N neu". Returns null when there's
- *  nothing new — caller renders nothing. */
+function sectionKey(cat: CatKey, pinned: boolean): SectionKey {
+  return `${cat}-${pinned ? "pinned" : "unpinned"}` as SectionKey;
+}
+
+function sectionParts(key: SectionKey): { cat: CatKey; pinned: boolean } {
+  // CatKey values never contain "-", and the suffix is the last segment.
+  const i = key.lastIndexOf("-");
+  return {
+    cat: key.slice(0, i) as CatKey,
+    pinned: key.slice(i + 1) === "pinned",
+  };
+}
+
+/** Pinned-first, then by sort_order ASC within each section. */
+const byPinThenSort = (a: ListSummary, b: ListSummary) =>
+  a.pinned !== b.pinned ? (a.pinned ? -1 : 1) : a.sortOrder - b.sortOrder;
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 /** Badge wording for a list's new-episode tally. Singular vs plural only — no
  *  count number (by design: "es muss nicht zählen, nur Mehrzahl angeben"). */
 function newCountLabel(counts: {
@@ -366,11 +405,11 @@ function metaLine(list: ListSummary): string {
  */
 function ListRows(props: {
   lists: ListSummary[];
-  visibility: Visibility;
+  cat: CatKey;
   dragSettling: () => boolean;
   onTogglePin: (list: ListSummary) => void;
 }) {
-  // Two sortable groups per visibility — pinned + unpinned. Each section's
+  // Two sortable groups per category — pinned + unpinned. Each section's
   // ids are derived from the sorted query data, so SortableProvider's swap
   // preview stays in sync with the current visual order.
   const pinned = () => props.lists.filter((l) => l.pinned);
@@ -385,7 +424,7 @@ function ListRows(props: {
           {(list) => (
             <SortableListRow
               list={list}
-              visibility={props.visibility}
+              cat={props.cat}
               dragSettling={props.dragSettling}
               onTogglePin={props.onTogglePin}
             />
@@ -397,7 +436,7 @@ function ListRows(props: {
           {(list) => (
             <SortableListRow
               list={list}
-              visibility={props.visibility}
+              cat={props.cat}
               dragSettling={props.dragSettling}
               onTogglePin={props.onTogglePin}
             />
@@ -410,12 +449,12 @@ function ListRows(props: {
 
 function SortableListRow(props: {
   list: ListSummary;
-  visibility: Visibility;
+  cat: CatKey;
   dragSettling: () => boolean;
   onTogglePin: (list: ListSummary) => void;
 }) {
   const sortable = createSortable(props.list.id, {
-    section: sectionKey(props.visibility, props.list.pinned),
+    section: sectionKey(props.cat, props.list.pinned),
   });
 
   return (
@@ -513,9 +552,9 @@ function PrivateEmpty() {
     <div class="rounded-sm border border-border px-5 py-6 text-center">
       <p class="text-body text-text">Noch keine Listen.</p>
       <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
-        Eine private Liste sammelt, was du allein verfolgst. Lade jemanden ein,
-        und sie wandert rüber zu „Geteilte Listen". Lege rechts eine neue Liste
-        an.
+        Lege rechts eine neue Liste an. Gib ihr eine Kategorie, und sie bekommt
+        hier ihre eigene Sektion — oder lass sie auf „Alle", dann bleibt sie
+        unter „Meine Listen".
       </p>
     </div>
   );
