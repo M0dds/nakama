@@ -42,6 +42,7 @@ import { LeaveListButton } from "@/components/LeaveListButton";
 import { RowActions, type Confirming } from "@/components/RowActions";
 import { Skeleton } from "@/components/Skeleton";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
+import { ListCategoryControl } from "@/components/ListCategoryControl";
 import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
@@ -414,6 +415,16 @@ export default function ListDetail() {
                       </dd>
                     </div>
                   </dl>
+
+                  <ListCategoryControl
+                    listId={data().id}
+                    shortCode={data().shortCode}
+                    initialCategory={data().category}
+                    isOwner={data().isOwner}
+                    countMismatched={(cat) =>
+                      (items.data ?? []).filter((e) => e.type !== cat).length
+                    }
+                  />
 
                   <ListTrackingToggle
                     listId={data().id}
