@@ -6,9 +6,12 @@ import { useToast } from "@/lib/toast";
 import {
   createList,
   listsQueryKey,
+  LIST_CATEGORIES,
+  type ListCategory,
   type ListSummary,
 } from "@/lib/queries/lists";
 import { Button } from "@/components/Button";
+import { Segmented } from "@/components/Segmented";
 
 /**
  * Form: Name (required) + Description (optional). On submit, the mutation
@@ -28,10 +31,18 @@ export function CreateListForm() {
 
   const [name, setName] = createSignal("");
   const [description, setDescription] = createSignal("");
+  // "all" is the picker's representation of the uncategorized state — it maps
+  // to category=null at submit (the list then lives in "Meine Listen" and the
+  // AddSheet stays free).
+  const [category, setCategory] = createSignal<ListCategory | "all">("all");
   const [error, setError] = createSignal<string | null>(null);
 
   const mutation = createMutation(() => ({
-    mutationFn: (input: { name: string; description?: string }) => {
+    mutationFn: (input: {
+      name: string;
+      description?: string;
+      category?: ListCategory | null;
+    }) => {
       const u = auth.user();
       if (!u) throw new Error("Nicht eingeloggt.");
       return createList(u, input);
@@ -51,6 +62,7 @@ export function CreateListForm() {
       toast(`Liste „${newList.name}“ erstellt.`, { icon: ListPlus });
       setName("");
       setDescription("");
+      setCategory("all");
       setError(null);
     },
     onError: (e: Error) => setError(e.message),
@@ -59,11 +71,19 @@ export function CreateListForm() {
   const onSubmit = (e: SubmitEvent) => {
     e.preventDefault();
     if (!name().trim()) return;
+    const cat = category();
     mutation.mutate({
       name: name(),
       description: description() || undefined,
+      category: cat === "all" ? null : cat,
     });
   };
+
+  // Picker options: "Alle" (uncategorized default) + the five real categories.
+  const categoryOptions = [
+    { value: "all" as const, label: "Alle" },
+    ...LIST_CATEGORIES,
+  ];
 
   const inputClass =
     "w-full rounded-sm border border-border bg-transparent px-3 py-2 text-body text-text outline-none transition-colors placeholder:text-text-muted focus:border-accent";
@@ -101,6 +121,19 @@ export function CreateListForm() {
           value={description()}
           onInput={(e) => setDescription(e.currentTarget.value)}
           class={inputClass}
+        />
+      </div>
+      <div>
+        <span class={labelClass}>Kategorie</span>
+        {/* "Alle" = keine Beschränkung (Liste landet in „Meine Listen"). Eine
+            echte Kategorie legt fest, was rein darf, und gibt der Liste eine
+            eigene Sektion in der Übersicht. */}
+        <Segmented
+          fill
+          value={category()}
+          onChange={setCategory}
+          options={categoryOptions}
+          ariaLabel="Kategorie"
         />
       </div>
 
