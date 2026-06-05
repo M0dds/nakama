@@ -9,14 +9,19 @@ import {
 } from "solid-js";
 import { useLocation } from "@solidjs/router";
 import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-query";
-import { Check, Loader2, Minus, Plus, Search, X } from "lucide-solid";
+import { Check, Loader2, Lock, Minus, Plus, Search, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { searchMedia, type MediaResult } from "@/lib/search";
 import { typeInitial, typeLabel } from "@/lib/format";
 import type { MediaType } from "@/lib/queries/home";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { addItemToList, removeItemFromList } from "@/lib/queries/items";
-import { listsQueryOptions, listsQueryKey } from "@/lib/queries/lists";
+import {
+  listsQueryOptions,
+  listsQueryKey,
+  LIST_CATEGORIES,
+  type ListCategory,
+} from "@/lib/queries/lists";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
 
@@ -109,12 +114,29 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     const opts = listOptions();
     if (!data || opts.length === 0) return;
     const code = shortCodeFromRoute();
+    const all = [...data.private, ...data.shared];
     const fromRoute = code
-      ? [...data.private, ...data.shared].find((l) => l.shortCode === code)?.id
+      ? all.find((l) => l.shortCode === code)?.id
       : undefined;
-    setTargetListId(fromRoute ?? opts[0].id);
+    // Global "+" (no list in the route): prefer the first uncategorized ("Alle")
+    // list so a quick add stays type-free by default — only fall back to the
+    // very first list when every list is categorized.
+    const firstFree = all.find((l) => !l.category)?.id;
+    setTargetListId(fromRoute ?? firstFree ?? opts[0].id);
     pickedDefault = true;
   });
+
+  /** The selected target list's category, or null for an "Alle" (uncategorized)
+   *  list. Non-null → the panel locks its type filter to that media type. */
+  const targetCategory = (): ListCategory | null => {
+    const data = listsQuery.data;
+    if (!data) return null;
+    const all = [...data.private, ...data.shared];
+    return all.find((l) => l.id === targetListId())?.category ?? null;
+  };
+
+  const categoryLabel = (cat: ListCategory) =>
+    LIST_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
 
   // ── Search ─────────────────────────────────────────────────────────────
   const [query, setQuery] = createSignal("");
@@ -136,6 +158,16 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       setLastQuery("");
     }, { defer: true }),
   );
+
+  // When the target list carries a category, the AddSheet is LOCKED to that
+  // media type — F9's "what may go in". Force the filter to the category so the
+  // search hits the right source; the Segmented is hidden (static label) below,
+  // so this never fights a manual pick. An uncategorized ("Alle") list leaves
+  // the filter free, exactly as before.
+  createEffect(() => {
+    const cat = targetCategory();
+    if (cat) setMediaFilter(cat);
+  });
 
   let abort: AbortController | null = null;
   let debounceTimer: number | null = null;
@@ -487,15 +519,31 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             }
           >
             {/* Media-type filter — splits the panel width evenly, sticks to
-                the top so it stays reachable while results scroll under it. */}
+                the top so it stays reachable while results scroll under it.
+                A categorized target list locks the type: the Segmented gives
+                way to a calm static label so only matching titles can be
+                found (F9 — "was rein darf"). An "Alle" list keeps the free
+                filter. */}
             <div class="sticky top-0 z-10 bg-bg px-5 py-3">
-              <Segmented
-                fill
-                value={mediaFilter()}
-                onChange={setMediaFilter}
-                options={MEDIA_FILTERS}
-                ariaLabel="Medientyp"
-              />
+              <Show
+                when={targetCategory()}
+                fallback={
+                  <Segmented
+                    fill
+                    value={mediaFilter()}
+                    onChange={setMediaFilter}
+                    options={MEDIA_FILTERS}
+                    ariaLabel="Medientyp"
+                  />
+                }
+              >
+                {(cat) => (
+                  <div class="flex items-center gap-2 rounded-sm border border-border px-3 py-2 font-mono text-mini uppercase tracking-wider text-text-muted">
+                    <Lock class="size-3.5 shrink-0" strokeWidth={1.75} />
+                    <span>Nur {categoryLabel(cat())}</span>
+                  </div>
+                )}
+              </Show>
             </div>
             <ResultsBody
               query={query()}
