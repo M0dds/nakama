@@ -26,6 +26,24 @@ import { embedCount, unique } from "@/lib/format";
 // Types
 // ──────────────────────────────────────────────────────────────────────────
 
+/** The five real list categories (1:1 with item types, minus `music`). A list
+ *  can carry one of these OR none — null is "Alle" (uncategorized), the default
+ *  state where the list lives in "Meine Listen" and the AddSheet imposes no
+ *  type restriction. A non-null category is the primary grouping axis on /lists
+ *  and locks the AddSheet's type filter to it. */
+export type ListCategory = "anime" | "manga" | "series" | "movie" | "game";
+
+/** Fixed display order + labels for the category sections on /lists and the
+ *  category picker. Section names read as the plural-ish category, not the
+ *  singular `typeLabel` (Serie → Serien, Film → Filme, Spiel → Spiele). */
+export const LIST_CATEGORIES: { value: ListCategory; label: string }[] = [
+  { value: "anime", label: "Anime" },
+  { value: "manga", label: "Manga" },
+  { value: "series", label: "Serien" },
+  { value: "movie", label: "Filme" },
+  { value: "game", label: "Spiele" },
+];
+
 export interface ListSummary {
   /** UUID — used for RPC calls (delete, rename, set-tracks-home). */
   id: string;
@@ -35,6 +53,9 @@ export interface ListSummary {
   shortCode: string;
   name: string;
   description: string | null;
+  /** The list's media category, or null for "Alle" (uncategorized). Set by the
+   *  owner only; members read it. Drives sectioning + AddSheet type-lock. */
+  category: ListCategory | null;
   isShared: boolean;
   /** Caller's per-user tracks_home flag. Off → archive (lists I created but
    *  don't want to surface on Home / Calendar). */
@@ -114,6 +135,7 @@ interface RawListRow {
   short_code: string;
   name: string;
   description: string | null;
+  category: string | null;
   is_shared: boolean;
   owner_id: string;
   created_at: string;
@@ -124,7 +146,7 @@ interface RawListRow {
 }
 
 const LIST_SELECT =
-  "id, short_code, name, description, is_shared, owner_id, created_at, cover_url, cover_seed, list_items(count), list_members(count)";
+  "id, short_code, name, description, category, is_shared, owner_id, created_at, cover_url, cover_seed, list_items(count), list_members(count)";
 
 function toSummary(
   row: RawListRow,
@@ -136,6 +158,7 @@ function toSummary(
     shortCode: row.short_code,
     name: row.name,
     description: row.description,
+    category: (row.category as ListCategory | null) ?? null,
     isShared: row.is_shared,
     tracksHome: membership.tracksHome,
     ownerId: row.owner_id,
@@ -542,7 +565,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
 
 export async function createList(
   user: User,
-  input: { name: string; description?: string },
+  input: { name: string; description?: string; category?: ListCategory | null },
 ): Promise<ListSummary> {
   const name = input.name.trim();
   if (!name) throw new Error("Name darf nicht leer sein.");
@@ -553,6 +576,7 @@ export async function createList(
       owner_id: user.id,
       name,
       description: input.description?.trim() || null,
+      category: input.category ?? null,
     })
     .select(LIST_SELECT)
     .single();
@@ -617,6 +641,30 @@ export async function updateListDescription(input: {
   if (!data) return { description: null, blocked: true };
   return {
     description: (data as { description: string | null }).description,
+    blocked: false,
+  };
+}
+
+/** Set (or clear) a list's media category. Owner-only via RLS
+ *  (lists_update_owner); mirrors updateListDescription. null = "Alle"
+ *  (uncategorized). `.select()` + the 0-row check distinguishes a legit
+ *  result from an RLS-silently-blocked write (a non-owner). Existing
+ *  mismatched items are NOT touched — the UI warns about them (dulden+warnen),
+ *  enforcement only applies to NEW adds via the AddSheet. */
+export async function updateListCategory(input: {
+  listId: string;
+  category: ListCategory | null;
+}): Promise<{ category: ListCategory | null; blocked: boolean }> {
+  const { data, error } = await supabase
+    .from("lists")
+    .update({ category: input.category })
+    .eq("id", input.listId)
+    .select("category")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { category: null, blocked: true };
+  return {
+    category: (data as { category: ListCategory | null }).category,
     blocked: false,
   };
 }
