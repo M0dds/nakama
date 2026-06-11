@@ -12,8 +12,13 @@
 -- the category, members see it read-only. The `lists` table is already in the
 -- realtime publication, so an owner's change propagates to members live.
 
+-- Idempotent.
+
 alter table public.lists
   add column if not exists category text;
+
+alter table public.lists
+  drop constraint if exists lists_category_check;
 
 alter table public.lists
   add constraint lists_category_check
