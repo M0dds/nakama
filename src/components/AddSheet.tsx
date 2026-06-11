@@ -17,11 +17,12 @@ import type { MediaType } from "@/lib/queries/home";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { addItemToList, removeItemFromList } from "@/lib/queries/items";
 import {
+  listCategoryLabel,
   listsQueryOptions,
   listsQueryKey,
-  LIST_CATEGORIES,
   type ListCategory,
 } from "@/lib/queries/lists";
+import { useRealtimeInvalidation } from "@/lib/realtime";
 import { SelectMenu, type SelectOption } from "@/components/SelectMenu";
 import { Segmented } from "@/components/Segmented";
 
@@ -79,6 +80,19 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     enabled: !!auth.user(),
   }));
 
+  // The category lock derives from this cache, and the AddSheet is the ONLY
+  // enforcement layer for "was rein darf" — but the sheet can open anywhere
+  // (Home, Kalender), where no realtime channel watches `lists`. A member
+  // whose cache predates an owner's category change would see no lock for the
+  // whole staleTime. So: refetch once per open (the sheet mounts per open,
+  // cached data still paints instantly), and stay live while it's up.
+  onMount(() => {
+    void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+  });
+  useRealtimeInvalidation("add-sheet-lists", [
+    { table: "lists", invalidates: [listsQueryKey] },
+  ]);
+
   /** Flatten private + shared for the SelectMenu. Order: private first,
    *  shared second — same order the user sees on /lists. */
   const listOptions = (): SelectOption[] => {
@@ -135,9 +149,6 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     return all.find((l) => l.id === targetListId())?.category ?? null;
   };
 
-  const categoryLabel = (cat: ListCategory) =>
-    LIST_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
-
   // ── Search ─────────────────────────────────────────────────────────────
   const [query, setQuery] = createSignal("");
   // Which media type the search targets. Drives which source searchMedia hits
@@ -149,11 +160,19 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   // state distinguish "haven't searched yet" from "no hits for this term".
   const [lastQuery, setLastQuery] = createSignal("");
 
+  let abort: AbortController | null = null;
+  let debounceTimer: number | null = null;
+
   // Switching the type filter clears the old type's hits immediately so a
   // "Serie" tab never shows lingering anime rows; the search effect below then
   // re-runs for the new type. `defer` skips the initial run (nothing to clear).
+  // The in-flight fetch is aborted HERE, not just in the next debounce
+  // callback 220 ms later — otherwise an old-type response landing in that
+  // window repopulates the cleared panel (under a category lock that means
+  // wrong-type rows beneath the "Nur <Kategorie>" label).
   createEffect(
     on(mediaFilter, () => {
+      abort?.abort();
       setResults([]);
       setLastQuery("");
     }, { defer: true }),
@@ -168,9 +187,6 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     const cat = targetCategory();
     if (cat) setMediaFilter(cat);
   });
-
-  let abort: AbortController | null = null;
-  let debounceTimer: number | null = null;
 
   createEffect(() => {
     const q = query().trim();
@@ -282,11 +298,23 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     },
   }));
 
+  /** Results gated by the category lock. Defense-in-depth on top of the
+   *  forced filter: a stale fetch (or a target-list switch mid-search) can
+   *  put wrong-type rows into `results` — they must never RENDER under the
+   *  lock, since the AddSheet is the only enforcement layer (no DB check). */
+  const visibleResults = (): MediaResult[] => {
+    const cat = targetCategory();
+    return cat ? results().filter((r) => r.type === cat) : results();
+  };
+
   // One tap on a result toggles its membership in the target list: add when
   // it's not in yet, remove (undo) when it already carries the ✓.
   const onToggle = (r: MediaResult) => {
     const listId = targetListId();
     if (!listId) return;
+    // Same guard as visibleResults — belt and braces for the F9 invariant.
+    const cat = targetCategory();
+    if (cat && r.type !== cat) return;
     if (pending().has(r.sourceId)) return;
     const itemId = added().get(addedKey(listId, r.sourceId));
     setPending((prev) => new Set(prev).add(r.sourceId));
@@ -540,7 +568,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
                 {(cat) => (
                   <div class="flex items-center gap-2 rounded-sm border border-border px-3 py-2 font-mono text-mini uppercase tracking-wider text-text-muted">
                     <Lock class="size-3.5 shrink-0" strokeWidth={1.75} />
-                    <span>Nur {categoryLabel(cat())}</span>
+                    <span>Nur {listCategoryLabel(cat())}</span>
                   </div>
                 )}
               </Show>
@@ -548,7 +576,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             <ResultsBody
               query={query()}
               lastQuery={lastQuery()}
-              results={results()}
+              results={visibleResults()}
               searching={searching()}
               isPending={(r) => pending().has(r.sourceId)}
               isAdded={(r) =>
