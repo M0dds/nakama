@@ -99,6 +99,18 @@ export default function Lists() {
   // render the "Meine Listen" empty card as 01, so the form is 02.
   const rightNumber = () => Math.max(1, sections().length) + 1;
 
+  // Per-category accessors for the render below. The JSX iterates the STATIC
+  // SECTION_ORDER (not sections()) so the BentoModules keep their identity
+  // across cache writes — sections() emits all-new objects every run, and a
+  // <For> keyed on those would dispose + remount every module and row on any
+  // pin/drag/realtime change (the handshake's <For>-remount flicker class).
+  // Inside a module, the row-level <For> keys on ListSummary references,
+  // which TanStack's structural sharing keeps stable for untouched rows.
+  const sectionOf = (cat: CatKey) => sections().find((s) => s.cat === cat);
+  const numberOf = (cat: CatKey) =>
+    pad2(sections().findIndex((s) => s.cat === cat) + 1);
+  const lastCat = () => sections()[sections().length - 1]?.cat;
+
   // Pin toggle. Optimistic: flip pinned + bump sortOrder to MIN(target
   // section)-1 so the row jumps to the top of its new section instantly.
   // The server write goes through set_list_pin, which computes the canonical
@@ -280,24 +292,27 @@ export default function Lists() {
                   </BentoModule>
                 }
               >
-                <For each={sections()}>
-                  {(section, i) => (
-                    <BentoModule
-                      label={section.label}
-                      number={pad2(i() + 1)}
-                      class={
-                        i() < sections().length - 1
-                          ? "border-b border-rule"
-                          : undefined
-                      }
-                    >
-                      <ListRows
-                        lists={section.lists}
-                        cat={section.cat}
-                        dragSettling={dragSettling}
-                        onTogglePin={handleTogglePin}
-                      />
-                    </BentoModule>
+                <For each={SECTION_ORDER}>
+                  {(s) => (
+                    // Non-keyed Show: toggles only when the category gains its
+                    // first / loses its last list — reference churn in
+                    // sections() never remounts the module.
+                    <Show when={sectionOf(s.cat)}>
+                      <BentoModule
+                        label={s.label}
+                        number={numberOf(s.cat)}
+                        class={
+                          s.cat !== lastCat() ? "border-b border-rule" : undefined
+                        }
+                      >
+                        <ListRows
+                          lists={sectionOf(s.cat)?.lists ?? []}
+                          cat={s.cat}
+                          dragSettling={dragSettling}
+                          onTogglePin={handleTogglePin}
+                        />
+                      </BentoModule>
+                    </Show>
                   )}
                 </For>
               </Show>
