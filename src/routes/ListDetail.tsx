@@ -456,6 +456,7 @@ export default function ListDetail() {
       onClose={() => setMovingEntry(null)}
       listItemId={movingEntry()?.listItemId ?? ""}
       itemTitle={movingEntry()?.title ?? ""}
+      itemType={movingEntry()?.type ?? ""}
       currentListShortCode={params.shortCode}
     />
     </>

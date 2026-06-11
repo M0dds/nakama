@@ -44,6 +44,12 @@ export const LIST_CATEGORIES: { value: ListCategory; label: string }[] = [
   { value: "game", label: "Spiele" },
 ];
 
+/** Display label for a category — shared by the detail switcher, the AddSheet
+ *  lock ("Nur <Kategorie>") and the move dialog's mismatch toast. */
+export function listCategoryLabel(cat: ListCategory): string {
+  return LIST_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
+}
+
 export interface ListSummary {
   /** UUID — used for RPC calls (delete, rename, set-tracks-home). */
   id: string;

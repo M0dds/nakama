@@ -7,12 +7,14 @@ import {
 import { ArrowRightLeft, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import {
+  listCategoryLabel,
   listItemsQueryKey,
   listsQueryKey,
   listsQueryOptions,
   moveListItem,
   type ListSummary,
 } from "@/lib/queries/lists";
+import { useToast } from "@/lib/toast";
 
 /**
  * Modal list-picker for moving a list_items row to another list. Same
@@ -37,6 +39,10 @@ interface Props {
   /** list_items.id to move. */
   listItemId: string;
   itemTitle: string;
+  /** The item's media type — compared against the target list's category for
+   *  the dulden+warnen toast (F9: a move is the second way an item enters a
+   *  list; it stays as permissive as re-categorizing, but never silent). */
+  itemType: string;
   /** The list the item is currently in — excluded from the picker, and
    *  the invalidation key for the source list's items cache. */
   currentListShortCode: string;
@@ -52,6 +58,7 @@ const ANIM_MS = 500;
 export function MoveItemDialog(props: Props) {
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   // Two-signal mount/visible pattern (same as AppShell ↔ AddSheet):
   //   `mounted` controls whether the dialog is in the DOM. Flips on first,
@@ -113,9 +120,20 @@ export function MoveItemDialog(props: Props) {
   };
 
   const moveMut = createMutation(() => ({
-    mutationFn: (targetListId: string) =>
-      moveListItem({ listItemId: props.listItemId, targetListId }),
-    onSuccess: () => {
+    // The target's category rides in the variables (captured at click time),
+    // not re-read from the cache in onSuccess — a refetch could swap it
+    // mid-flight.
+    mutationFn: (target: { id: string; category: ListSummary["category"] }) =>
+      moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
+    onSuccess: (_d, target) => {
+      // dulden + warnen (F9): the move goes through even when the item doesn't
+      // match the target list's category — but never silently, mirroring the
+      // re-categorize toast on the detail page.
+      if (target.category && props.itemType !== target.category) {
+        toast(
+          `Passt nicht zu „${listCategoryLabel(target.category)}“ — der Eintrag bleibt trotzdem in der Liste.`,
+        );
+      }
       // Source list loses an item — invalidate its items cache and the
       // overview (itemCount on both source + target cards drifts).
       void queryClient.invalidateQueries({
@@ -231,7 +249,9 @@ export function MoveItemDialog(props: Props) {
                     <li class="relative after:absolute after:inset-x-6 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                       <button
                         type="button"
-                        onClick={() => moveMut.mutate(l.id)}
+                        onClick={() =>
+                          moveMut.mutate({ id: l.id, category: l.category })
+                        }
                         disabled={moveMut.isPending}
                         class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-50"
                       >
@@ -239,7 +259,12 @@ export function MoveItemDialog(props: Props) {
                           {l.name}
                         </span>
                         <span class="flex shrink-0 items-center gap-2 font-mono text-mini uppercase tracking-wider text-text-muted">
+                          {/* Category marker so a mismatched target is visible
+                              BEFORE the tap, not only via the toast after. */}
                           {l.isShared ? "Geteilt" : "Privat"}
+                          {l.category
+                            ? ` · ${listCategoryLabel(l.category)}`
+                            : ""}
                           <ArrowRightLeft
                             class="size-3.5 transition-colors group-hover:text-accent"
                             strokeWidth={1.75}
