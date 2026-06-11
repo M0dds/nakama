@@ -69,6 +69,11 @@ interface Rect {
   width: number;
   height: number;
 }
+
+/** The sheet mounts per open, and the realtime cleanup (removeChannel) is
+ *  async — a fast close→reopen would create a second channel on the SAME
+ *  topic while the first is still tearing down. Unique key per mount. */
+let addSheetMountSeq = 0;
 export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -87,9 +92,15 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   // whole staleTime. So: refetch once per open (the sheet mounts per open,
   // cached data still paints instantly), and stay live while it's up.
   onMount(() => {
-    void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+    // Skipped while any mutation is in flight: the user can pin/drag a row on
+    // /lists and tap "+" inside the write's flight window — a force-refetch
+    // started then reads PRE-write state and would snap the optimistic patch
+    // back. Their own action just touched the cache anyway; the realtime
+    // subscription below covers changes that land while the sheet is up.
+    if (queryClient.isMutating() === 0)
+      void queryClient.invalidateQueries({ queryKey: listsQueryKey });
   });
-  useRealtimeInvalidation("add-sheet-lists", [
+  useRealtimeInvalidation(`add-sheet-lists-${++addSheetMountSeq}`, [
     { table: "lists", invalidates: [listsQueryKey] },
   ]);
 
