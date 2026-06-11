@@ -2,6 +2,7 @@ import { createSignal, createEffect, Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
 import {
   updateListCategory,
+  listCategoryLabel,
   listQueryKey,
   listsQueryKey,
   LIST_CATEGORIES,
@@ -14,7 +15,7 @@ import { Segmented } from "@/components/Segmented";
 type CategoryValue = ListCategory | "all";
 
 const categoryLabel = (cat: ListCategory | null): string =>
-  cat ? LIST_CATEGORIES.find((c) => c.value === cat)?.label ?? cat : "Alle";
+  cat ? listCategoryLabel(cat) : "Alle";
 
 /**
  * The list's media category (F9). Owner-only edit via the shared liquid
@@ -49,8 +50,19 @@ export function ListCategoryControl(props: {
   const mutation = createMutation(() => ({
     mutationFn: (next: ListCategory | null) =>
       updateListCategory({ listId: props.listId, category: next }),
-    onMutate: (next) => {
+    onMutate: async (next) => {
+      // The pre-mutation value is captured BEFORE the signal + caches flip —
+      // props.initialCategory is a live getter over the patched cache, so by
+      // the time a revert runs it already reads the NEW value (no-op trap).
+      const prevCategory = category();
       setCategory(next);
+      // Cancel in-flight refetches of both keys (house pattern, see pinMut /
+      // EditableListName) — otherwise the onSettled refetch of a previous
+      // change can land AFTER this patch and snap the Segmented back.
+      await queryClient.cancelQueries({
+        queryKey: listQueryKey(props.shortCode),
+      });
+      await queryClient.cancelQueries({ queryKey: listsQueryKey });
       const prevSingle = queryClient.getQueryData<ListSummary | null>(
         listQueryKey(props.shortCode),
       );
@@ -74,20 +86,29 @@ export function ListCategoryControl(props: {
           shared: prevOverview.shared.map(patch),
         });
       }
-      return { prevSingle, prevOverview };
+      return { prevCategory, prevSingle, prevOverview };
     },
     onError: (_e, _next, ctx) => {
-      setCategory(props.initialCategory);
+      if (ctx) setCategory(ctx.prevCategory);
       if (ctx?.prevSingle !== undefined)
         queryClient.setQueryData(listQueryKey(props.shortCode), ctx.prevSingle);
       if (ctx?.prevOverview !== undefined)
         queryClient.setQueryData(listsQueryKey, ctx.prevOverview);
     },
-    onSuccess: (res, next) => {
+    onSuccess: (res, next, ctx) => {
       if (res.blocked) {
-        // No row updated (RLS — not the owner). The control only renders the
-        // editor for the owner, so this is a defensive revert.
-        setCategory(props.initialCategory);
+        // No row updated (RLS — not the owner; stale isOwner after a live
+        // ownership transfer). Revert signal + BOTH patched caches from the
+        // onMutate snapshots — the overview would otherwise keep showing the
+        // rejected category until a refetch lands.
+        if (ctx) setCategory(ctx.prevCategory);
+        if (ctx?.prevSingle !== undefined)
+          queryClient.setQueryData(
+            listQueryKey(props.shortCode),
+            ctx.prevSingle,
+          );
+        if (ctx?.prevOverview !== undefined)
+          queryClient.setQueryData(listsQueryKey, ctx.prevOverview);
         void queryClient.invalidateQueries({
           queryKey: listQueryKey(props.shortCode),
         });
