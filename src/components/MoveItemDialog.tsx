@@ -120,16 +120,21 @@ export function MoveItemDialog(props: Props) {
   };
 
   const moveMut = createMutation(() => ({
-    // The target's category rides in the variables (captured at click time),
-    // not re-read from the cache in onSuccess — a refetch could swap it
-    // mid-flight.
-    mutationFn: (target: { id: string; category: ListSummary["category"] }) =>
-      moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
+    // BOTH halves of the mismatch comparison ride in the variables, captured
+    // at click time: the target's category could be swapped by a refetch
+    // mid-flight, and props.itemType is a live getter the parent nulls to ""
+    // the moment onClose fires — the dialog stays dismissable while the move
+    // is in flight, so a live read would fire a spurious mismatch toast.
+    mutationFn: (target: {
+      id: string;
+      category: ListSummary["category"];
+      itemType: string;
+    }) => moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
     onSuccess: (_d, target) => {
       // dulden + warnen (F9): the move goes through even when the item doesn't
       // match the target list's category — but never silently, mirroring the
       // re-categorize toast on the detail page.
-      if (target.category && props.itemType !== target.category) {
+      if (target.category && target.itemType !== target.category) {
         toast(
           `Passt nicht zu „${listCategoryLabel(target.category)}“ — der Eintrag bleibt trotzdem in der Liste.`,
         );
@@ -250,7 +255,11 @@ export function MoveItemDialog(props: Props) {
                       <button
                         type="button"
                         onClick={() =>
-                          moveMut.mutate({ id: l.id, category: l.category })
+                          moveMut.mutate({
+                            id: l.id,
+                            category: l.category,
+                            itemType: props.itemType,
+                          })
                         }
                         disabled={moveMut.isPending}
                         class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-50"
