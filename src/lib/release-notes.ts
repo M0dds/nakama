@@ -24,6 +24,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.11.0",
+    date: "2026-06-14",
+    title: "Listen-Kategorien",
+    changes: [
+      "Listen können jetzt eine Kategorie haben (Anime, Manga, Serien, Filme oder Spiele) — du legst sie beim Anlegen fest oder änderst sie später auf der Listenseite.",
+      "Hat eine Liste eine Kategorie, schlägt der Hinzufügen-Dialog automatisch nur die passende Art vor.",
+      "Die Listenübersicht ist nach Kategorien gegliedert: kategorisierte Listen bekommen eigene Abschnitte, alles andere bleibt unter „Meine Listen“.",
+    ],
+  },
+  {
     version: "0.10.2",
     date: "2026-06-05",
     title: "Mehr Logbuch pro Seite",
