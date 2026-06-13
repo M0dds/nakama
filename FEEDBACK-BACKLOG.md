@@ -37,8 +37,9 @@ Alle Punkte live. F1 wurde dabei umgestaltet: statt zwei Checkboxen drei unabhä
 - **F5** ✨ AddSheet: hinzugefügtes Item **wieder entfernen** können (Fehlauswahl rückgängig).
 - **F1** 🎁 Logbuch: oben zwei **Checkboxen** „Releases" + „Mitglieder-Aktivitäten" (wählen, was angezeigt wird) + **Paging** wie überall sonst. ⚠️ Mapping der Event-Arten klären.
 
-### Release 5 — Listen-Kategorien  *(groß, ⚠️ Schema-Migration)*
-- **F9** 🎁 Kategorie pro Liste (Anime/Manga/Serien/Filme/Spiele): legt fest, was rein darf. AddSheet in einer Liste wählt die Kategorie vor. **Übersicht neu sektioniert:** Default nur „Meine Listen" (privat+geteilt zusammen); kategorisierte Listen kriegen eigene Sections („Anime 02", …) mit fortlaufender Nummerierung; Detail berücksichtigt das. → braucht `lists.category`-Spalte (Migration) + Design-Entscheidungen.
+### ✓ Release 5 — Listen-Kategorien  *(deployed 2026-06-14 als v0.11.0)*
+Alle Punkte live — **damit ist der 18-Punkte-Backlog komplett.** Migration `20260605110000` (`lists.category` + CHECK) bereits gefahren. Design-Entscheidungen (siehe „Vor dem Bau"): (b) Kategorie nachträglich setzen → **dulden + warnen** (Toast nennt Anzahl betroffener Items), (c) Liste ohne Kategorie → bleibt in „Meine Listen", (d) AddSheet **lockt hart** auf die Kategorie, der Move-Dialog **warnt nur** (blockt nicht).
+- **F9** 🎁 Kategorie pro Liste (Anime/Manga/Serien/Filme/Spiele): legt fest, was rein darf. Picker im Create-Form + owner-only Switcher auf der Detailseite. AddSheet in einer Liste wählt die Kategorie vor. **Übersicht neu sektioniert:** Default nur „Meine Listen" (privat+geteilt zusammen); kategorisierte Listen kriegen eigene Sections mit fortlaufender Nummerierung.
 
 ---
 

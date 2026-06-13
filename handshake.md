@@ -2,7 +2,7 @@
 
 Master-Kontext. Lies das zuerst.
 
-**Stand (2026-06-05):** App ist **live auf usenakama.app** (Cloudflare Workers, **Git-Auto-Deploy aus `main`**; `origin/main` aktuell — gelegentliche reine Docs-Commits reiten bewusst mit dem nächsten echten Deploy mit, weil ein Solo-Push über `__GIT_SHA__` ein Fehl-Update-Badge auslöst, siehe Memory `git-sha-triggers-update-toast`). Aktuelle Version **v0.10.2**. **Live:** Phasen 1-9 · alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam, Steam-Proxy als Edge-Function deployed) · Sync-Instanzen · First-Login-Setup · Cover-Epos · Pre-Launch-Features (Versionierung / Release-Notes / PWA-Install / stille Updates) · **Push Phase 1** (VAPID + `push_subscriptions` + `send-push`-Function + Profil-Toggle/Test, end-to-end verifiziert). **30 inkrementelle Migrationen** (+ `00000000000000_baseline`), alle gefahren + bestätigt (Liste → §Gotchas → Daten/RLS). Security-Audit durch — kein kritisches Finding, RLS-Schicht sauber (Report `SECURITY-AUDIT.md`). **Aktiver Backlog: `FEEDBACK-BACKLOG.md`** (Freundes-Feedback, 18 Punkte in R1-R5): **R1-R4 deployed** (v0.7.0–v0.10.0; + Hotfixes bis v0.10.2: Fortsetzen-Dedupe, Logbuch 12/Seite), **nächste Session startet bei R5** (Listen-Kategorien — ⚠️ Schema-Migration + eigene Plan-Runde). Versions-/Deploy-Historie → `PRE-LAUNCH-FEATURES.md` §Deploy-Historie; abgeschlossene Arbeit lebt in §Status + git. **Offen:** Push Phase 2 (Auto-Versand bei neuen Folgen / Cron) · E-Mail-Prod (Resend-Domain) → §Offene Punkte.
+**Stand (2026-06-05):** App ist **live auf usenakama.app** (Cloudflare Workers, **Git-Auto-Deploy aus `main`**; `origin/main` aktuell — gelegentliche reine Docs-Commits reiten bewusst mit dem nächsten echten Deploy mit, weil ein Solo-Push über `__GIT_SHA__` ein Fehl-Update-Badge auslöst, siehe Memory `git-sha-triggers-update-toast`). Aktuelle Version **v0.11.0**. **Live:** Phasen 1-9 · alle Medien-Themen (1a Serien · 1b Filme · 1c Spiele/Steam, Steam-Proxy als Edge-Function deployed) · Sync-Instanzen · First-Login-Setup · Cover-Epos · Pre-Launch-Features (Versionierung / Release-Notes / PWA-Install / stille Updates) · **Push Phase 1** (VAPID + `push_subscriptions` + `send-push`-Function + Profil-Toggle/Test, end-to-end verifiziert). **30 inkrementelle Migrationen** (+ `00000000000000_baseline`), alle gefahren + bestätigt (Liste → §Gotchas → Daten/RLS). Security-Audit durch — kein kritisches Finding, RLS-Schicht sauber (Report `SECURITY-AUDIT.md`). **`FEEDBACK-BACKLOG.md`** (Freundes-Feedback, 18 Punkte in R1-R5): **komplett deployed** — R1-R4 (v0.7.0–v0.10.0; + Hotfixes bis v0.10.2: Fortsetzen-Dedupe, Logbuch 12/Seite) + **R5 Listen-Kategorien** (v0.11.0, 2026-06-14). Versions-/Deploy-Historie → `PRE-LAUNCH-FEATURES.md` §Deploy-Historie; abgeschlossene Arbeit lebt in §Status + git. **Offen:** Push Phase 2 (Auto-Versand bei neuen Folgen / Cron) · E-Mail-Prod (Resend-Domain) → §Offene Punkte.
 
 > **Wegweiser (eine Quelle je Sache):** Feature-Inventar je Phase → **§Status** · Offenes/nächste Schritte → **§Offene Punkte** + **`FEEDBACK-BACKLOG.md`** (aktiver Freundes-Feedback-Backlog) · durable Architektur + Fallen (Sync-Instanzen-Modell, Migrationsliste) → **§Gotchas**. Diese Datei ist die *einzige* Status-Quelle; CLAUDE.md verweist nur hierher. Abgeschlossene Arbeit lebt in §Status + git, nicht als Fließtext hier.
 
@@ -243,6 +243,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 | **Detailseiten-Politur + ConfirmDialog** | ✓ live — Release-Datum als Fact, mobile Bento-Reihenfolge; alle Confirms → einheitlicher `ConfirmDialog`. |
 | **Layout — Content-Frame** | ✓ live — `--content-max` 1728px-Cap, `ContentFrame` (Framing-Hairlines), full-bleed PageHeader-Rule, `.scrollbar-none`. |
 | **Cover-Epos** | ✓ live — Listen-Cover: `GeneratedCover` (Seed→Theme+Muster) oder owner-Upload (`list-covers`-Bucket); `PinBadge` auf Cover; Item-Cover hochkant 2:3. Durables Modell → §Gotchas. |
+| **Listen-Kategorien (F9/R5)** | ✓ live (v0.11.0) — `lists.category` (Anime/Manga/Serien/Filme/Spiele, NULL = „Alle"): Picker im Create-Form, owner-only Switcher auf der Detailseite, AddSheet **hart gelockt** auf die Kategorie, Move-Dialog **warnt nur** (dulden), Übersicht **kategorie-sektioniert** (kategorielos → „Meine Listen"). Migration `20260605110000`. |
 
 ---
 
@@ -250,7 +251,7 @@ Komplettes Schema steht im **Logbook-Repo unter `handshake.md`**. Wichtigste Tab
 
 ### Aktiver Backlog
 
-Freundes-Feedback in `FEEDBACK-BACKLOG.md` (18 Punkte, R1-R5). **R1-R4 deployed** (v0.7.0–v0.10.0) → **nächste Session startet bei R5** (Listen-Kategorien: F9 — Kategorie pro Liste, die festlegt was rein darf + neu sektionierte Übersicht; ⚠️ braucht eine `lists.category`-Migration + eigene Plan-/Design-Runde, offene Fragen im Backlog §Vor dem Bau).
+Freundes-Feedback in `FEEDBACK-BACKLOG.md` (18 Punkte, R1-R5) — **komplett deployed.** R1-R4 (v0.7.0–v0.10.0) + **R5 Listen-Kategorien** (v0.11.0, 2026-06-14: F9 — Kategorie pro Liste, kategorie-gelockter AddSheet, sektionierte Übersicht; Migration `20260605110000` gefahren). Der 18-Punkte-Backlog ist damit abgearbeitet.
 
 ### Geplant, nicht akut
 

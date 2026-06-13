@@ -26,7 +26,7 @@ Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle →
 - Künftige Release-Notes-Einträge: oben in `RELEASE_NOTES` ergänzen, `version` == `package.json`-Version beim Deploy.
 
 ### Deploy-Historie (2026-06-04, alle live auf usenakama.app)
-`0.2.0` Pre-Launch-Features (Versionierung/Release-Notes/Install) · `0.2.1` Install-Hotfix (Profil linksbündig, Firefox-Desktop-Hinweis) · `0.3.0` Update-Hinweis-Toast (registerType prompt + PwaUpdater) · `0.4.0` Steam-Suche live (steam-proxy deployed) + PNG-Icons + Politur · `0.4.1` robuster „Neu laden"-Handler (explizites skip-waiting + controllerchange + Backstop) · `0.5.0` **Push Phase 1** + Ghost-Delete-Button + Push-An/Aus-Segmented.
+`0.2.0` Pre-Launch-Features (Versionierung/Release-Notes/Install) · `0.2.1` Install-Hotfix (Profil linksbündig, Firefox-Desktop-Hinweis) · `0.3.0` Update-Hinweis-Toast (registerType prompt + PwaUpdater) · `0.4.0` Steam-Suche live (steam-proxy deployed) + PNG-Icons + Politur · `0.4.1` robuster „Neu laden"-Handler (explizites skip-waiting + controllerchange + Backstop) · `0.5.0` **Push Phase 1** + Ghost-Delete-Button + Push-An/Aus-Segmented · `0.7.0`–`0.10.2` Freundes-Feedback-Backlog R1–R4 (+ Hotfixes; siehe `FEEDBACK-BACKLOG.md`) · `0.11.0` **Listen-Kategorien** (R5/F9 — Kategorie pro Liste, kategorie-gelockter AddSheet, sektionierte Übersicht; Migration `20260605110000` bereits gefahren).
 
 ### Push Phase 1 — gebaut & live (0.5.0)
 - **VAPID**-Paar erzeugt; Public-Key Client-Konstante (`queries/push.ts`), Private-Key + Subject als **Supabase-Secrets**.
