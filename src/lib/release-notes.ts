@@ -24,6 +24,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.11.1",
+    date: "2026-06-14",
+    title: "Milchglas-Kopfzeile",
+    changes: [
+      "Die Kopfzeile ist jetzt aus Milchglas — beim Scrollen schimmern die Inhalte dezent durch.",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-06-14",
     title: "Listen-Kategorien",
