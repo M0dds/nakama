@@ -43,13 +43,15 @@ export function PageHeader(props: {
 
   return (
     // Sticky so the instrument header (kicker + title + aside) stays pinned
-    // while the surface scrolls. Needs an opaque bg-bg (content scrolls behind
-    // it) and a z-index above page content but below the AddSheet (z-40) /
-    // Toaster (z-30) overlays. `position: sticky` also serves as the positioning
-    // context for the absolute full-bleed bottom rule (was `relative`). Works
-    // because no scroll-container ancestor exists — body's `overflow-x: clip`
-    // doesn't establish one, so sticky resolves against the viewport.
-    <header class="sticky top-0 z-20 flex items-end justify-between bg-bg px-5 pb-3 pt-6">
+    // while the surface scrolls. bg-bg/75 + backdrop-blur-md make it a frosted
+    // glass pane: content scrolling behind the pinned header reads through
+    // instead of being hard-occluded — the header floats over the surface.
+    // z-index sits above page content but below the AddSheet (z-40) / Toaster
+    // (z-30) overlays. `position: sticky` also serves as the positioning context
+    // for the absolute full-bleed bottom rule (was `relative`). Works because no
+    // scroll-container ancestor exists — body's `overflow-x: clip` doesn't
+    // establish one, so sticky resolves against the viewport.
+    <header class="sticky top-0 z-20 flex items-end justify-between bg-bg/55 px-5 pb-3 pt-6 backdrop-blur-md">
       <div>
         <div class="flex items-center gap-2">
           <span
