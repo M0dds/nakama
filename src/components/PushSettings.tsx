@@ -107,7 +107,7 @@ export function PushSettings() {
           <div class="min-w-0">
             <p class="text-body text-text">Push-Benachrichtigungen</p>
             <p class="mt-1 text-mini text-text-muted">
-              Eine Nachricht bei neuen Folgen oder Releases.
+              Eine Nachricht, sobald eine neue Folge erscheint.
             </p>
           </div>
           <div class="shrink-0">
