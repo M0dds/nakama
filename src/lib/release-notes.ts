@@ -24,6 +24,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.12.0",
+    date: "2026-06-16",
+    title: "Automatische Folgen-Benachrichtigungen",
+    changes: [
+      "Neu: Sobald eine neue Folge eines Titels erscheint, den du verfolgst, bekommst du automatisch einen Push — ganz ohne Zutun (sofern Benachrichtigungen im Profil aktiviert sind).",
+      "Mehrere neue Folgen desselben Titels am selben Tag werden zu einer Nachricht gebündelt.",
+    ],
+  },
+  {
     version: "0.11.1",
     date: "2026-06-14",
     title: "Milchglas-Kopfzeile",
