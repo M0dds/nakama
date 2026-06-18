@@ -5,6 +5,7 @@ import { Bell, Clock, Crown, Eye } from "lucide-solid";
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/Button";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { StandaloneHeader, StandaloneFooter } from "@/components/StandaloneShell";
 
 /**
  * Public, shareable feature page (/features) — the "what is Nakama" surface a
@@ -21,18 +22,7 @@ const MEDIA = ["Anime", "Manga", "Serien", "Filme", "Spiele"];
 export default function Features() {
   return (
     <main class="mx-auto max-w-5xl">
-      {/* Frosted top bar — mirrors the in-app HeadBar so the door matches the room. */}
-      <header class="sticky top-0 z-20 flex items-center justify-between bg-bg/55 px-5 py-4 backdrop-blur-md">
-        <div class="flex items-center gap-2">
-          <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
-          <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-            Nakama
-          </span>
-        </div>
-        <A href="/login">
-          <Button variant="secondary">Anmelden</Button>
-        </A>
-      </header>
+      <StandaloneHeader />
 
       {/* Hero */}
       <section class="px-5 pb-14 pt-10 sm:pt-16">
@@ -59,8 +49,8 @@ export default function Features() {
           </For>
         </div>
         <div class="mt-8 flex flex-wrap items-center gap-3">
-          <A href="/login">
-            <Button variant="primary">Loslegen</Button>
+          <A href="/">
+            <Button variant="primary">Zur App</Button>
           </A>
           <a href="#features">
             <Button variant="secondary">Features ansehen</Button>
@@ -164,29 +154,17 @@ export default function Features() {
           Bereit, gemeinsam dranzubleiben?
         </h2>
         <p class="mx-auto mt-2 max-w-md text-body text-text-muted">
-          Anmelden mit Discord oder Magic-Link. Beim ersten Login wird
+          Anmeldung mit Discord oder Magic-Link. Beim ersten Login wird
           automatisch ein Profil angelegt.
         </p>
         <div class="mt-6 flex justify-center">
-          <A href="/login">
-            <Button variant="primary">Anmelden</Button>
+          <A href="/">
+            <Button variant="primary">Zur App</Button>
           </A>
         </div>
       </section>
 
-      <footer class="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-t border-rule px-5 py-6">
-        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
-          Nakama
-        </span>
-        <nav class="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-mini uppercase tracking-wider text-text-muted">
-          <A href="/privacy" class="transition-colors hover:text-text">
-            Datenschutz
-          </A>
-          <A href="/styleguide" class="transition-colors hover:text-text">
-            Styleguide
-          </A>
-        </nav>
-      </footer>
+      <StandaloneFooter />
     </main>
   );
 }

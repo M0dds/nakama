@@ -1,5 +1,6 @@
 import { createSignal, onMount, For } from "solid-js";
 import { A } from "@solidjs/router";
+import { StandaloneHeader, StandaloneFooter } from "@/components/StandaloneShell";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -64,7 +65,9 @@ export default function Styleguide() {
   };
 
   return (
-    <main class="mx-auto max-w-5xl px-5 py-12">
+    <main class="mx-auto max-w-5xl">
+      <StandaloneHeader />
+      <div class="px-5 py-12">
       <header class="mb-12">
         <p class="font-mono text-mini uppercase tracking-wider text-text-muted">
           NAKAMA · Styleguide
@@ -78,12 +81,6 @@ export default function Styleguide() {
           auf dieser Seite mit allen Varianten — erst dann darf sie in
           Features verwendet werden.
         </p>
-        <A
-          href="/"
-          class="mt-6 inline-block font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
-        >
-          ← Zurück
-        </A>
       </header>
 
       {/* ── 01 · Themes ──────────────────────────────────────────────── */}
@@ -679,6 +676,8 @@ export default function Styleguide() {
           </For>
         </div>
       </Section>
+      </div>
+      <StandaloneFooter />
     </main>
   );
 }
