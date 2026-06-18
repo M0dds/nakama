@@ -995,7 +995,7 @@ function EpisodeListRow(props: {
               </Show>
             </span>
           </div>
-          <div class="flex shrink-0 items-center gap-2">
+          <div class="ml-1.5 flex shrink-0 items-center gap-3">
             <CoWatcherMark watchers={props.watchers} />
             <span
               aria-hidden
