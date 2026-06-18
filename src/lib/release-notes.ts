@@ -24,6 +24,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.14.0",
+    date: "2026-06-18",
+    title: "Verschieben aus geteilten Listen & E-Mail-Login",
+    changes: [
+      "Behoben: Verschiebst du eine gemeinsam (synchronisiert) verfolgte Serie oder einen Anime in eine andere Liste, bleibt jetzt der Fortschritt von euch beiden erhalten — vorher konnte er verschwinden oder es wurde fälschlich fremder Fortschritt angezeigt.",
+      "Neu: Beim Verschieben eines Eintrags aus einer geteilten Liste kommt jetzt ein kurzer Hinweis — er wird damit auch für die anderen Mitglieder aus der Liste genommen und die Synchronisierung endet (dein Fortschritt bleibt erhalten).",
+      "E-Mail-Login per Magic Link ist jetzt voll einsatzbereit — die Anmelde-Mail kommt zuverlässig an.",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-06-18",
     title: "Datenschutz, Mitseher-Bilder & öffentliche Seiten",
