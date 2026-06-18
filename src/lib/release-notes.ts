@@ -24,6 +24,18 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.13.0",
+    date: "2026-06-18",
+    title: "Datenschutz, Mitseher-Bilder & öffentliche Seiten",
+    changes: [
+      "Neu: Datenschutzerklärung — erreichbar im Profil unter „Über“ und im Fußbereich der öffentlichen Seiten.",
+      "Mitseher werden in der Episodenliste jetzt mit Profilbild angezeigt (bis zu drei, danach „+N“) statt nur als Augen-Symbol.",
+      "Die öffentlichen Seiten (Features, Datenschutz, Styleguide) haben jetzt einen einheitlichen Look — mit einem „Zur App“-Knopf statt „Anmelden“, der für ein- wie ausgeloggte Besucher passt.",
+      "Die Features-Seite zeigt wieder akkurat, was die App wirklich kann.",
+      "Behoben: Der Zurück-Knopf in der Navigationsleiste hinterließ beim Wechsel kurz einen „Schatten“.",
+    ],
+  },
+  {
     version: "0.12.0",
     date: "2026-06-16",
     title: "Automatische Folgen-Benachrichtigungen",
