@@ -6,6 +6,7 @@ import {
 } from "@tanstack/solid-query";
 import { ArrowRightLeft, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/Button";
 import {
   listCategoryLabel,
   listItemsQueryKey,
@@ -14,6 +15,10 @@ import {
   moveListItem,
   type ListSummary,
 } from "@/lib/queries/lists";
+import { coWatchersKey, syncContextKey } from "@/lib/queries/sharing";
+import { episodesQueryKey } from "@/lib/queries/episodes";
+import { homeQueryKey } from "@/lib/queries/home";
+import { calendarQueryKey } from "@/lib/queries/calendar";
 import { useToast } from "@/lib/toast";
 
 /**
@@ -38,16 +43,36 @@ import { useToast } from "@/lib/toast";
 interface Props {
   /** list_items.id to move. */
   listItemId: string;
+  /** items.id — invalidation key for the co-watcher eye after the move. */
+  itemId: string;
   itemTitle: string;
   /** The item's media type — compared against the target list's category for
    *  the dulden+warnen toast (F9: a move is the second way an item enters a
    *  list; it stays as permissive as re-categorizing, but never silent). */
   itemType: string;
+  /** items.slug — with itemType the natural key for the episodes cache, which
+   *  must refetch because the move flips the read lane (instance → global). */
+  itemSlug: string;
+  /** Whether THIS item is currently synced — drives the confirm copy (sync is
+   *  ended by the move) and is part of the "needs a heads-up" condition. */
+  itemSynced: boolean;
+  /** Whether the SOURCE list is shared — moving removes the item from it for
+   *  every member (same list_item row), so a shared source warrants a confirm. */
+  sourceIsShared: boolean;
   /** The list the item is currently in — excluded from the picker, and
    *  the invalidation key for the source list's items cache. */
   currentListShortCode: string;
   open: boolean;
   onClose: () => void;
+}
+
+/** A chosen target list, captured at click time. `name` rides along for the
+ *  confirm copy; the mutationFn only needs id/category/itemType. */
+interface MoveTarget {
+  id: string;
+  category: ListSummary["category"];
+  itemType: string;
+  name: string;
 }
 
 /** Open/close transition duration. Mirrors AddSheet's 500 ms fade — the
@@ -77,7 +102,17 @@ export function MoveItemDialog(props: Props) {
   // card shrink/title pop while the rest of it is still fading.
   const [mounted, setMounted] = createSignal(false);
   const [visible, setVisible] = createSignal(false);
-  const [snap, setSnap] = createSignal<{ itemTitle: string } | null>(null);
+  const [snap, setSnap] = createSignal<{
+    itemTitle: string;
+    sourceIsShared: boolean;
+    itemSynced: boolean;
+  } | null>(null);
+  // A target awaiting confirmation. Set (instead of mutating straight away) when
+  // the move needs a heads-up — i.e. moving out of a shared list (it leaves for
+  // every member) and/or ending an active sync. Null = show the picker.
+  const [pendingTarget, setPendingTarget] = createSignal<MoveTarget | null>(
+    null,
+  );
   let closeTimer: number | null = null;
 
   createEffect(() => {
@@ -86,7 +121,12 @@ export function MoveItemDialog(props: Props) {
         window.clearTimeout(closeTimer);
         closeTimer = null;
       }
-      setSnap({ itemTitle: props.itemTitle });
+      setSnap({
+        itemTitle: props.itemTitle,
+        sourceIsShared: props.sourceIsShared,
+        itemSynced: props.itemSynced,
+      });
+      setPendingTarget(null);
       setMounted(true);
       requestAnimationFrame(() =>
         requestAnimationFrame(() => setVisible(true)),
@@ -97,6 +137,7 @@ export function MoveItemDialog(props: Props) {
       closeTimer = window.setTimeout(() => {
         setMounted(false);
         setSnap(null);
+        setPendingTarget(null);
         closeTimer = null;
       }, ANIM_MS);
     }
@@ -125,11 +166,8 @@ export function MoveItemDialog(props: Props) {
     // mid-flight, and props.itemType is a live getter the parent nulls to ""
     // the moment onClose fires — the dialog stays dismissable while the move
     // is in flight, so a live read would fire a spurious mismatch toast.
-    mutationFn: (target: {
-      id: string;
-      category: ListSummary["category"];
-      itemType: string;
-    }) => moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
+    mutationFn: (target: MoveTarget) =>
+      moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
     onSuccess: (_d, target) => {
       // dulden + warnen (F9): the move goes through even when the item doesn't
       // match the target list's category — but never silently, mirroring the
@@ -149,9 +187,41 @@ export function MoveItemDialog(props: Props) {
       // scope here, so broad-invalidate via the "list" prefix. Cheap —
       // the user is mid-move and won't have many per-list caches warm.
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      // The move un-syncs (instance → global lane), so the item page must drop
+      // its stale sync context (else the co-watcher eye keeps mounting against
+      // the OLD shared list — the ghost-eye bug), clear the eye, and refetch
+      // episodes on the now-global lane. Home/Kalender read watch state too.
+      void queryClient.invalidateQueries({
+        queryKey: syncContextKey(props.listItemId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: coWatchersKey(props.itemId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: episodesQueryKey(props.itemType, props.itemSlug),
+      });
+      void queryClient.invalidateQueries({ queryKey: homeQueryKey });
+      void queryClient.invalidateQueries({ queryKey: calendarQueryKey });
       props.onClose();
     },
   }));
+
+  // Moving out of a shared list removes the item for every member (one shared
+  // list_item row), and an active sync gets merged + ended — both deserve a
+  // confirm, never a silent move. A private→private move runs straight away.
+  const needsConfirm = (): boolean =>
+    !!snap()?.sourceIsShared || !!snap()?.itemSynced;
+
+  const onPick = (l: ListSummary): void => {
+    const target: MoveTarget = {
+      id: l.id,
+      category: l.category,
+      itemType: props.itemType,
+      name: l.name,
+    };
+    if (needsConfirm()) setPendingTarget(target);
+    else moveMut.mutate(target);
+  };
 
   // Body-scroll lock + Escape-to-close. Gated on `mounted` (not `props.open`)
   // so the page underneath stays locked through the close animation — no
@@ -236,55 +306,100 @@ export function MoveItemDialog(props: Props) {
             }
           >
             <Show
-              when={otherLists().length > 0}
+              when={pendingTarget()}
               fallback={
-                <p class="px-6 py-8 text-body text-text-muted">
-                  Du hast noch keine andere Liste. Leg erst eine zweite an —
-                  dann kannst du den Eintrag rüberschieben.
-                </p>
+                <Show
+                  when={otherLists().length > 0}
+                  fallback={
+                    <p class="px-6 py-8 text-body text-text-muted">
+                      Du hast noch keine andere Liste. Leg erst eine zweite an —
+                      dann kannst du den Eintrag rüberschieben.
+                    </p>
+                  }
+                >
+                  <p class="px-6 pt-4 text-body text-text-muted">
+                    Wähl die Ziel-Liste. Der Sync-Status wird zurückgesetzt — in
+                    der neuen Liste kannst du ihn neu aktivieren.
+                  </p>
+                  <ul class="mt-3 pb-2">
+                    <For each={otherLists()}>
+                      {(l) => (
+                        <li class="relative after:absolute after:inset-x-6 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                          <button
+                            type="button"
+                            onClick={() => onPick(l)}
+                            disabled={moveMut.isPending}
+                            class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-50"
+                          >
+                            <span class="min-w-0 truncate text-body font-medium text-text">
+                              {l.name}
+                            </span>
+                            <span class="flex shrink-0 items-center gap-2 font-mono text-mini uppercase tracking-wider text-text-muted">
+                              {/* Category marker so a mismatched target is
+                                  visible BEFORE the tap, not only via the
+                                  toast after. */}
+                              {l.isShared ? "Geteilt" : "Privat"}
+                              {l.category
+                                ? ` · ${listCategoryLabel(l.category)}`
+                                : ""}
+                              <ArrowRightLeft
+                                class="size-3.5 transition-colors group-hover:text-accent"
+                                strokeWidth={1.75}
+                                aria-hidden
+                              />
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
               }
             >
-              <p class="px-6 pt-4 text-body text-text-muted">
-                Wähl die Ziel-Liste. Der Sync-Status wird zurückgesetzt — in
-                der neuen Liste kannst du ihn neu aktivieren.
-              </p>
-              <ul class="mt-3 pb-2">
-                <For each={otherLists()}>
-                  {(l) => (
-                    <li class="relative after:absolute after:inset-x-6 after:bottom-0 after:h-px after:bg-border last:after:hidden">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          moveMut.mutate({
-                            id: l.id,
-                            category: l.category,
-                            itemType: props.itemType,
-                          })
-                        }
-                        disabled={moveMut.isPending}
-                        class="group flex w-full items-center justify-between gap-3 px-6 py-3 text-left transition-colors hover:bg-surface dark:hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-50"
-                      >
-                        <span class="min-w-0 truncate text-body font-medium text-text">
-                          {l.name}
-                        </span>
-                        <span class="flex shrink-0 items-center gap-2 font-mono text-mini uppercase tracking-wider text-text-muted">
-                          {/* Category marker so a mismatched target is visible
-                              BEFORE the tap, not only via the toast after. */}
-                          {l.isShared ? "Geteilt" : "Privat"}
-                          {l.category
-                            ? ` · ${listCategoryLabel(l.category)}`
-                            : ""}
-                          <ArrowRightLeft
-                            class="size-3.5 transition-colors group-hover:text-accent"
-                            strokeWidth={1.75}
-                            aria-hidden
-                          />
-                        </span>
-                      </button>
-                    </li>
-                  )}
-                </For>
-              </ul>
+              {(target) => (
+                <div class="px-6 pb-5 pt-4">
+                  <p class="text-body text-text-muted">
+                    {snap()?.sourceIsShared ? (
+                      <>
+                        Diese Liste ist geteilt. Verschieben nimmt{" "}
+                        <span class="text-text">{snap()?.itemTitle}</span> auch
+                        für die anderen Mitglieder daraus
+                        {snap()?.itemSynced
+                          ? " und beendet die Synchronisierung"
+                          : ""}
+                        . Dein Fortschritt bleibt erhalten.
+                      </>
+                    ) : (
+                      <>
+                        Verschieben beendet die Synchronisierung dieses
+                        Eintrags. Dein Fortschritt bleibt erhalten.
+                      </>
+                    )}
+                  </p>
+                  <p class="mt-3 text-body text-text-muted">
+                    Nach <span class="text-text">„{target().name}“</span>{" "}
+                    verschieben?
+                  </p>
+                  <div class="mt-5 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      class="flex-1"
+                      disabled={moveMut.isPending}
+                      onClick={() => setPendingTarget(null)}
+                    >
+                      Abbrechen
+                    </Button>
+                    <Button
+                      variant="primary"
+                      class="flex-1"
+                      disabled={moveMut.isPending}
+                      onClick={() => moveMut.mutate(target())}
+                    >
+                      {moveMut.isPending ? "Verschiebe …" : "Verschieben"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </Show>
           </Show>
         </div>

@@ -455,8 +455,12 @@ export default function ListDetail() {
       open={!!movingEntry()}
       onClose={() => setMovingEntry(null)}
       listItemId={movingEntry()?.listItemId ?? ""}
+      itemId={movingEntry()?.itemId ?? ""}
       itemTitle={movingEntry()?.title ?? ""}
       itemType={movingEntry()?.type ?? ""}
+      itemSlug={movingEntry()?.slug ?? ""}
+      itemSynced={movingEntry()?.syncEnabled ?? false}
+      sourceIsShared={list.data?.isShared ?? false}
       currentListShortCode={params.shortCode}
     />
     </>
