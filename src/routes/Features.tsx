@@ -1,9 +1,8 @@
 import type { JSX } from "solid-js";
 import { For, Show } from "solid-js";
 import { A } from "@solidjs/router";
-import { Check, Clock, Crown, Eye } from "lucide-solid";
+import { Bell, Clock, Crown, Eye } from "lucide-solid";
 import { Avatar } from "@/components/Avatar";
-import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
@@ -13,13 +12,17 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
  * AppShell / BottomNav, its own header, no auth. Built entirely from the real
  * design tokens + primitives so it reads as the app, not a marketing skin —
  * each section pairs a short description with a small, style-true mockup
- * assembled from the same vocabulary the live screens use.
+ * assembled from the same vocabulary the live screens use. The sticky header
+ * borrows the app's frosted HeadBar (bg-bg/55 + backdrop-blur) so the front
+ * door feels like the room behind it.
  */
+const MEDIA = ["Anime", "Manga", "Serien", "Filme", "Spiele"];
+
 export default function Features() {
   return (
     <main class="mx-auto max-w-5xl">
-      {/* Top bar */}
-      <header class="flex items-center justify-between px-5 py-5">
+      {/* Frosted top bar — mirrors the in-app HeadBar so the door matches the room. */}
+      <header class="sticky top-0 z-20 flex items-center justify-between bg-bg/55 px-5 py-4 backdrop-blur-md">
         <div class="flex items-center gap-2">
           <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
           <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
@@ -32,7 +35,7 @@ export default function Features() {
       </header>
 
       {/* Hero */}
-      <section class="px-5 pb-16 pt-10 sm:pt-16">
+      <section class="px-5 pb-14 pt-10 sm:pt-16">
         <p class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
           Gemeinsamer Media-Tracker
         </p>
@@ -45,6 +48,16 @@ export default function Features() {
           mit dem Fokus auf das, was noch kommt. Kein Tracking-Tagebuch, ein
           Future-Fokus-Tool.
         </p>
+        {/* Media breadth, stated up front. */}
+        <div class="mt-7 flex flex-wrap gap-2">
+          <For each={MEDIA}>
+            {(m) => (
+              <span class="rounded-xs border border-border px-2.5 py-1 font-mono text-mini uppercase tracking-wider text-text-muted">
+                {m}
+              </span>
+            )}
+          </For>
+        </div>
         <div class="mt-8 flex flex-wrap items-center gap-3">
           <A href="/login">
             <Button variant="primary">Loslegen</Button>
@@ -70,7 +83,7 @@ export default function Features() {
         n="02"
         label="Future-Fokus"
         title="Was kommt — nicht was war."
-        desc="Das Dashboard zeigt, was diese Woche erscheint und wo du weiterschauen kannst. „Neue Folge“-Badges markieren überall, wo etwas auf dich wartet."
+        desc="Das Dashboard zeigt, was als Nächstes erscheint — neue Folgen, Filmstarts, Release-Tage von Spielen — und wo du weiterschauen kannst. „Neue Folge“-Badges markieren überall, wo etwas auf dich wartet."
         reverse
       >
         <UpcomingMock />
@@ -78,38 +91,47 @@ export default function Features() {
 
       <FeatureSection
         n="03"
+        label="Benachrichtigungen"
+        title="Wir sagen Bescheid, wenn’s da ist."
+        desc="Erscheint eine neue Folge deiner getrackten Anime oder Serien, schickt dir Nakama innerhalb weniger Stunden eine Push-Benachrichtigung — auch wenn die App geschlossen ist. Pro Gerät an- oder ausschaltbar."
+      >
+        <PushMock />
+      </FeatureSection>
+
+      <FeatureSection
+        n="04"
         label="Kalender"
         title="Der Wochen­plan eurer Shows."
-        desc="Ein Wochen- und Monats-Raster mit allen Air-Dates. Tippen öffnet den Tag, Häkchen direkt aus dem Kalender, Long-Press holt auf."
+        desc="Ein Wochen- und Monats-Raster mit allen Air-Dates. Tippen öffnet den Tag mit allen Folgen und deinem Sehstatus — abgehakt wird auf der Item-Seite."
+        reverse
       >
         <CalendarMock />
       </FeatureSection>
 
       <FeatureSection
-        n="04"
+        n="05"
         label="Teilen & Sync"
         title="Zusammen schauen, synchron bleiben."
         desc="Lade per @handle in eine Liste ein. Optionaler Sync hält den Fortschritt zwischen Mitgliedern im Gleichschritt — und Mitseher-Marker zeigen, wer eine Folge schon gesehen hat."
-        reverse
       >
         <ShareMock />
       </FeatureSection>
 
       <FeatureSection
-        n="05"
+        n="06"
         label="Logbuch"
         title="Was bei euch passiert ist."
-        desc="Ein ruhiger Aktivitäts-Feed: wer was gesehen oder hinzugefügt hat, verpasste Folgen mit Sofort-Abhaken, und Übergaben. Kein Like, kein Lärm — nur Fakten."
+        desc="Ein ruhiger Aktivitäts-Feed: wer was gesehen oder hinzugefügt hat, neu erschienene Folgen und Übergaben — filterbar nach Releases, Aktivität und Eigenem. Kein Like, kein Lärm, nur Fakten."
+        reverse
       >
         <LogbuchMock />
       </FeatureSection>
 
       <FeatureSection
-        n="06"
+        n="07"
         label="Themes"
         title="In deiner Farbe."
-        desc="Acht Themes, hell und dunkel. Probier sie gleich hier aus — die ganze Seite schaltet live um, und deine Wahl bleibt erhalten."
-        reverse
+        desc="Neun Themes, hell und dunkel. Probier sie gleich hier aus — die ganze Seite schaltet live um, und deine Wahl bleibt erhalten."
       >
         <div class="rounded-sm border border-border bg-surface p-5 shadow-resting">
           <ThemeSwitcher />
@@ -152,16 +174,18 @@ export default function Features() {
         </div>
       </section>
 
-      <footer class="flex items-center justify-between border-t border-rule px-5 py-6">
+      <footer class="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-t border-rule px-5 py-6">
         <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
           Nakama
         </span>
-        <A
-          href="/styleguide"
-          class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-text"
-        >
-          Styleguide
-        </A>
+        <nav class="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-mini uppercase tracking-wider text-text-muted">
+          <A href="/privacy" class="transition-colors hover:text-text">
+            Datenschutz
+          </A>
+          <A href="/styleguide" class="transition-colors hover:text-text">
+            Styleguide
+          </A>
+        </nav>
       </footer>
     </main>
   );
@@ -217,21 +241,8 @@ function MockCard(props: { children: JSX.Element; class?: string }) {
   );
 }
 
-/** Tiny cover placeholder — type code over a subtle accent wash. */
-function MockCover(props: { code: string; class?: string }) {
-  return (
-    <div
-      class={`flex aspect-[2/3] items-end justify-start overflow-hidden rounded-xs border border-border bg-gradient-to-br from-accent/20 to-surface p-1.5 ${
-        props.class ?? ""
-      }`}
-    >
-      <span class="font-mono text-mini font-medium uppercase tracking-wider text-text">
-        {props.code}
-      </span>
-    </div>
-  );
-}
-
+/** Watch-state dot — accent when watched, hollow hairline ring when not.
+ *  Mirrors the real episode-row dot in ItemDetail. */
 function StatusDot(props: { watched?: boolean }) {
   return (
     <span
@@ -239,50 +250,80 @@ function StatusDot(props: { watched?: boolean }) {
       class="size-2 shrink-0 rounded-full"
       classList={{
         "bg-accent": props.watched,
-        "border border-border": !props.watched,
+        "bg-transparent ring-1 ring-border": !props.watched,
       }}
     />
   );
 }
 
+/** Mirrors the live item page: title in a PageHeader-style block, then the
+ *  "Episoden 01" module with progress + episode rows (number · title · air-tag
+ *  or date · ticked dot on the right). The cover lives in "02 · Details" on the
+ *  real page, so it's deliberately absent here. */
 function TrackingMock() {
   const eps = [
-    { code: "E12", title: "Aufbruch", watched: false },
-    { code: "E11", title: "Das Versprechen", watched: false },
-    { code: "E10", title: "Nordwärts", watched: true },
-    { code: "E09", title: "Im Schnee", watched: true },
+    { num: "12", title: "Aufbruch", tag: "Heute", date: null, watched: false },
+    { num: "11", title: "Das Versprechen", tag: null, date: "10. Jun", watched: true },
+    { num: "10", title: "Nordwärts", tag: null, date: "03. Jun", watched: true },
+    { num: "09", title: "Im Schnee", tag: null, date: "27. Mai", watched: true },
   ];
   return (
     <MockCard>
-      <div class="flex gap-3">
-        <MockCover code="AN" class="w-14 shrink-0" />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-start gap-2">
-            <h3 class="min-w-0 truncate text-body-lg font-medium text-text">
-              Frieren
-            </h3>
-            <Badge tone="accent" class="shrink-0">
-              2 Folgen
-            </Badge>
-          </div>
-          <p class="mt-0.5 font-mono text-mini uppercase tracking-wider text-text-muted">
-            Anime · 9/12
-          </p>
-          {/* progress bar — hairline track + accent fill */}
-          <div class="mt-2 h-1 w-full bg-border">
-            <div class="h-full bg-accent" style={{ width: "75%" }} />
-          </div>
+      {/* PageHeader essence — hanko dot + title, "Zurücksetzen" in the aside. */}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
+          <h3 class="truncate text-body-lg font-medium text-text">Frieren</h3>
+        </div>
+        <span class="shrink-0 font-mono text-mini uppercase tracking-wider text-text-muted">
+          Zurücksetzen
+        </span>
+      </div>
+
+      {/* "Episoden 01" module head. */}
+      <div class="mt-5 flex items-baseline justify-between">
+        <span class="font-mono text-label uppercase tracking-[0.18em] text-text-muted">
+          Episoden
+        </span>
+        <span class="font-mono text-label font-medium tabular-nums text-text">
+          01
+        </span>
+      </div>
+
+      {/* Progress — "Fortschritt" label + watched/total · % , hairline track. */}
+      <div class="mt-3">
+        <div class="flex items-baseline justify-between gap-3">
+          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+            Fortschritt
+          </span>
+          <span class="font-mono text-mini tabular-nums text-text">
+            11/12 <span class="text-text-muted">· 92 %</span>
+          </span>
+        </div>
+        <div class="mt-2 h-1 w-full overflow-hidden bg-border">
+          <div class="h-full bg-accent" style={{ width: "92%" }} />
         </div>
       </div>
+
+      {/* Episode rows — newest on top, ticked dot right-aligned. */}
       <ul class="mt-4 -mb-1">
         <For each={eps}>
           {(e) => (
-            <li class="flex items-center gap-3 border-t border-border py-2 first:border-t-0">
-              <span class="w-9 shrink-0 font-mono text-mini uppercase tracking-wider text-text-muted">
-                {e.code}
+            <li class="flex items-center gap-3 border-t border-border py-2.5 first:border-t-0">
+              <span class="w-7 shrink-0 font-mono text-mini font-medium tabular-nums tracking-wider text-text">
+                {e.num}
               </span>
               <span class="min-w-0 flex-1 truncate text-body text-text">
                 {e.title}
+              </span>
+              <span
+                class="shrink-0 font-mono text-mini uppercase tracking-wider tabular-nums"
+                classList={{
+                  "text-accent": !!e.tag,
+                  "text-text-muted": !e.tag,
+                }}
+              >
+                {e.tag ?? e.date}
               </span>
               <StatusDot watched={e.watched} />
             </li>
@@ -293,33 +334,170 @@ function TrackingMock() {
   );
 }
 
+/** "Was kommt" — the live dashboard is a cover-card grid, not a list: one wide,
+ *  accent-filled hero ("HEUTE") plus smaller cards, each a cover area with a
+ *  caption (day · title · type) below. The grid deliberately mixes an anime
+ *  episode, a film release and a game release so the breadth reads at a glance.
+ *  Cover art is stubbed as a soft wash (no real posters in a static mock). */
 function UpcomingMock() {
-  const rows = [
-    { day: "Heute", title: "Frieren", code: "E08", soon: true },
-    { day: "Mo", title: "One Piece", code: "E1091", soon: false },
-    { day: "Do", title: "Dandadan", code: "E10", soon: false },
+  return (
+    <div class="grid grid-cols-2 gap-3">
+      {/* Hero — today's drop, accent-filled like the live "Was kommt" hero. */}
+      <div class="col-span-2 flex h-36 flex-col overflow-hidden rounded-sm border border-accent bg-accent">
+        <div class="flex min-h-0 flex-1 items-center justify-center bg-gradient-to-br from-accent-on/15 to-transparent">
+          <span class="font-mono text-mini uppercase tracking-wider text-accent-on/40">
+            AN
+          </span>
+        </div>
+        <div class="shrink-0 px-3 py-2.5">
+          <span class="font-mono text-mini uppercase tracking-wider text-accent-on">
+            Heute
+          </span>
+          <h3 class="truncate text-body font-medium text-accent-on">Frieren</h3>
+          <span class="block truncate font-mono text-mini text-accent-on/85">
+            Anime · E08
+          </span>
+        </div>
+      </div>
+      <UpcomingCard code="FI" day="Fr" title="Dune: Part Two" sub="Film" />
+      <UpcomingCard code="SP" day="Sa" title="Silksong" sub="Spiel" />
+    </div>
+  );
+}
+
+function UpcomingCard(props: {
+  code: string;
+  day: string;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <div class="flex h-32 flex-col overflow-hidden rounded-sm border border-border bg-bg">
+      <div class="flex min-h-0 flex-1 items-center justify-center bg-gradient-to-br from-accent/15 to-surface">
+        <span class="font-mono text-mini uppercase tracking-wider text-text-muted opacity-50">
+          {props.code}
+        </span>
+      </div>
+      <div class="shrink-0 px-3 py-2.5">
+        <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+          {props.day}
+        </span>
+        <h3 class="truncate text-body font-medium text-text">{props.title}</h3>
+        <span class="block truncate font-mono text-mini text-text-muted">
+          {props.sub}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Push mockup — a frosted notification card echoing the app's glass language,
+ *  with a faint back-card peeking out for depth. */
+function PushMock() {
+  return (
+    <div class="relative px-1 pt-2">
+      {/* back card, peeking — gives the notification a small stack of depth */}
+      <div
+        aria-hidden
+        class="absolute inset-x-4 top-0 h-12 rounded-sm border border-border bg-surface/50"
+      />
+      <div class="relative flex items-start gap-3 rounded-sm border border-border bg-bg/70 p-4 shadow-floating backdrop-blur-md">
+        <span class="flex size-9 shrink-0 items-center justify-center rounded-xs bg-accent text-accent-on">
+          <Bell class="size-4.5" strokeWidth={2} aria-hidden />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-mini uppercase tracking-[0.2em] text-text-muted">
+              Nakama
+            </span>
+            <span class="font-mono text-mini tabular-nums text-text-muted">
+              jetzt
+            </span>
+          </div>
+          <p class="mt-1 text-body font-medium text-text">Neue Folge</p>
+          <p class="mt-0.5 text-body text-text-muted">
+            <span class="text-text">Frieren</span> · E08 „Aufbruch“ ist
+            erschienen.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Mirrors the live calendar's default WEEK view: a Woche/Monat toggle, then a
+ *  day list — weekday + date column, the day's episodes (code · title · status
+ *  dot) or an em-dash, with "+N weitere" when a day overflows. The dot
+ *  vocabulary matches the app: filled = gesehen, hollow accent = erschienen,
+ *  hollow grey = kommt noch. */
+function CalendarMock() {
+  type EvState = "watched" | "released" | "upcoming";
+  const days: {
+    wd: string;
+    date: string;
+    today?: boolean;
+    evs: { code: string; title: string; state: EvState }[];
+    more?: number;
+  }[] = [
+    { wd: "Mo", date: "15", evs: [] },
+    {
+      wd: "Di",
+      date: "16",
+      evs: [{ code: "08", title: "Frieren", state: "watched" }],
+    },
+    {
+      wd: "Mi",
+      date: "17",
+      today: true,
+      evs: [{ code: "1091", title: "One Piece", state: "released" }],
+      more: 2,
+    },
+    { wd: "Do", date: "18", evs: [] },
+    {
+      wd: "Fr",
+      date: "19",
+      evs: [{ code: "03", title: "Dandadan", state: "upcoming" }],
+    },
   ];
   return (
     <MockCard>
-      <ul>
-        <For each={rows}>
-          {(r) => (
-            <li class="flex items-center gap-3 border-t border-border py-2.5 first:border-t-0">
-              <span
-                class="w-12 shrink-0 font-mono text-mini uppercase tracking-wider"
-                classList={{
-                  "text-accent": r.soon,
-                  "text-text-muted": !r.soon,
-                }}
-              >
-                {r.day}
-              </span>
-              <span class="min-w-0 flex-1 truncate text-body font-medium text-text">
-                {r.title}
-              </span>
-              <Badge tone="default" class="shrink-0">
-                {r.code}
-              </Badge>
+      {/* Woche / Monat toggle (static stand-in for the live Segmented). */}
+      <div class="mb-4 inline-flex rounded-sm border border-border p-0.5 font-mono text-mini uppercase tracking-wider">
+        <span class="rounded-xs bg-accent px-3 py-1 text-accent-on">Woche</span>
+        <span class="px-3 py-1 text-text-muted">Monat</span>
+      </div>
+
+      <ul class="-mb-1">
+        <For each={days}>
+          {(day) => (
+            <li class="flex items-start gap-3 border-t border-border py-2.5 first:border-t-0">
+              <div class="w-9 shrink-0">
+                <div class="font-mono text-mini uppercase tracking-wider text-text-muted">
+                  {day.wd}
+                </div>
+                <div
+                  class="font-mono text-body tabular-nums"
+                  classList={{
+                    "text-accent": !!day.today,
+                    "text-text": !day.today,
+                  }}
+                >
+                  {day.date}
+                </div>
+              </div>
+              <div class="min-w-0 flex-1 space-y-0.5 pt-0.5">
+                <Show
+                  when={day.evs.length > 0}
+                  fallback={<span class="text-body text-text-muted">—</span>}
+                >
+                  <For each={day.evs}>{(e) => <CalEventChip ev={e} />}</For>
+                  <Show when={day.more}>
+                    <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                      +{day.more} weitere
+                    </span>
+                  </Show>
+                </Show>
+              </div>
             </li>
           )}
         </For>
@@ -328,39 +506,34 @@ function UpcomingMock() {
   );
 }
 
-function CalendarMock() {
-  const days = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-  // 7×4 grid; a handful of air-date dots + one "today".
-  const dots = new Set([2, 5, 9, 13, 16, 20, 23]);
-  const today = 9;
+/** One episode line inside the week-grid day — mirrors Calendar's EventChip. */
+function CalEventChip(props: {
+  ev: { code: string; title: string; state: "watched" | "released" | "upcoming" };
+}) {
   return (
-    <MockCard>
-      <div class="grid grid-cols-7 gap-1">
-        <For each={days}>
-          {(d) => (
-            <span class="pb-1 text-center font-mono text-mini uppercase tracking-wider text-text-muted">
-              {d}
-            </span>
-          )}
-        </For>
-        <For each={Array.from({ length: 28 }, (_, i) => i)}>
-          {(i) => (
-            <div
-              class="flex aspect-square flex-col items-center justify-center rounded-xs border text-mini"
-              classList={{
-                "border-accent text-accent": i === today,
-                "border-border text-text-muted": i !== today,
-              }}
-            >
-              <span class="tabular-nums">{i + 1}</span>
-              <Show when={dots.has(i)}>
-                <span class="mt-0.5 size-1 rounded-full bg-accent" />
-              </Show>
-            </div>
-          )}
-        </For>
-      </div>
-    </MockCard>
+    <div class="flex items-center gap-2">
+      <span class="shrink-0 font-mono text-mini tabular-nums text-text-muted">
+        {props.ev.code}
+      </span>
+      <span
+        class="min-w-0 truncate text-body"
+        classList={{
+          "text-text": props.ev.state === "released",
+          "text-text-muted": props.ev.state !== "released",
+        }}
+      >
+        {props.ev.title}
+      </span>
+      <span
+        aria-hidden
+        class="size-2 shrink-0 rounded-full"
+        classList={{
+          "bg-accent": props.ev.state === "watched",
+          "bg-transparent ring-1 ring-accent": props.ev.state === "released",
+          "bg-transparent ring-1 ring-border": props.ev.state === "upcoming",
+        }}
+      />
+    </div>
   );
 }
 
@@ -371,11 +544,12 @@ function ShareMock() {
         Mitglieder
       </p>
       <ul class="space-y-1">
+        {/* Owner is marked with the plain word "Ersteller" — no crown icon
+            (the crown is the hand-over action on other members' rows). */}
         <li class="flex items-center gap-3 py-1">
           <Avatar handle="@aki" size={28} />
           <span class="min-w-0 flex-1 truncate text-body text-text">@aki</span>
-          <span class="inline-flex items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted">
-            <Crown class="size-3.5" strokeWidth={1.75} aria-hidden />
+          <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
             Ersteller
           </span>
         </li>
@@ -386,15 +560,29 @@ function ShareMock() {
           </span>
         </li>
       </ul>
-      <div class="mt-4 flex items-center justify-between border-t border-border pt-3">
-        <span class="inline-flex items-center gap-1.5 text-body text-text-muted">
-          <Eye class="size-4" strokeWidth={1.75} aria-hidden />
+
+      {/* Mitseher — the real signal is an eye marker sitting on an episode row
+          that reveals who has already seen it (here shown inline). It lives on
+          the item page, not the roster. */}
+      <div class="mt-4 border-t border-border pt-3">
+        <p class="mb-2 font-mono text-mini uppercase tracking-wider text-text-muted">
           Mitseher
-        </span>
-        <div class="flex items-center -space-x-2">
-          <Avatar handle="@aki" size={24} class="ring-2 ring-surface" />
-          <Avatar handle="@lisa" size={24} class="ring-2 ring-surface" />
-          <Avatar handle="@noa" size={24} class="ring-2 ring-surface" />
+        </p>
+        <div class="flex items-center gap-3">
+          <span class="w-9 shrink-0 font-mono text-mini font-medium tabular-nums tracking-wider text-text">
+            1090
+          </span>
+          <span class="min-w-0 flex-1 truncate text-body text-text">
+            One Piece
+          </span>
+          <span class="inline-flex items-center gap-1.5">
+            <Eye class="size-4 text-text-muted" strokeWidth={1.75} aria-hidden />
+            <div class="flex items-center -space-x-1.5">
+              <Avatar handle="@aki" size={20} class="ring-2 ring-surface" />
+              <Avatar handle="@noa" size={20} class="ring-2 ring-surface" />
+            </div>
+          </span>
+          <StatusDot watched />
         </div>
       </div>
     </MockCard>
@@ -427,7 +615,7 @@ function LogbuchMock() {
             </span>
           </div>
         </li>
-        {/* missed — clock accent + Abhaken */}
+        {/* missed — clock accent, read-only "something new dropped" nudge */}
         <li class="flex items-start gap-3 border-t border-border py-3">
           <div class="flex w-6 shrink-0 justify-center pt-0.5">
             <Clock class="size-4 text-accent" strokeWidth={1.75} aria-hidden />
@@ -440,15 +628,9 @@ function LogbuchMock() {
               </span>{" "}
               ist erschienen.
             </p>
-            <div class="mt-0.5 flex items-center gap-2">
-              <span class="font-mono text-mini tabular-nums text-text-muted">
-                gestern
-              </span>
-              <span class="inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 font-mono text-mini uppercase tracking-wider text-accent">
-                <Check class="size-3" strokeWidth={2.5} aria-hidden />
-                Abhaken
-              </span>
-            </div>
+            <span class="mt-0.5 block font-mono text-mini tabular-nums text-text-muted">
+              gestern
+            </span>
           </div>
         </li>
         {/* transfer — avatar + crown badge */}
@@ -489,8 +671,8 @@ const EXTRAS: { title: string; desc: string }[] = [
     desc: "Zieh Listen und Einträge in Reihenfolge, pinne Wichtiges nach oben.",
   },
   {
-    title: "Folgen-Titel",
-    desc: "Titel werden automatisch ergänzt — auch für lange Serien.",
+    title: "Quellen inklusive",
+    desc: "AniList, TMDB und Steam liefern Cover, Folgen und Release-Daten automatisch.",
   },
   {
     title: "Installierbar",
