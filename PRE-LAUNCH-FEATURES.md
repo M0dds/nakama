@@ -39,7 +39,7 @@ Entscheidungen dieser Session: Push → **verschoben**, Release-Notes-Quelle →
 ### Offen
 - **Push Phase 2:** Auto-Versand bei neuen Folgen (Cron + „neue Folge"-Erkennung wie beim Badge wiederverwenden). Der nächste große Brocken.
 - **PWA-Icons** als designtes Asset (der Hinomaru-Stopgap aus 0.4.0 läuft; ersetzbar).
-- **Resend-Domain** für E-Mail/Magic-Link-Login (Dashboard, → handshake §Offene Punkte).
+- ~~**Resend-Domain** für E-Mail/Magic-Link-Login~~ → ✓ **erledigt 2026-06-18**: Magic-Link prod-live über Custom SMTP via verifizierte Resend-Domain (`noreply@usenakama.app`), End-to-end getestet. Details → handshake §Offene Punkte; DE-Template in `supabase/email-templates/magic-link.html`.
 - **Deploy-Nebenwirkung:** Jeder Push nach `main` ändert den Bundle-Hash (`__GIT_SHA__` inlined) → triggert den „Neue Version"-Toast, **auch bei reinen Docs-Commits**. Darum Docs-only nicht einzeln pushen (sonst Fehl-Toast ohne echte Änderung) — mit dem nächsten Versions-Deploy mitnehmen. Siehe Memory `git-sha-triggers-update-toast`.
 
 ---
