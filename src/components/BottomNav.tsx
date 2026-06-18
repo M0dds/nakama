@@ -321,19 +321,20 @@ export function BottomNav(props: {
           tabIndex={back() ? 0 : -1}
           aria-hidden={!back()}
           data-accent={back() ? "" : undefined}
-          class={`absolute right-full top-1/2 z-10 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full text-accent-on shadow-floating ${
+          class={`absolute right-full top-1/2 z-10 -mt-6 mr-3 inline-flex size-12 items-center justify-center rounded-full text-accent-on ${
             back() ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
           style={{
-            // Opacity is delayed 100 ms so the arrow only appears once the
-            // bubble's slide morph has begun settling on the back-button slot
-            // — otherwise the white-on-light arrow would briefly float over a
-            // backgroundless slot before the accent fills in. Full opacity
-            // lands around t=300 ms, when the bubble has arrived. Symmetric in
-            // close: the arrow fades together with the bubble leaving its slot.
-            // The press recoil is a one-shot WAAPI animation (pulseBack) — not
-            // a CSS transition here.
-            transition: "opacity 200ms var(--ease-quart) 100ms",
+            // The arrow carries NO shadow anymore — the shadow lives on the
+            // bubble now, so it travels with the colour. ENTER: the arrow
+            // fades in 100 ms delayed, appearing as the bubble settles on the
+            // slot. LEAVE: it clears PROMPTLY (no delay) so a white-on-nothing
+            // arrow never lingers over a slot the colour has already left —
+            // that lag was the "ghost". The press recoil is a one-shot WAAPI
+            // animation (pulseBack), not a CSS transition here.
+            transition: back()
+              ? "opacity 200ms var(--ease-quart) 100ms"
+              : "opacity 120ms var(--ease-quart)",
           }}
         >
           <ArrowLeft class="size-5" strokeWidth={1.75} aria-hidden />
@@ -348,6 +349,16 @@ export function BottomNav(props: {
           ref={bubbleEl!}
           aria-hidden
           class="pointer-events-none absolute rounded-full bg-accent"
+          classList={{
+            // The back-satellite floats OUTSIDE the pill, so its accent fill
+            // casts the floating shadow — but ONLY while it rests on the back
+            // slot. Putting the shadow HERE (on the moving bubble) instead of
+            // on the static button is the fix for the "ghost": the shadow now
+            // travels WITH the colour, so it can't lag behind on the way out
+            // or arrive ahead of it on the way in. In-pill tab indicators stay
+            // flat (no shadow).
+            "shadow-floating": !!back(),
+          }}
           style={{
             left: `${bubble()?.left ?? 0}px`,
             top: `${bubble()?.top ?? 0}px`,
@@ -356,10 +367,10 @@ export function BottomNav(props: {
             opacity: bubble() ? 1 : 0,
             // The slide morph + the press recoil are BOTH WAAPI overlays
             // (place() animates left/width; pulseBack animates transform),
-            // composited on top of this resting geometry. So CSS only owns
-            // the opacity fade — no transition on left/width to race the
-            // WAAPI slide.
-            transition: "opacity 200ms ease-out",
+            // composited on top of this resting geometry. CSS owns only the
+            // opacity fade + the shadow fade (eased to match the slide) — no
+            // transition on left/width to race the WAAPI slide.
+            transition: "opacity 200ms ease-out, box-shadow 280ms var(--ease-quart)",
           }}
         />
 
