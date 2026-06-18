@@ -718,11 +718,39 @@ export async function removeListItem(listItemId: string): Promise<void> {
  *  the new list may have different members — if the caller wants sync in the
  *  new list, they re-enable it there (handshake §Phase 7).
  *
+ *  CRITICAL: if the item is currently synced, we must run the REAL un-sync
+ *  (`unsync_item`) BEFORE the move — not just flip `sync_enabled=false`. A bare
+ *  flip strands data: the mover's progress lives in the instance lane
+ *  (`list_item_id = LI`), so after the move the global-lane reads show the item
+ *  as unwatched; and co-members' instance watch rows would orphan onto a
+ *  list_item that now lives in a (possibly private) different list — a stale,
+ *  privacy-leaky residue that re-surfaced as the "ghost co-watcher eye" bug.
+ *  `unsync_item` unions every member's instance progress back into their own
+ *  global lane (never loses progress), tears the instance down, and sets
+ *  sync_enabled=false. We call it while the row is STILL in the source (shared)
+ *  list so the member-scoped merge is correct.
+ *
  *  `.select()` + null-check same rationale as removeListItem above. */
 export async function moveListItem(input: {
   listItemId: string;
   targetListId: string;
 }): Promise<void> {
+  const { data: li, error: liErr } = await supabase
+    .from("list_items")
+    .select("sync_enabled")
+    .eq("id", input.listItemId)
+    .maybeSingle();
+  if (liErr) throw liErr;
+  if (li === null)
+    throw new Error("Eintrag konnte nicht verschoben werden.");
+
+  if (li.sync_enabled) {
+    const { error: unsyncErr } = await supabase.rpc("unsync_item", {
+      _list_item_id: input.listItemId,
+    });
+    if (unsyncErr) throw unsyncErr;
+  }
+
   const { data, error } = await supabase
     .from("list_items")
     .update({ list_id: input.targetListId, sync_enabled: false })
