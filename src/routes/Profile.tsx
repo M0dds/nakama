@@ -1,6 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
-import { useNavigate } from "@solidjs/router";
+import { A, useNavigate } from "@solidjs/router";
 import { ChevronRight, RefreshCw } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
@@ -235,6 +235,32 @@ export default function Profile() {
                   </button>
                 </li>
               </Show>
+
+              {/* Datenschutz — opens the standalone /privacy page. (Impressum
+                  is a deferred draft; its row returns once it's routed.) */}
+              <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                <A
+                  href="/privacy"
+                  class="group/row relative isolate flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left focus:outline-none"
+                >
+                  <span
+                    aria-hidden
+                    class="pointer-events-none absolute inset-y-0 left-px right-0 -z-10 bg-surface opacity-0 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] group-hover/row:opacity-100"
+                  />
+                  <span class="min-w-0">
+                    <span class="block font-mono text-mini uppercase tracking-wider text-text-muted">
+                      Datenschutz
+                    </span>
+                    <span class="mt-0.5 block text-label text-text">
+                      Wie wir mit deinen Daten umgehen
+                    </span>
+                  </span>
+                  <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors group-hover/row:text-accent">
+                    Öffnen
+                    <ChevronRight class="size-3.5" strokeWidth={1.75} aria-hidden />
+                  </span>
+                </A>
+              </li>
             </ul>
           </BentoModule>
         </div>

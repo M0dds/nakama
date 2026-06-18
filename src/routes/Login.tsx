@@ -187,6 +187,13 @@ export default function Login() {
             Was ist Nakama?
           </A>
         </p>
+
+        {/* Legal — quiet, reachable before login. */}
+        <nav class="mt-5 flex items-center justify-center gap-4 font-mono text-mini uppercase tracking-wider text-text-muted">
+          <A href="/privacy" class="transition-colors hover:text-text">
+            Datenschutz
+          </A>
+        </nav>
       </div>
     </main>
   );

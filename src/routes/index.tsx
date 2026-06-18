@@ -91,6 +91,14 @@ export const routes: RouteDefinition[] = [
     component: lazy(() => import("./Features")),
   },
   {
+    // Datenschutz — public, standalone (no shell). Reachable both publicly
+    // (Login/Features footer) and in-app (Profile "Über"). The Impressum
+    // (./Imprint) is a deferred draft and intentionally NOT routed yet —
+    // pending a ladungsfähige-Anschrift decision (see that file's header).
+    path: "/privacy",
+    component: lazy(() => import("./Privacy")),
+  },
+  {
     // First-login setup wizard — authed but OUTSIDE the AppLayout gate (so it
     // can't redirect-loop) and outside the shell (focal screen). Setup itself
     // redirects already-onboarded users back to /.
