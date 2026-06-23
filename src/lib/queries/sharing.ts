@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
-import { unique } from "@/lib/format";
+import { relTime, unique } from "@/lib/format";
 
 /**
  * Sharing data layer — Phase 7. Typed query options + mutation functions for
@@ -142,22 +142,6 @@ async function profilesById(
     });
   }
   return map;
-}
-
-/** Compact German relative time for a past timestamp. */
-function relTime(iso: string): string {
-  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (diffMin < 1) return "gerade eben";
-  if (diffMin < 60) return `vor ${diffMin} Min.`;
-  const diffHrs = Math.round(diffMin / 60);
-  if (diffHrs < 24) return `vor ${diffHrs} Std.`;
-  const days = Math.round(diffHrs / 24);
-  if (days === 1) return "gestern";
-  if (days <= 6) return `vor ${days} Tagen`;
-  return new Date(iso).toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────
