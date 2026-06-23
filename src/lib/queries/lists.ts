@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
-import { embedCount, unique } from "@/lib/format";
+import { embedCount, snapToWeekday, unique } from "@/lib/format";
 
 /**
  * Lists data layer — typed query options + mutation functions. Components
@@ -205,6 +205,9 @@ interface NewEpisodeEntry {
   /** Synced → read this list_item's INSTANCE rows; else the caller's GLOBAL
    *  rows. */
   syncEnabled: boolean;
+  /** Group-shared Anzeige-Tag of this synced instance (list_items.display_weekday).
+   *  Ignored for non-synced entries (those take the per-user global override). */
+  instanceWeekday: number | null;
 }
 
 /** Shared empty set for synced entries that have no instance rows yet — never
@@ -236,13 +239,12 @@ async function findItemsWithNewEpisodes(
   if (entries.length === 0) return new Map();
 
   const itemIds = unique(entries.map((e) => e.itemId));
-  const sinceIso = new Date(
-    Date.now() - NEW_WINDOW_DAYS * 86_400_000,
-  ).toISOString();
-  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const sinceIso = new Date(now - NEW_WINDOW_DAYS * 86_400_000).toISOString();
+  const nowIso = new Date(now).toISOString();
   const { data: epRows, error: epErr } = await supabase
     .from("episodes")
-    .select("id, item_id")
+    .select("id, item_id, air_date")
     .in("item_id", itemIds)
     .gte("air_date", sinceIso)
     .lte("air_date", nowIso);
@@ -250,17 +252,33 @@ async function findItemsWithNewEpisodes(
     console.error("episodes window query failed", epErr);
     return new Map();
   }
-  const eps = (epRows ?? []) as { id: string; item_id: string }[];
+  const eps = (epRows ?? []) as {
+    id: string;
+    item_id: string;
+    air_date: string | null;
+  }[];
   if (eps.length === 0) return new Map();
   const epIds = eps.map((e) => e.id);
 
-  // Recent-episode ids grouped by item, so each entry tests its own item.
-  const epsByItem = new Map<string, string[]>();
+  // Recent episodes (id + air_date) grouped by item, so each entry tests its
+  // own item against its own lane's Anzeige-Tag.
+  const epsByItem = new Map<string, { id: string; airDate: string | null }[]>();
   for (const e of eps) {
     const arr = epsByItem.get(e.item_id);
-    if (arr) arr.push(e.id);
-    else epsByItem.set(e.item_id, [e.id]);
+    const ep = { id: e.id, airDate: e.air_date };
+    if (arr) arr.push(ep);
+    else epsByItem.set(e.item_id, [ep]);
   }
+
+  // Per-user global Anzeige-Tag overrides (non-synced entries snap by these;
+  // synced entries use their instance's group-shared weekday). One small read.
+  const { data: prefRows } = await supabase
+    .from("item_display_prefs")
+    .select("item_id, weekday")
+    .eq("user_id", userId);
+  const globalWeekday = new Map<string, number>();
+  for (const p of prefRows ?? [])
+    globalWeekday.set(p.item_id as string, p.weekday as number);
 
   // Global watched set (list_item_id IS NULL) — covers every non-synced entry.
   const { data: gRows, error: gErr } = await supabase
@@ -307,10 +325,21 @@ async function findItemsWithNewEpisodes(
     const watched = entry.syncEnabled
       ? instanceWatched.get(entry.listItemId) ?? EMPTY_EPISODE_SET
       : globalWatched;
-    const unwatched = itemEps.reduce(
-      (n, id) => (watched.has(id) ? n : n + 1),
-      0,
-    );
+    // Anzeige-Tag for this lane: synced → the instance's group value, else the
+    // viewer's global override. An episode only counts as "new" once its SNAPPED
+    // availability day has arrived — a Mon-aired episode with a Fri override
+    // surfaces as a badge on Friday, not before. (Snap moves ≥0 days forward, so
+    // the fetched [now-14d, now] window already covers every snapped result.)
+    const weekday = entry.syncEnabled
+      ? entry.instanceWeekday
+      : globalWeekday.get(entry.itemId) ?? null;
+    const unwatched = itemEps.reduce((n, ep) => {
+      if (watched.has(ep.id)) return n;
+      if (!ep.airDate) return n + 1;
+      return new Date(snapToWeekday(ep.airDate, weekday)).getTime() <= now
+        ? n + 1
+        : n;
+    }, 0);
     if (unwatched > 0) result.set(entry.listItemId, unwatched);
   }
   return result;
@@ -379,7 +408,9 @@ export function listsQueryOptions(user: User) {
           .eq("user_id", user.id),
         supabase
           .from("list_items")
-          .select("id, sync_enabled, list_id, item_id, items!inner(type)")
+          .select(
+            "id, sync_enabled, display_weekday, list_id, item_id, items!inner(type)",
+          )
           // Windowed by the user's total list_items (normally well under 1000).
           // NOTE: Supabase's hard 1000-row cap (db-max-rows) overrides this
           // `.limit` — a user with 1000+ list_items across all lists would
@@ -399,6 +430,7 @@ export function listsQueryOptions(user: User) {
       const rawPairs = (pairsRes.data ?? []) as unknown as Array<{
         id: string;
         sync_enabled: boolean;
+        display_weekday: number | null;
         list_id: string;
         item_id: string;
         items: { type: string } | null;
@@ -413,6 +445,7 @@ export function listsQueryOptions(user: User) {
             item_id: r.item_id,
             type,
             syncEnabled: r.sync_enabled,
+            instanceWeekday: r.display_weekday,
           },
         ];
       });
@@ -427,6 +460,7 @@ export function listsQueryOptions(user: User) {
           itemId: p.item_id,
           listItemId: p.listItemId,
           syncEnabled: p.syncEnabled,
+          instanceWeekday: p.instanceWeekday,
         })),
       );
       const newCountsByList = aggregateNewCounts(flatPairs, newEpisodeCounts);
@@ -495,6 +529,7 @@ export function listQueryOptions(user: User, shortCode: string) {
 interface RawListItemRow {
   id: string;
   sync_enabled: boolean;
+  display_weekday: number | null;
   item_id: string;
   pinned_at: string | null;
   sort_order: number;
@@ -526,7 +561,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
       const { data, error } = await supabase
         .from("list_items")
         .select(
-          "id, sync_enabled, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
+          "id, sync_enabled, display_weekday, item_id, pinned_at, sort_order, lists!inner(short_code), items(title, type, slug, cover_url)",
         )
         .eq("lists.short_code", shortCode);
       if (error) throw error;
@@ -538,6 +573,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
           itemId: r.item_id,
           listItemId: r.id,
           syncEnabled: r.sync_enabled,
+          instanceWeekday: r.display_weekday,
         })),
       );
 

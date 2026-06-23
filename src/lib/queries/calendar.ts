@@ -21,6 +21,7 @@ import {
   addMonths,
   fromIsoDay,
   isoDay,
+  snapToWeekday,
   startOfMonth,
   unique,
 } from "@/lib/format";
@@ -89,6 +90,42 @@ export function calendarEventsOptions(user: User, anchorIso: string) {
 
 // ── Fetcher ─────────────────────────────────────────────────────────────
 
+/** Effective Anzeige-Tag per item for the calendar — a single weekday override
+ *  so each episode lands on one grid day. The per-user GLOBAL override wins;
+ *  for an item that only has a synced-instance override (no global one) we fall
+ *  back to that, so a group's "wir schauen freitags" still shifts the personal
+ *  calendar. (The calendar is a per-user overview — it doesn't split an item
+ *  across two days; that lane-split lives in "Was kommt".) */
+async function effectiveOverrides(userId: string): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+
+  const { data: prefs } = await supabase
+    .from("item_display_prefs")
+    .select("item_id, weekday")
+    .eq("user_id", userId);
+  for (const p of prefs ?? [])
+    map.set(p.item_id as string, p.weekday as number);
+
+  const { data: memberships } = await supabase
+    .from("list_members")
+    .select("list_id")
+    .eq("user_id", userId)
+    .eq("tracks_home", true);
+  const listIds = (memberships ?? []).map((r) => r.list_id as string);
+  if (listIds.length > 0) {
+    const { data: lis } = await supabase
+      .from("list_items")
+      .select("item_id, sync_enabled, display_weekday")
+      .in("list_id", listIds);
+    for (const li of lis ?? []) {
+      const itemId = li.item_id as string;
+      const w = li.display_weekday as number | null;
+      if (li.sync_enabled && w != null && !map.has(itemId)) map.set(itemId, w);
+    }
+  }
+  return map;
+}
+
 async function fetchCalendarEvents(
   userId: string,
   anchorIso: string,
@@ -117,9 +154,10 @@ async function fetchCalendarEvents(
   const episodeIds = eps.map((e) => e.id as string);
   const presentItemIds = unique(eps.map((e) => e.item_id as string));
 
-  const [meta, watchedSet] = await Promise.all([
+  const [meta, watchedSet, overrides] = await Promise.all([
     itemMeta(presentItemIds),
     myWatchedSet(userId, episodeIds),
+    effectiveOverrides(userId),
   ]);
 
   const now = Date.now();
@@ -129,6 +167,9 @@ async function fetchCalendarEvents(
     if (!air) continue; // no date → can't place it on the grid
     const m = meta.get(e.item_id as string);
     if (!m) continue;
+    // Snap to the item's Anzeige-Tag so it sits on (and is tickable from) its
+    // displayed availability day, not the raw origin date.
+    const displayAir = snapToWeekday(air, overrides.get(e.item_id as string) ?? null);
     events.push({
       episodeId: e.id as string,
       itemId: e.item_id as string,
@@ -139,9 +180,9 @@ async function fetchCalendarEvents(
       type: m.type,
       slug: m.slug,
       coverUrl: m.coverUrl,
-      day: isoDay(new Date(air)),
-      airDate: air,
-      released: new Date(air).getTime() <= now,
+      day: isoDay(new Date(displayAir)),
+      airDate: displayAir,
+      released: new Date(displayAir).getTime() <= now,
       watched: watchedSet.has(e.id as string),
     });
   }
