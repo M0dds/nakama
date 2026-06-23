@@ -185,6 +185,32 @@ export function dayOffset(iso: string): number {
   return Math.round((dDay.getTime() - startToday.getTime()) / 86_400_000);
 }
 
+/** Monday-first weekday picker options — label → Date.getDay() value
+ *  (0=Sun..6=Sat), the convention stored in the display-weekday override. */
+export const WEEKDAY_OPTIONS = [
+  { label: "Mo", value: 1 },
+  { label: "Di", value: 2 },
+  { label: "Mi", value: 3 },
+  { label: "Do", value: 4 },
+  { label: "Fr", value: 5 },
+  { label: "Sa", value: 6 },
+  { label: "So", value: 0 },
+] as const;
+
+/** Snap an ISO timestamp FORWARD to the next occurrence of `weekday`
+ *  (0=Sun..6=Sat, Date.getDay()) on or after its own day — the per-lane
+ *  display-weekday override. `weekday == null` → unchanged. Shifts by 0–6 whole
+ *  days (time-of-day preserved). Day math is local, like dayOffset/timeLabel,
+ *  so a German viewer's day is correct (the app's accepted convention). */
+export function snapToWeekday(iso: string, weekday: number | null): string {
+  if (weekday == null) return iso;
+  const d = new Date(iso);
+  const delta = (weekday - d.getDay() + 7) % 7;
+  if (delta === 0) return iso;
+  d.setDate(d.getDate() + delta);
+  return d.toISOString();
+}
+
 /** German relative time for a past timestamp. "gerade eben", "vor 12 Min.",
  *  "vor 3 Std.", "gestern", "vor 4 Tagen", then back to dd.mm. */
 export function relTime(iso: string): string {

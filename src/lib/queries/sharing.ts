@@ -62,6 +62,10 @@ export interface SyncContext {
   listId: string;
   listName: string;
   syncEnabled: boolean;
+  /** Group-shared display-weekday override for this synced instance
+   *  (0=Sun..6=Sat, Date.getDay()), or null = none. Only meaningful when
+   *  syncEnabled — a non-synced item uses the per-user global override instead. */
+  displayWeekday: number | null;
   /** True once the list has been shared (invite sent / someone joined). */
   isShared: boolean;
   /** Members incl. the owner. >1 means real co-members have actually joined —
@@ -280,7 +284,7 @@ export function syncContextOptions(listItemId: string) {
     queryFn: async (): Promise<SyncContext | null> => {
       const { data: li, error: liErr } = await supabase
         .from("list_items")
-        .select("id, sync_enabled, list_id")
+        .select("id, sync_enabled, list_id, display_weekday")
         .eq("id", listItemId)
         .maybeSingle();
       if (liErr) throw liErr;
@@ -304,6 +308,7 @@ export function syncContextOptions(listItemId: string) {
         listId: li.list_id as string,
         listName: list.name as string,
         syncEnabled: li.sync_enabled as boolean,
+        displayWeekday: (li.display_weekday as number | null) ?? null,
         isShared: list.is_shared as boolean,
         memberCount: count ?? 1,
       };
