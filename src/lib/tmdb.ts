@@ -15,9 +15,17 @@
  */
 
 import type { MediaResult } from "@/lib/search";
+import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
 
-const TOKEN = import.meta.env.VITE_TMDB_TOKEN as string | undefined;
-const BASE = "https://api.themoviedb.org/3";
+// Token is read ONLY in dev — gated behind import.meta.env.DEV so Vite's
+// dead-code elimination drops the inlined token from the PROD bundle entirely
+// (closes SEC-TMDB). In prod the Worker proxy injects the token server-side.
+const TOKEN = import.meta.env.DEV
+  ? (import.meta.env.VITE_TMDB_TOKEN as string | undefined)
+  : undefined;
+// Prod → same-origin Worker proxy (token injected there, cached, no CORS);
+// dev → TMDB direct with the local token.
+const BASE = PROXY_ENABLED ? proxyBase("tmdb") : "https://api.themoviedb.org/3";
 
 // German UI → German metadata. TMDB localizes titles + episode names per
 // `language`; where a show has no localized data it returns the original,
@@ -59,17 +67,21 @@ async function tmdbGet<T>(
   params: Record<string, string> = {},
   signal?: AbortSignal,
 ): Promise<T | null> {
-  if (!TOKEN) {
-    // No key configured → behave like a source with zero hits, so the app
+  if (!PROXY_ENABLED && !TOKEN) {
+    // Dev with no local key → behave like a source with zero hits, so the app
     // still works (AniList carries search) and nothing throws. One console
-    // hint rather than a per-request spam.
+    // hint rather than a per-request spam. In prod the proxy holds the token,
+    // so this never trips.
     warnOnce();
     return null;
   }
   const qs = new URLSearchParams({ language: LANG, ...params });
   try {
     const res = await fetch(`${BASE}${path}?${qs}`, {
-      headers: { Authorization: `Bearer ${TOKEN}`, accept: "application/json" },
+      // Prod: the proxy injects the bearer; dev: send the local token directly.
+      headers: PROXY_ENABLED
+        ? { accept: "application/json" }
+        : { Authorization: `Bearer ${TOKEN}`, accept: "application/json" },
       signal,
     });
     if (!res.ok) return null;

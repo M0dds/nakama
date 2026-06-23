@@ -19,7 +19,11 @@
  * gaps AniList left as null, so a wrong mal_id at worst leaves the gap.
  */
 
-const ENDPOINT = "https://api.jikan.moe/v4";
+import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
+
+// Prod → same-origin Worker proxy (cached, so the One Piece backfill hits Jikan
+// once for everyone); dev → Jikan direct.
+const ENDPOINT = PROXY_ENABLED ? proxyBase("jikan") : "https://api.jikan.moe/v4";
 const THROTTLE_MS = 400;
 /** Defensive cap matching anilist.ts MAX_EPISODES (2000 / 100 per page). */
 const MAX_PAGES = 20;

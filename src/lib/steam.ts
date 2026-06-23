@@ -2,9 +2,9 @@
  * Steam (store) client. Unlike AniList/TMDB, Steam's store endpoints block
  * CORS, so the browser can't call them directly. We route through a proxy:
  *   - dev:  Vite proxies `/steam-store` → store.steampowered.com (vite.config)
- *   - prod: a Supabase Edge Function forwards the same path (supabase/functions/
- *           steam-proxy) — Phase 9, not deployed yet.
- * `steamApiUrl` picks the right base per `import.meta.env.DEV`.
+ *   - prod: the same-origin Cloudflare Worker proxy (worker/index.ts) forwards
+ *           it at /api/media/steam/* (cached at the edge, no CORS, no token).
+ * `steamApiUrl` picks the right base per PROXY_ENABLED (see src/lib/proxy.ts).
  *
  * Covers game search (`searchSteamGames` via /api/storesearch) and game detail
  * (`fetchSteamGameDetails` via /api/appdetails). Games are episode-less: like
@@ -17,20 +17,18 @@
  */
 
 import type { MediaResult } from "@/lib/search";
-import { supabase } from "@/lib/supabase";
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
 
 // German store locale → German descriptions, prices, release strings.
 const STORE_PARAMS = { l: "german", cc: "DE" };
 
 /** Build the proxied URL for a Steam store endpoint (e.g. "storesearch",
- *  "appdetails"). Dev hits the Vite proxy; prod the Edge Function. */
+ *  "appdetails"). Dev → Vite proxy; prod → same-origin Worker proxy. Steam
+ *  301-redirects without the trailing slash, so keep it on both paths. */
 function steamApiUrl(endpoint: string, params: Record<string, string>): string {
   const qs = new URLSearchParams({ ...STORE_PARAMS, ...params }).toString();
-  if (import.meta.env.DEV) return `/steam-store/api/${endpoint}/?${qs}`;
-  return `${SUPABASE_URL}/functions/v1/steam-proxy/${endpoint}?${qs}`;
+  if (!PROXY_ENABLED) return `/steam-store/api/${endpoint}/?${qs}`;
+  return `${proxyBase("steam")}/${endpoint}/?${qs}`;
 }
 
 async function steamGet<T>(
@@ -39,17 +37,9 @@ async function steamGet<T>(
   signal?: AbortSignal,
 ): Promise<T | null> {
   try {
-    // The Edge Function authenticates the USER (auth.getUser), so prod calls
-    // send the live session access_token as the bearer — NOT the anon key
-    // (which would resolve to no user → 401). apikey stays the anon key for the
-    // Supabase gateway. The Vite dev proxy ignores headers, so dev skips this.
-    let headers: Record<string, string> | undefined;
-    if (!import.meta.env.DEV) {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token ?? ANON_KEY ?? "";
-      headers = { apikey: ANON_KEY ?? "", Authorization: `Bearer ${token}` };
-    }
-    const res = await fetch(steamApiUrl(endpoint, params), { headers, signal });
+    // No auth header: the Worker proxy gates by same-origin (Sec-Fetch-Site),
+    // and the Vite dev proxy ignores headers.
+    const res = await fetch(steamApiUrl(endpoint, params), { signal });
     if (!res.ok) return null;
     return (await res.json().catch(() => null)) as T | null;
   } catch {

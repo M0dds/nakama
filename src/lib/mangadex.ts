@@ -17,7 +17,10 @@
  * The browser sets its own User-Agent, so we don't override it (and
  * couldn't anyway: UA is on the fetch-forbidden-header list).
  */
-const ENDPOINT = "https://api.mangadex.org";
+import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
+
+// Prod → same-origin Worker proxy (cached, no CORS); dev → MangaDex direct.
+const ENDPOINT = PROXY_ENABLED ? proxyBase("mangadex") : "https://api.mangadex.org";
 const SANE_MAX = 5000; // guard against a troll "chapter 99999" upload
 
 interface MdManga {

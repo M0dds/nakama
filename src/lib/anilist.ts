@@ -13,6 +13,7 @@ import {
   fetchMangaDexChapterCount,
   fetchMangaDexChapterTitles,
 } from "@/lib/mangadex";
+import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
 
 export interface AniListResult {
   sourceId: string; // AniList media id, stringified → items.source_id
@@ -23,7 +24,8 @@ export interface AniListResult {
   format: string | null; // TV / MOVIE / OVA / MANGA / NOVEL … → items.metadata
 }
 
-const ENDPOINT = "https://graphql.anilist.co";
+// Prod → same-origin Worker proxy (cached, no CORS); dev → AniList direct.
+const ENDPOINT = PROXY_ENABLED ? proxyBase("anilist") : "https://graphql.anilist.co";
 
 const SEARCH_QUERY = `
   query ($q: String, $type: MediaType) {
