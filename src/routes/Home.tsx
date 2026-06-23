@@ -202,8 +202,14 @@ const WAS_KOMMT_ROW = 2; // mobile: cards revealed per "weitere"-tap (one row)
 
 function WasKommt(props: { items: UpcomingItem[] }) {
   const navigate = useNavigate();
+  // Identity is per ENTRY, not per item: an item with diverging lanes (own Mo
+  // vs synced Fr) appears more than once, so keying on itemId alone would
+  // activate both copies together. itemId|airDate is unique (split entries
+  // differ by date).
+  const entryKey = (it?: UpcomingItem): string | null =>
+    it ? `${it.itemId}|${it.airDate}` : null;
   const [activeId, setActiveId] = createSignal<string | null>(
-    props.items[0]?.itemId ?? null,
+    entryKey(props.items[0]),
   );
 
   // Desktop pages through groups of 4 (numbered Pager, like Fortsetzen);
@@ -227,7 +233,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   createEffect(
     on(
       page,
-      () => setActiveId(desktopVisible()[0]?.itemId ?? null),
+      () => setActiveId(entryKey(desktopVisible()[0])),
       { defer: true },
     ),
   );
@@ -269,7 +275,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   );
 
   const activeIndex = () => {
-    const idx = desktopVisible().findIndex((it) => it.itemId === activeId());
+    const idx = desktopVisible().findIndex((it) => entryKey(it) === activeId());
     return idx >= 0 ? idx : 0;
   };
 
@@ -292,16 +298,16 @@ function WasKommt(props: { items: UpcomingItem[] }) {
     return out;
   };
   const rowCols = (row: UpcomingItem[]) => {
-    const cols = row.map((it) => (it.itemId === activeId() ? "2fr" : "1fr"));
+    const cols = row.map((it) => (entryKey(it) === activeId() ? "2fr" : "1fr"));
     // A lone trailing card (odd count) gets a padded 2-column track: it keeps a
     // normal column width (and still widens to 2fr when active) instead of
     // stretching full-width; the second column stays empty.
     if (cols.length === 1) cols.push("1fr");
     return cols.join(" ");
   };
-  // Exactly one "hero" (the globally-first item) so only it says "HEUTE".
+  // Exactly one "hero" (the globally-first entry) so only it says "HEUTE".
   const isHeroItem = (item: UpcomingItem) =>
-    item.itemId === props.items[0]?.itemId;
+    entryKey(item) === entryKey(props.items[0]);
 
   const SPRING = "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)";
   const COLOR_T =
@@ -314,23 +320,23 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   // fires a synthetic mouseenter BEFORE the click, which would otherwise
   // pre-activate the card and let the first tap navigate.
   const onCardClick = (item: UpcomingItem, e: MouseEvent) => {
-    if (item.itemId !== activeId()) {
+    if (entryKey(item) !== activeId()) {
       e.preventDefault();
-      setActiveId(item.itemId);
+      setActiveId(entryKey(item));
     }
   };
   const onCardKey = (item: UpcomingItem, e: KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      if (item.itemId === activeId()) {
+      if (entryKey(item) === activeId()) {
         navigate(`/item/${item.type}/${item.slug}`);
       } else {
-        setActiveId(item.itemId);
+        setActiveId(entryKey(item));
       }
     }
   };
   const onCardEnter = (item: UpcomingItem) => {
-    if (window.matchMedia("(hover: hover)").matches) setActiveId(item.itemId);
+    if (window.matchMedia("(hover: hover)").matches) setActiveId(entryKey(item));
   };
 
   return (
@@ -344,13 +350,13 @@ function WasKommt(props: { items: UpcomingItem[] }) {
           // Snap the highlight back to the first card on hover-capable
           // devices only — touch's tap-to-activate stays sticky.
           if (window.matchMedia("(hover: hover)").matches) {
-            setActiveId(props.items[0]?.itemId ?? null);
+            setActiveId(entryKey(props.items[0]));
           }
         }}
       >
         <For each={desktopVisible()}>
           {(item, i) => {
-            const active = () => item.itemId === activeId();
+            const active = () => entryKey(item) === activeId();
             return (
               <A
                 href={`/item/${item.type}/${item.slug}`}
@@ -427,7 +433,7 @@ function WasKommt(props: { items: UpcomingItem[] }) {
             >
               <For each={row()}>
                 {(item) => {
-                  const active = () => item.itemId === activeId();
+                  const active = () => entryKey(item) === activeId();
                   return (
                     <A
                       href={`/item/${item.type}/${item.slug}`}
@@ -579,6 +585,11 @@ function WasKommtCardFace(props: {
           >
             {episodeCode(props.item.episodeNumber!)}
             {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
+          </Show>
+          {/* Lane label — only set when this item also appears on a different
+              day for another lane (synced list vs own); names the synced one. */}
+          <Show when={props.item.laneLabel}>
+            {(l) => <span> · {l()}</span>}
           </Show>
         </span>
       </div>

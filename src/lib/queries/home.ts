@@ -13,7 +13,7 @@
 import type { User } from "@supabase/supabase-js";
 import { queryOptions } from "@tanstack/solid-query";
 import { supabase } from "@/lib/supabase";
-import { unique } from "@/lib/format";
+import { snapToWeekday, unique } from "@/lib/format";
 
 export type MediaType = "anime" | "manga" | "series" | "movie" | "game";
 
@@ -77,7 +77,11 @@ export interface UpcomingItem {
   coverUrl: string | null;
   /** Episodic items only — the next episode's number. Absent for movies. */
   episodeNumber?: number;
-  airDate: string; // ISO — episode air date, or a movie's release date
+  airDate: string; // ISO — episode air date (snapped to the lane's Anzeige-Tag), or a movie's release date
+  /** Set only when the same item appears MORE than once because its lanes
+   *  (global vs a synced instance) snap to different display dates — the list
+   *  name distinguishes the synced entry. null = single/collapsed entry. */
+  laneLabel?: string | null;
 }
 
 /** Logbuch — a discriminated union of factual events. Five kinds:
@@ -214,12 +218,15 @@ export function upcomingEpisodesOptions(user: User) {
   return queryOptions({
     queryKey: upcomingEpisodesKey(user.id),
     queryFn: async (): Promise<UpcomingItem[]> => {
-      const itemIds = await trackedItemIds(user.id);
+      // Lanes per item (global + each synced instance, with their Anzeige-Tag) —
+      // episodes snap per lane; movies/games use the keys as the tracked-item set.
+      const lanes = await trackedLanesByItem(user.id);
+      const itemIds = [...lanes.keys()];
       if (itemIds.length === 0) return [];
       // Episodes (next 14 days) + unreleased movies & games (any future date),
       // merged and sorted soonest-first into one "Was kommt" stream.
       const [eps, dated] = await Promise.all([
-        fetchUpcomingEpisodes(itemIds),
+        fetchUpcomingEpisodes(itemIds, lanes),
         fetchUpcomingDated(itemIds),
       ]);
       return [...eps, ...dated].sort((a, b) =>
@@ -307,12 +314,91 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
   }));
 }
 
+/** One display "lane" for an item in the user's home: a weekday override (the
+ *  Anzeige-Tag, null = none) + a label. Global lane → label null; synced
+ *  instance → the list name (shown only when lanes diverge). */
+interface DisplayLane {
+  weekday: number | null;
+  label: string | null;
+}
+
+/** Lanes per tracked item. Every tracked item gets at most ONE global lane (it
+ *  sits in any non-synced tracked list → per-user global override) plus one
+ *  instance lane per synced list_item (group-shared override). The map's keys
+ *  double as the tracked-item set for "Was kommt". */
+async function trackedLanesByItem(
+  userId: string,
+): Promise<Map<string, DisplayLane[]>> {
+  const result = new Map<string, DisplayLane[]>();
+
+  // Tracked memberships — scope to user_id (the list_members SELECT policy also
+  // returns co-members' rows; tracks_home is the per-user archive). Same guard
+  // as trackedItemIds.
+  const { data: memberships, error: mErr } = await supabase
+    .from("list_members")
+    .select("list_id")
+    .eq("user_id", userId)
+    .eq("tracks_home", true);
+  if (mErr) {
+    console.error("list_members query failed", mErr);
+    return result;
+  }
+  const listIds = (memberships ?? []).map((r) => r.list_id as string);
+  if (listIds.length === 0) return result;
+
+  const [listsRes, lisRes, prefsRes] = await Promise.all([
+    supabase.from("lists").select("id, name").in("id", listIds),
+    supabase
+      .from("list_items")
+      .select("item_id, sync_enabled, display_weekday, list_id")
+      .in("list_id", listIds),
+    supabase
+      .from("item_display_prefs")
+      .select("item_id, weekday")
+      .eq("user_id", userId),
+  ]);
+  if (lisRes.error) {
+    console.error("list_items query failed", lisRes.error);
+    return result;
+  }
+
+  const listName = new Map<string, string>();
+  for (const l of listsRes.data ?? [])
+    listName.set(l.id as string, l.name as string);
+  const globalWeekday = new Map<string, number>();
+  for (const p of prefsRes.data ?? [])
+    globalWeekday.set(p.item_id as string, p.weekday as number);
+
+  const hasGlobal = new Set<string>();
+  for (const li of lisRes.data ?? []) {
+    const itemId = li.item_id as string;
+    if (!result.has(itemId)) result.set(itemId, []);
+    if (li.sync_enabled) {
+      result.get(itemId)!.push({
+        weekday: (li.display_weekday as number | null) ?? null,
+        label: listName.get(li.list_id as string) ?? null,
+      });
+    } else if (!hasGlobal.has(itemId)) {
+      hasGlobal.add(itemId);
+      result.get(itemId)!.push({
+        weekday: globalWeekday.get(itemId) ?? null,
+        label: null,
+      });
+    }
+  }
+  return result;
+}
+
 /** Was kommt — first upcoming release inside the 14-day window per tracked
- *  item, ascending air_date. Three-step fetch (tracked-list ids → matching
- *  episodes → enrich with item meta) because we can't safely express the
- *  "first per item" reduction in a single PostgREST request. */
+ *  item, ascending air_date. Lane-aware: each item's soonest episode is snapped
+ *  to every lane's Anzeige-Tag; lanes that land on the SAME day collapse to one
+ *  entry (the common no-override case = today's behavior), lanes that diverge
+ *  split into separate labeled entries (e.g. a synced group on Fr vs your own
+ *  Mo). Three-step fetch (tracked lanes → matching episodes → item meta)
+ *  because the "first per item" reduction can't go in one PostgREST request. */
 async function fetchUpcomingEpisodes(
   itemIds: string[],
+  lanesByItem: Map<string, DisplayLane[]>,
 ): Promise<UpcomingItem[]> {
   if (itemIds.length === 0) return [];
 
@@ -352,21 +438,39 @@ async function fetchUpcomingEpisodes(
 
   const meta = await itemMeta(firsts.map((f) => f.item_id));
 
-  return firsts.flatMap((f) => {
+  const out: UpcomingItem[] = [];
+  for (const f of firsts) {
     const m = meta.get(f.item_id);
-    if (!m) return [];
-    return [
-      {
-        itemId: f.item_id,
-        title: m.title,
-        type: m.type,
-        slug: m.slug,
-        coverUrl: m.coverUrl,
-        episodeNumber: f.episode_number,
-        airDate: f.air_date,
-      },
-    ];
-  });
+    if (!m) continue;
+    const lanes = lanesByItem.get(f.item_id) ?? [{ weekday: null, label: null }];
+    const perLane = lanes.map((l) => ({
+      date: snapToWeekday(f.air_date, l.weekday),
+      label: l.label,
+    }));
+    const distinct = unique(perLane.map((r) => r.date));
+    const base = {
+      itemId: f.item_id,
+      title: m.title,
+      type: m.type,
+      slug: m.slug,
+      coverUrl: m.coverUrl,
+      episodeNumber: f.episode_number,
+    };
+    if (distinct.length <= 1) {
+      out.push({ ...base, airDate: distinct[0] ?? f.air_date, laneLabel: null });
+    } else {
+      // Diverging lanes → one entry per distinct day. Prefer an instance label
+      // (non-null) so the synced entry reads "· <list>"; the global day stays
+      // unlabeled (your own plan).
+      for (const d of distinct) {
+        const label =
+          perLane.filter((r) => r.date === d).find((r) => r.label)?.label ??
+          null;
+        out.push({ ...base, airDate: d, laneLabel: label });
+      }
+    }
+  }
+  return out;
 }
 
 /** Unreleased episode-less items in the tracked lists, by their release date.
