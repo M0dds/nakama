@@ -7,11 +7,8 @@ import {
 } from "@tanstack/solid-query";
 import { ChevronLeft, ChevronRight } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
-import {
-  highResCover,
-  fetchAniListDetails,
-  type AniListDetails,
-} from "@/lib/anilist";
+import { fetchAniListDetails, type AniListDetails } from "@/lib/anilist";
+import { coverFor } from "@/lib/cover";
 import { fadeOnLoad } from "@/lib/image-fade";
 import {
   fetchTmdbMovieDetails,
@@ -21,7 +18,6 @@ import {
 } from "@/lib/tmdb";
 import {
   fetchSteamGameDetails,
-  steamHiResCover,
   type SteamScreenshot,
 } from "@/lib/steam";
 import {
@@ -575,11 +571,7 @@ export default function ItemDetail() {
               {(data) => (
                 <>
                   <Cover
-                    coverUrl={
-                      isGame()
-                        ? steamHiResCover(data().coverUrl)
-                        : data().coverUrl
-                    }
+                    coverUrl={data().coverUrl}
                     fallbackLetter={typeInitial(data().type)}
                     wide={isGame()}
                   />
@@ -689,12 +681,11 @@ function Cover(props: {
         </div>
       }
     >
-      {/* highResCover swaps an AniList `/cover/medium/` URL for `/cover/large/`
-          (~430 px) so a poster stays crisp; non-AniList URLs (TMDB, Steam)
-          pass through untouched. */}
+      {/* coverFor sharpens the poster per source (AniList medium→large for a
+          crisp poster, Steam header→capsule); TMDB URLs pass through. */}
       <img
         ref={fadeOnLoad}
-        src={highResCover(props.coverUrl)!}
+        src={coverFor(props.coverUrl)!}
         alt=""
         class={`mb-5 block h-auto border border-border bg-bg ${
           props.wide ? "w-full" : "max-h-[460px] w-auto max-w-full"

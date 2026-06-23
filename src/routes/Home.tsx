@@ -22,7 +22,7 @@ import {
   List,
   ListPlus,
 } from "lucide-solid";
-import { highResCover } from "@/lib/anilist";
+import { coverFor } from "@/lib/cover";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
 import {
@@ -516,8 +516,8 @@ function WasKommtCardFace(props: {
   return (
     <>
       {/* Cover above the caption; bg shows through as the placeholder for
-          items without a real cover. highResCover swaps the stored
-          `/cover/medium/` URL for the larger variant (same host) so it stays
+          items without a real cover. coverFor sharpens the stored URL per
+          source (AniList medium→large, Steam header→capsule) so it stays
           crisp at hero size / on hover-scale. */}
       <div class={props.coverClass}>
         <Show
@@ -538,7 +538,7 @@ function WasKommtCardFace(props: {
         >
           <img
             ref={fadeOnLoad}
-            src={highResCover(props.item.coverUrl)!}
+            src={coverFor(props.item.coverUrl)!}
             alt=""
             // object-cover fills the slot for every type — a filled grid reads
             // calmer than letterboxed gaps. Game covers (Steam's landscape

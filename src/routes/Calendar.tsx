@@ -11,7 +11,7 @@ import {
 } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-solid";
-import { highResCover } from "@/lib/anilist";
+import { coverFor } from "@/lib/cover";
 import { fadeOnLoad } from "@/lib/image-fade";
 import { useAuth } from "@/lib/auth";
 import {
@@ -732,7 +732,7 @@ function DayPane(props: {
  * Released vs upcoming only changes the text colour + meta line.
  */
 function DayPaneRow(props: { ev: CalendarEvent }) {
-  const cover = () => highResCover(props.ev.coverUrl) ?? props.ev.coverUrl;
+  const cover = () => coverFor(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
   // Meta line under the title: the air TIME instead of the episode title — in
   // the calendar "when does it drop" beats the episode name (which lives on

@@ -12,6 +12,7 @@ import {
   SortableProvider,
 } from "@thisbeyond/solid-dnd";
 import { useAuth } from "@/lib/auth";
+import { coverFor } from "@/lib/cover";
 import { fadeOnLoad } from "@/lib/image-fade";
 import {
   listQueryOptions,
@@ -656,7 +657,7 @@ function SortableEntryRow(props: {
             >
               <img
                 ref={fadeOnLoad}
-                src={props.entry.coverUrl!}
+                src={coverFor(props.entry.coverUrl)!}
                 alt=""
                 class="size-full object-cover"
                 loading="lazy"
