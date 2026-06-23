@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Wrangler local state + dev secrets (.dev.vars holds the TMDB token for
+# `wrangler dev`; the prod token is a Worker secret, never committed)
+.wrangler/
+.dev.vars
+.dev.vars.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

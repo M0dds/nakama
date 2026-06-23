@@ -3,9 +3,17 @@
   // Git-connected deploys run `npm run build` (→ dist/) then `wrangler deploy`.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nakama",
+  // Worker script (worker/index.ts): serves the media-data caching proxy at
+  // /api/media/* and falls through to ASSETS for everything else. With `main`
+  // set, requests that match a built asset are still served directly by the
+  // platform (free, no Worker invocation) — only /api/media/* and non-asset
+  // paths (deep links) reach the Worker.
+  "main": "worker/index.ts",
   "compatibility_date": "2026-06-04",
   "assets": {
     "directory": "./dist",
+    // Binding so the Worker can hand non-API requests back to static assets.
+    "binding": "ASSETS",
     // SPA fallback: serve index.html (HTTP 200) for any path that doesn't match
     // a built asset, so the client-side Solid router handles deep-links/reloads.
     // Replaces the classic Pages `_redirects` catch-all (the new Assets platform's

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck:worker": "tsc -p worker/tsconfig.json"
   },
   "dependencies": {
     "@solidjs/router": "^0.16.1",
@@ -20,6 +21,7 @@
     "vite-plugin-pwa": "^1.3.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260623.1",
     "@types/node": "^24.12.3",
     "typescript": "~6.0.2",
     "vite": "^8.0.12",

@@ -1,0 +1,19 @@
+{
+  // Standalone — deliberately NOT referenced by the root tsconfig, so the
+  // Worker's runtime types never clash with the SPA's DOM/Solid types in
+  // `tsc -b`. Typecheck explicitly: `npm run typecheck:worker`. (wrangler
+  // bundles the worker with esbuild at deploy regardless of this config.)
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types"],
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["index.ts"]
+}
