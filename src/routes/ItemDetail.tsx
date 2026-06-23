@@ -65,6 +65,7 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
 import { SyncToggle } from "@/components/SyncToggle";
+import { DisplayWeekdayPicker } from "@/components/DisplayWeekdayPicker";
 import { Pager } from "@/components/Pager";
 import { ItemNotes } from "@/components/ItemNotes";
 
@@ -620,6 +621,22 @@ export default function ItemDetail() {
                         slug={params.slug}
                       />
                     )}
+                  </Show>
+
+                  {/* Anzeige-Tag — series/anime only (episodic + dated). Snaps
+                      the availability signal (Was kommt / Kalender / Badge) to a
+                      weekday. Lane-aware: synced instance → group-shared value,
+                      otherwise the viewer's per-user global override. */}
+                  <Show
+                    when={
+                      params.type === "series" || params.type === "anime"
+                    }
+                  >
+                    <DisplayWeekdayPicker
+                      itemId={data().id}
+                      instanceLI={instanceLI()}
+                      instanceWeekday={syncCtx.data?.displayWeekday ?? null}
+                    />
                   </Show>
                 </>
               )}
