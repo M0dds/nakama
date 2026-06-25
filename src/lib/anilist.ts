@@ -13,7 +13,6 @@ import {
   fetchMangaDexChapterCount,
   fetchMangaDexChapterTitles,
 } from "@/lib/mangadex";
-import { PROXY_ENABLED, proxyBase } from "@/lib/proxy";
 
 export interface AniListResult {
   sourceId: string; // AniList media id, stringified → items.source_id
@@ -24,8 +23,14 @@ export interface AniListResult {
   format: string | null; // TV / MOVIE / OVA / MANGA / NOVEL … → items.metadata
 }
 
-// Prod → same-origin Worker proxy (cached, no CORS); dev → AniList direct.
-const ENDPOINT = PROXY_ENABLED ? proxyBase("anilist") : "https://graphql.anilist.co";
+// AniList is called DIRECTLY from the browser, even in prod — and is the ONE
+// source that must NOT go through our media proxy. It needs no token and allows
+// CORS, so there's nothing to gain; and crucially it 403-blocks requests coming
+// from Cloudflare Worker egress IPs ("You have been manually blocked. Please
+// come to the principal's office."). Routing it through the Worker broke
+// anime/manga search in prod (worked in dev only because wrangler dev egresses
+// from the local IP). See src/lib/proxy.ts for why the other sources differ.
+const ENDPOINT = "https://graphql.anilist.co";
 
 const SEARCH_QUERY = `
   query ($q: String, $type: MediaType) {

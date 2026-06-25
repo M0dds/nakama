@@ -1,9 +1,11 @@
 /**
  * Client boundary for the media-data proxy (worker/index.ts).
  *
- * In PROD every third-party read API goes through our same-origin Cloudflare
+ * In PROD the third-party read APIs go through our same-origin Cloudflare
  * Worker at `/api/media/<source>/<path>` — so the browser never holds a
- * provider token, all users share one edge cache, and there's no CORS.
+ * provider token, all users share one edge cache, and there's no CORS. The one
+ * exception is AniList (anime/manga): it 403-blocks Cloudflare Worker egress
+ * IPs, so it is called directly from the browser (see anilist.ts / ProxySource).
  *
  * In DEV we skip the Worker and hit providers directly (TMDB token from
  * .env.local; Steam still via the Vite proxy since its CORS is blocked), so the
@@ -16,7 +18,12 @@
  * module only decides direct-vs-proxied and hands back the right base.
  */
 
-export type ProxySource = "anilist" | "tmdb" | "steam" | "jikan" | "mangadex";
+// NOTE: "anilist" is deliberately NOT here. AniList 403-blocks Cloudflare Worker
+// egress IPs ("manually blocked"), and it needs no token + allows CORS, so the
+// browser calls graphql.anilist.co directly (see src/lib/anilist.ts). Only
+// token-hiding (tmdb) or CORS-blocked (steam) sources truly need the proxy;
+// jikan + mangadex ride along for the shared rate-limit-absorbing edge cache.
+export type ProxySource = "tmdb" | "steam" | "jikan" | "mangadex";
 
 /** True in production builds (Vite statically replaces import.meta.env.DEV, so
  *  the direct-path branches — and the inlined TMDB token — dead-code-eliminate
