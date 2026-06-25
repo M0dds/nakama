@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.15.0",
+    date: "2026-06-25",
+    title: "Anzeige-Tag & schnellere Suche",
+    changes: [
+      "Neu: Anzeige-Tag — bei Serien & Anime kannst du auf der Detailseite einen Wochentag wählen, an dem eine neue Folge bei dir als „neu“ auftaucht (in „Was kommt“, im Kalender und am Badge). Praktisch, wenn der echte Release-Tag regional abweicht oder ihr einen festen Schau-Tag habt (z. B. immer freitags). In geteilten, synchronisierten Listen gilt der Tag für die ganze Gruppe; die Episodenliste behält die echten Sendetermine.",
+      "Verbessert: Such- und Medien-Abfragen (Serien, Anime, Filme, Spiele) laufen jetzt über einen gemeinsamen Zwischenspeicher — Ergebnisse laden oft schneller und Hänger durch Anbieter-Limits werden seltener.",
+      "Behoben: Cover wirkten an manchen Stellen (Listen-Zeilen, Home) leicht unscharf — jetzt überall scharf.",
+      "Behoben: Zeitangaben wie „gestern“ und „vor 20 Stunden“ waren gelegentlich uneinheitlich.",
+    ],
+  },
+  {
     version: "0.14.0",
     date: "2026-06-18",
     title: "Verschieben aus geteilten Listen & E-Mail-Login",
