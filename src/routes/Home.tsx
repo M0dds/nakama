@@ -310,9 +310,13 @@ function WasKommt(props: {
   // The grid template animates on activeIndex change — the active column is
   // 2fr, the others 1fr. With fewer than four items the trailing columns
   // stay empty (the row deliberately doesn't stretch to fill).
+  // Active card stays the clear focus (widest) but no longer hogs 2fr — at 2fr
+  // it grew almost landscape and object-cover zoomed the poster past recognition.
+  // 1.4fr keeps it the widest while staying close to the cover's portrait format,
+  // so its cover crops far less, and hands the freed width to the other cards.
   const gridCols = () =>
     Array.from({ length: WAS_KOMMT_SHOWN }, (_, i) =>
-      i === activeIndex() ? "2fr" : "1fr",
+      i === activeIndex() ? "1.4fr" : "1fr",
     ).join(" ");
 
   // Mobile: a 2-up grid laid out in rows of two. Within each row the active
@@ -395,10 +399,10 @@ function WasKommt(props: {
                 onMouseEnter={() => onCardEnter(item)}
                 onClick={(e) => onCardClick(item, e)}
                 onKeyDown={(e) => onCardKey(item, e)}
-                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                 classList={{
-                  "border-accent bg-accent": active(),
-                  "border-border bg-bg": !active(),
+                  "border-accent": active(),
+                  "border-border": !active(),
                 }}
                 style={{ transition: COLOR_T }}
               >
@@ -406,7 +410,6 @@ function WasKommt(props: {
                   item={item}
                   active={active()}
                   isHero={i() === 0}
-                  coverClass="relative min-h-0 flex-1 overflow-hidden"
                 />
               </A>
             );
@@ -474,15 +477,14 @@ function WasKommt(props: {
                       onMouseEnter={() => onCardEnter(item)}
                       onClick={(e) => onCardClick(item, e)}
                       onKeyDown={(e) => onCardKey(item, e)}
-                      // Fixed height (like the desktop h-80 cards) → only the
-                      // WIDTH springs, so every card stays the same height and
-                      // the 2×2 always reads as a filled rectangle, never a gap.
-                      // The cover fills via object-cover: active (wide) ≈ square,
-                      // inactive (narrow) ≈ portrait.
-                      class="group relative flex h-72 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                      // Fixed height → only the WIDTH springs, so every card
+                      // stays the same height and the 2×2 always reads as a
+                      // filled rectangle. The cover fills the whole card via
+                      // object-cover; the caption floats over it in a glass box.
+                      class="group relative flex h-72 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                       classList={{
-                        "border-accent bg-accent": active(),
-                        "border-border bg-bg": !active(),
+                        "border-accent": active(),
+                        "border-border": !active(),
                       }}
                       style={{ transition: COLOR_T }}
                     >
@@ -490,7 +492,6 @@ function WasKommt(props: {
                         item={item}
                         active={active()}
                         isHero={isHeroItem(item)}
-                        coverClass="relative min-h-0 flex-1 overflow-hidden"
                       />
                     </A>
                   );
@@ -536,90 +537,109 @@ function WasKommt(props: {
 }
 
 /**
- * The cover + caption shared by every Was-kommt card. The cover-box sizing is
- * passed in (`coverClass`): desktop fills the card height (flex-1), the mobile
- * 2-up cards are 2:3 portrait — so covers keep a real aspect on each surface
- * instead of being squashed flat.
+ * The card face shared by every Was-kommt card (desktop + mobile). The cover
+ * fills the whole card (object-cover) and the caption floats over its lower edge
+ * in a frosted glass box — accent-tinted when the card is active, neutral
+ * otherwise. Replaces the old cover-on-top / caption-below-it split, so the card
+ * reads as a poster with a glass label instead of an image with a footer.
  */
 function WasKommtCardFace(props: {
   item: UpcomingItem;
   active: boolean;
   isHero: boolean;
-  coverClass: string;
 }) {
+  const cover = () =>
+    props.item.coverUrl ? coverFor(props.item.coverUrl) ?? null : null;
+
   return (
     <>
-      {/* Cover above the caption; bg shows through as the placeholder for
-          items without a real cover. coverFor sharpens the stored URL per
-          source (AniList medium→large, Steam header→capsule) so it stays
-          crisp at hero size / on hover-scale. */}
-      <div class={props.coverClass}>
+      {/* Cover area — the cover fills the whole card width (object-cover), no
+          side gaps. It crops to fit; the footer below continues the colours. */}
+      <div class="relative min-h-0 flex-1 overflow-hidden">
         <Show
-          when={props.item.coverUrl}
+          when={cover()}
           fallback={
             <div class="flex h-full items-center justify-center">
-              <span
-                class="font-mono text-mini font-medium opacity-60"
-                classList={{
-                  "text-accent-on": props.active,
-                  "text-text-muted": !props.active,
-                }}
-              >
+              <span class="font-mono text-mini font-medium text-text-muted opacity-60">
                 {typeInitial(props.item.type)}
               </span>
             </div>
           }
         >
-          <img
-            ref={fadeOnLoad}
-            src={coverFor(props.item.coverUrl)!}
-            alt=""
-            // object-cover fills the slot for every type — a filled grid reads
-            // calmer than letterboxed gaps. Game covers (Steam's landscape
-            // capsule) get cropped to a central strip here; the detail page is
-            // where they show in full (design call: fill > complete).
-            class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
-          />
+          {(src) => (
+            <img
+              ref={fadeOnLoad}
+              src={src()}
+              alt=""
+              class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
+            />
+          )}
         </Show>
       </div>
 
-      <div class="shrink-0 p-3">
-        <DayTag
-          airDate={props.item.airDate}
-          type={props.item.type}
-          isHero={props.isHero}
-          active={props.active}
+      {/* Footer — sits BELOW the cover. Its background is the cover mirrored at
+          the bottom edge (flipped vertically, object-bottom) and heavily blurred,
+          so it dissolves into a soft field of the cover's own colours rather than
+          reading as a recognisable upside-down image — the colours continue out
+          of the cover smoothly. A frosted scrim (accent-tinted when active) keeps
+          the caption legible. (scale 1.1 overscans so the blur has no bare edge.) */}
+      <div class="relative shrink-0 overflow-hidden">
+        <Show when={cover()}>
+          {(src) => (
+            <img
+              src={src()}
+              alt=""
+              aria-hidden="true"
+              class="absolute inset-0 h-full w-full object-cover object-bottom blur-2xl"
+              style={{ transform: "scale(1.1) scaleY(-1)" }}
+            />
+          )}
+        </Show>
+        <div
+          class="glass-edge absolute inset-0 backdrop-blur-lg"
+          classList={{
+            "bg-accent/50": props.active,
+            "bg-bg/40": !props.active,
+          }}
         />
-        <h3
-          class="mt-0.5 truncate text-body font-medium"
-          classList={{
-            "text-accent-on": props.active,
-            "text-text": !props.active,
-          }}
-        >
-          {props.item.title}
-        </h3>
-        <span
-          class="block truncate font-mono text-mini"
-          classList={{
-            "text-accent-on/85": props.active,
-            "text-text-muted": !props.active,
-          }}
-        >
-          {/* Movies have no episode number → just the type label. */}
-          <Show
-            when={props.item.episodeNumber !== undefined}
-            fallback={typeLabel(props.item.type)}
+        <div class="relative p-3">
+          <DayTag
+            airDate={props.item.airDate}
+            type={props.item.type}
+            isHero={props.isHero}
+            active={props.active}
+          />
+          <h3
+            class="mt-0.5 truncate text-body font-medium"
+            classList={{
+              "text-accent-on": props.active,
+              "text-text": !props.active,
+            }}
           >
-            {episodeCode(props.item.episodeNumber!)}
-            {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
-          </Show>
-          {/* Lane label — only set when this item also appears on a different
-              day for another lane (synced list vs own); names the synced one. */}
-          <Show when={props.item.laneLabel}>
-            {(l) => <span> · {l()}</span>}
-          </Show>
-        </span>
+            {props.item.title}
+          </h3>
+          <span
+            class="block truncate font-mono text-mini"
+            classList={{
+              "text-accent-on/85": props.active,
+              "text-text-muted": !props.active,
+            }}
+          >
+            {/* Movies have no episode number → just the type label. */}
+            <Show
+              when={props.item.episodeNumber !== undefined}
+              fallback={typeLabel(props.item.type)}
+            >
+              {episodeCode(props.item.episodeNumber!)}
+              {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
+            </Show>
+            {/* Lane label — only set when this item also appears on a different
+                day for another lane (synced list vs own); names the synced one. */}
+            <Show when={props.item.laneLabel}>
+              {(l) => <span> · {l()}</span>}
+            </Show>
+          </span>
+        </div>
       </div>
     </>
   );
