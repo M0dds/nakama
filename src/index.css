@@ -250,8 +250,14 @@
      is translucent ON PURPOSE: it only earns its keep where a real depth layer
      sits behind it (a blurred cover-art wash, scrolling content). Tune the
      blur/alpha here and every glass surface follows. */
-  --glass-blur: 18px;
-  --glass-bg: color-mix(in oklab, var(--bg) 60%, transparent);
+  --glass-blur: 22px;
+  /* Keep the fill minimal so the pane reads the SAME brightness as whatever is
+     behind it (page bg or cover wash) instead of a darker/lighter band — the
+     BLUR does the "glass" work, not a darkening fill. A heavy bg fill in dark
+     mode dimmed the bright cover wash and the header read as a dark band. */
+  --glass-bg: color-mix(in oklab, var(--bg) 12%, transparent);
+  /* Strong variant stays opaque for surfaces that need text legibility over
+     busy content (dialogs/popovers), where matching-brightness isn't the goal. */
   --glass-bg-strong: color-mix(in oklab, var(--bg) 82%, transparent);
   /* Top hairline that catches light → reads as a pane of glass, not a flat fill. */
   --glass-edge: color-mix(in oklab, var(--text) 7%, transparent);
