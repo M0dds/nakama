@@ -399,7 +399,7 @@ function WasKommt(props: {
                 onMouseEnter={() => onCardEnter(item)}
                 onClick={(e) => onCardClick(item, e)}
                 onKeyDown={(e) => onCardKey(item, e)}
-                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
+                class="group relative flex h-[29rem] w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                 classList={{
                   "border-accent": active(),
                   "border-border": !active(),
@@ -481,7 +481,7 @@ function WasKommt(props: {
                       // stays the same height and the 2×2 always reads as a
                       // filled rectangle. The cover fills the whole card via
                       // object-cover; the caption floats over it in a glass box.
-                      class="group relative flex h-72 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
+                      class="group relative flex h-80 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                       classList={{
                         "border-accent": active(),
                         "border-border": !active(),
@@ -1416,15 +1416,15 @@ function WasKommtSkeleton() {
     <div>
       <div
         class="hidden gap-3 md:grid"
-        style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
+        style={{ "grid-template-columns": "1.4fr 1fr 1fr 1fr" }}
       >
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-96 w-full" />}
+          {() => <Skeleton class="h-[29rem] w-full" />}
         </For>
       </div>
       <div class="grid grid-cols-2 gap-3 md:hidden">
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-72 w-full" />}
+          {() => <Skeleton class="h-80 w-full" />}
         </For>
       </div>
     </div>
