@@ -5,6 +5,7 @@ import {
   Index,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
@@ -59,6 +60,7 @@ import {
 } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
@@ -118,6 +120,12 @@ export default function Home() {
   const greetingName = () =>
     profileQ.data?.displayName?.trim() || profileQ.data?.username?.trim() || null;
 
+  // Home's ambient cover-art backdrop follows the focused "Was kommt" card: on
+  // desktop, hovering a card activates it, so the wash drifts to whatever the
+  // user is eyeing (crossfading via CoverBackdrop). WasKommt reports its active
+  // cover up through onActiveCover; null (no upcoming items) → no backdrop.
+  const [washCover, setWashCover] = createSignal<string | null>(null);
+
   useRealtimeInvalidation("home", [
     { table: "episode_watches", invalidates: [homeQueryKey] },
     { table: "episodes", invalidates: [homeQueryKey] },
@@ -129,6 +137,7 @@ export default function Home() {
 
   return (
     <main class="w-full">
+      <CoverBackdrop coverUrl={washCover()} />
       <PageHeader
         title={
           <Show when={greetingName()} fallback={<>Willkommen.</>}>
@@ -153,7 +162,10 @@ export default function Home() {
                 when={upcomingQ.data && upcomingQ.data.length > 0}
                 fallback={<EmptyUpcoming firstRun={firstRun()} />}
               >
-                <WasKommt items={upcomingQ.data!} />
+                <WasKommt
+                  items={upcomingQ.data!}
+                  onActiveCover={setWashCover}
+                />
               </Show>
             </Show>
           </BentoModule>
@@ -200,7 +212,12 @@ export default function Home() {
 const WAS_KOMMT_SHOWN = 4; // desktop page size + mobile initial count
 const WAS_KOMMT_ROW = 2; // mobile: cards revealed per "weitere"-tap (one row)
 
-function WasKommt(props: { items: UpcomingItem[] }) {
+function WasKommt(props: {
+  items: UpcomingItem[];
+  /** Reports the focused card's resolved cover URL up to Home, which paints it
+   *  as the ambient backdrop. Fires on hover/activation + page changes. */
+  onActiveCover?: (url: string | null) => void;
+}) {
   const navigate = useNavigate();
   // Identity is per ENTRY, not per item: an item with diverging lanes (own Mo
   // vs synced Fr) appears more than once, so keying on itemId alone would
@@ -211,6 +228,17 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   const [activeId, setActiveId] = createSignal<string | null>(
     entryKey(props.items[0]),
   );
+
+  // Push the focused card's cover up to Home for the ambient backdrop. Tracks
+  // activeId + items, so it follows desktop hover (which activates the card)
+  // and page changes; coverFor sharpens the stored URL.
+  createEffect(() => {
+    const active = props.items.find((it) => entryKey(it) === activeId());
+    props.onActiveCover?.(active ? coverFor(active.coverUrl) ?? null : null);
+  });
+  // Clear the backdrop if WasKommt unmounts (upcoming list went empty), so a
+  // stale cover doesn't linger behind the empty state.
+  onCleanup(() => props.onActiveCover?.(null));
 
   // Desktop pages through groups of 4 (numbered Pager, like Fortsetzen);
   // mobile reveals one more row (2 cards) per tap on the "+N weitere" button.
