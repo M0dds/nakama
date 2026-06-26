@@ -59,6 +59,7 @@ import {
   typeLabel,
 } from "@/lib/format";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -436,7 +437,8 @@ export default function ItemDetail() {
         />
       }
     >
-    <main class="w-full">
+    <main class="relative w-full">
+      <CoverBackdrop coverUrl={item.data?.coverUrl ?? null} />
       <PageHeader
         kicker={
           <Show
@@ -600,12 +602,6 @@ export default function ItemDetail() {
                     <Show when={!isBinary()}>
                       <EpisodicFacts item={data()} />
                     </Show>
-                    <div class="flex items-baseline justify-between gap-3">
-                      <dt class={`${dtClass} shrink-0`}>Quelle</dt>
-                      <dd class="min-w-0 truncate text-right font-mono text-mini uppercase tracking-wider text-text">
-                        {data().source} · {data().sourceId}
-                      </dd>
-                    </div>
                   </dl>
 
                   {/* Sync toggle — only when opened with a list context
