@@ -554,7 +554,7 @@ function WasKommtCardFace(props: {
   return (
     <>
       {/* Cover area — the cover fills the whole card width (object-cover), no
-          side gaps. It crops to fit; the footer below continues the colours. */}
+          side gaps. It crops to fit; the solid footer below carries the caption. */}
       <div class="relative min-h-0 flex-1 overflow-hidden">
         <Show
           when={cover()}
@@ -577,69 +577,53 @@ function WasKommtCardFace(props: {
         </Show>
       </div>
 
-      {/* Footer — sits BELOW the cover. Its background is the cover mirrored at
-          the bottom edge (flipped vertically, object-bottom) and heavily blurred,
-          so it dissolves into a soft field of the cover's own colours rather than
-          reading as a recognisable upside-down image — the colours continue out
-          of the cover smoothly. A frosted scrim (accent-tinted when active) keeps
-          the caption legible. (scale 1.1 overscans so the blur has no bare edge.) */}
-      <div class="relative shrink-0 overflow-hidden">
-        <Show when={cover()}>
-          {(src) => (
-            <img
-              src={src()}
-              alt=""
-              aria-hidden="true"
-              class="absolute inset-0 h-full w-full object-cover object-bottom blur-2xl"
-              style={{ transform: "scale(1.1) scaleY(-1)" }}
-            />
-          )}
-        </Show>
-        <div
-          class="glass-edge absolute inset-0 backdrop-blur-lg"
-          classList={{
-            "bg-accent/50": props.active,
-            "bg-bg/40": !props.active,
-          }}
+      {/* Footer — a clean solid panel below the cover: accent when the card is
+          active, neutral (with a hairline off the cover) otherwise. The frosted
+          mirrored-cover treatment was removed — glass stays reserved for the
+          ambient depth layers, not micro-elements. */}
+      <div
+        class="shrink-0 border-t p-3"
+        classList={{
+          "border-accent bg-accent": props.active,
+          "border-border bg-bg": !props.active,
+        }}
+      >
+        <DayTag
+          airDate={props.item.airDate}
+          type={props.item.type}
+          isHero={props.isHero}
+          active={props.active}
         />
-        <div class="relative p-3">
-          <DayTag
-            airDate={props.item.airDate}
-            type={props.item.type}
-            isHero={props.isHero}
-            active={props.active}
-          />
-          <h3
-            class="mt-0.5 truncate text-body font-medium"
-            classList={{
-              "text-accent-on": props.active,
-              "text-text": !props.active,
-            }}
+        <h3
+          class="mt-0.5 truncate text-body font-medium"
+          classList={{
+            "text-accent-on": props.active,
+            "text-text": !props.active,
+          }}
+        >
+          {props.item.title}
+        </h3>
+        <span
+          class="block truncate font-mono text-mini"
+          classList={{
+            "text-accent-on/85": props.active,
+            "text-text-muted": !props.active,
+          }}
+        >
+          {/* Movies have no episode number → just the type label. */}
+          <Show
+            when={props.item.episodeNumber !== undefined}
+            fallback={typeLabel(props.item.type)}
           >
-            {props.item.title}
-          </h3>
-          <span
-            class="block truncate font-mono text-mini"
-            classList={{
-              "text-accent-on/85": props.active,
-              "text-text-muted": !props.active,
-            }}
-          >
-            {/* Movies have no episode number → just the type label. */}
-            <Show
-              when={props.item.episodeNumber !== undefined}
-              fallback={typeLabel(props.item.type)}
-            >
-              {episodeCode(props.item.episodeNumber!)}
-              {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
-            </Show>
-            {/* Lane label — only set when this item also appears on a different
-                day for another lane (synced list vs own); names the synced one. */}
-            <Show when={props.item.laneLabel}>
-              {(l) => <span> · {l()}</span>}
-            </Show>
-          </span>
-        </div>
+            {episodeCode(props.item.episodeNumber!)}
+            {props.active ? ` · ${typeLabel(props.item.type)}` : ""}
+          </Show>
+          {/* Lane label — only set when this item also appears on a different
+              day for another lane (synced list vs own); names the synced one. */}
+          <Show when={props.item.laneLabel}>
+            {(l) => <span> · {l()}</span>}
+          </Show>
+        </span>
       </div>
     </>
   );
