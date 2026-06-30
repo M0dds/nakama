@@ -5,6 +5,7 @@ import {
   createSignal,
   For,
   Index,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Segmented } from "@/components/Segmented";
@@ -71,6 +73,9 @@ export default function Calendar() {
   const [refDate, setRefDate] = createSignal(new Date());
   const [view, setView] = createSignal<View>("week");
   const [selectedIso, setSelectedIso] = createSignal(todayIso);
+  // Ambient cover backdrop follows the focused day-pane event (default: the
+  // selected day's first event). Driven from DayPane via onActiveCover.
+  const [washCover, setWashCover] = createSignal<string | null>(null);
 
   // Loaded-data window anchor. It lazily FOLLOWS the viewed month: advanced
   // only once the viewed month reaches the EDGE-most loaded month, so
@@ -165,6 +170,7 @@ export default function Calendar() {
 
   return (
     <main class="w-full">
+      <CoverBackdrop coverUrl={washCover()} />
       <PageHeader title="Kalender" />
 
       <ColumnGuide />
@@ -218,6 +224,7 @@ export default function Calendar() {
               iso={selectedIso()}
               events={dayEvents(selectedIso())}
               todayIso={todayIso}
+              onActiveCover={setWashCover}
             />
           </BentoModule>
         </div>
@@ -673,7 +680,20 @@ function DayPane(props: {
   iso: string;
   events: CalendarEvent[];
   todayIso: string;
+  onActiveCover?: (url: string | null) => void;
 }) {
+  // Cover backdrop: hovering an event reports its cover up; default to the
+  // selected day's first event. Track the DAY (iso) only via on() — a realtime
+  // refetch (same day, new event objects) must not clobber a live hover.
+  const coverOf = (e?: CalendarEvent) =>
+    e ? coverFor(e.coverUrl) ?? e.coverUrl ?? null : null;
+  createEffect(
+    on(
+      () => props.iso,
+      () => props.onActiveCover?.(coverOf(props.events[0])),
+    ),
+  );
+
   const date = () => fromIsoDay(props.iso);
   const isToday = () => props.iso === props.todayIso;
   const weekdayLong = () =>
@@ -714,9 +734,14 @@ function DayPane(props: {
             dispose + remount the row on every refetch, and the freshly-inserted
             DOM node loses its :hover for a frame. Index keys by position, so the
             row stays mounted and just its reactive props.ev updates. */}
-        <ul class="-mx-5">
+        <ul
+          class="-mx-5"
+          onMouseLeave={() => props.onActiveCover?.(coverOf(props.events[0]))}
+        >
           <Index each={props.events}>
-            {(ev) => <DayPaneRow ev={ev()} />}
+            {(ev) => (
+              <DayPaneRow ev={ev()} onHover={(c) => props.onActiveCover?.(c)} />
+            )}
           </Index>
         </ul>
       </Show>
@@ -731,7 +756,10 @@ function DayPane(props: {
  * co-member eye is a shared-list-only signal and never appears in the calendar.
  * Released vs upcoming only changes the text colour + meta line.
  */
-function DayPaneRow(props: { ev: CalendarEvent }) {
+function DayPaneRow(props: {
+  ev: CalendarEvent;
+  onHover?: (cover: string | null) => void;
+}) {
   const cover = () => coverFor(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
   // Meta line under the title: the air TIME instead of the episode title — in
@@ -747,7 +775,10 @@ function DayPaneRow(props: { ev: CalendarEvent }) {
   const textClass = () => (props.ev.released ? "text-text" : "text-text-muted");
 
   return (
-    <li class="group/row relative isolate after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+    <li
+      class="group/row relative isolate after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
+      onMouseEnter={() => props.onHover?.(cover() ?? null)}
+    >
       {/* Hover fill — inset 1px on the LEFT so it stops at the column guide
           (the day-pane is the right column, same as the Logbuch feed), bleeds
           right to the viewport edge. isolate + -z-10 keeps it behind the

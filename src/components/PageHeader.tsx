@@ -43,15 +43,53 @@ export function PageHeader(props: {
 
   return (
     // Sticky so the instrument header (kicker + title + aside) stays pinned
-    // while the surface scrolls. bg-bg/75 + backdrop-blur-md make it a frosted
-    // glass pane: content scrolling behind the pinned header reads through
-    // instead of being hard-occluded — the header floats over the surface.
-    // z-index sits above page content but below the AddSheet (z-40) / Toaster
-    // (z-30) overlays. `position: sticky` also serves as the positioning context
-    // for the absolute full-bleed bottom rule (was `relative`). Works because no
-    // scroll-container ancestor exists — body's `overflow-x: clip` doesn't
-    // establish one, so sticky resolves against the viewport.
-    <header class="sticky top-0 z-20 flex items-end justify-between bg-bg/55 px-5 pb-3 pt-6 backdrop-blur-md">
+    // while the surface scrolls. The `.glass` frosted material (src/index.css)
+    // lives on a FULL-BLEED backing layer (below) so the pane spans the whole
+    // viewport width while the header CONTENT stays aligned to the capped
+    // content frame — content scrolling behind it reads through instead of
+    // being hard-occluded. This is the reference glass surface the rest of the
+    // redesign extends from. z-index sits above page content but below the
+    // AddSheet (z-40) / Toaster (z-30) overlays. `position: sticky` (+ z-20)
+    // also makes this a stacking context + the positioning context for the
+    // absolute full-bleed backing + bottom rule. Works because no scroll-
+    // container ancestor exists — body's `overflow-x: clip` doesn't establish
+    // one, so sticky resolves against the viewport.
+    <header class="sticky top-0 z-20 flex items-end justify-between px-5 pb-3 pt-6">
+      {/* Full-bleed frosted backing. The header itself is capped to the content
+          frame (it lives inside AppShell's --content-max wrapper), so without
+          this the glass ended at the content edge — and now that a full-bleed
+          cover wash sits behind the header, that darker glass band showed hard
+          left/right seams. Breaking the backing out to w-screen makes the glass
+          run edge-to-edge; the content keeps its frame alignment. -z-10 is
+          scoped to this header's own (z-20) stacking context → behind the header
+          content but still above the page, so its backdrop-filter refracts the
+          wash + content scrolling underneath. Mirrors the bottom rule's breakout. */}
+      <div
+        aria-hidden
+        class="glass pointer-events-none absolute inset-y-0 left-1/2 -z-10 w-screen -translate-x-1/2"
+      />
+      {/* Frame hairlines continued THROUGH the header band. The full-bleed glass
+          backing would otherwise occlude the ContentFrame's vertical rules
+          (z=-5) where they pass behind the header (z-20). These mirror
+          ContentFrame exactly — a gutter-wide clip box hung off each content
+          edge (right-full / left-full) with the rule on its inner edge — so each
+          line shows ONLY when a gutter is open (viewport > --content-max) and
+          lands precisely on the content-frame boundary, painted on top of the
+          glass. Result: the frame reads continuously top-to-bottom. */}
+      <div
+        aria-hidden
+        class="pointer-events-none absolute inset-y-0 right-full overflow-hidden"
+        style={{ width: "max(0px, calc((100vw - var(--content-max)) / 2))" }}
+      >
+        <span class="absolute inset-y-0 right-0 w-px bg-rule" />
+      </div>
+      <div
+        aria-hidden
+        class="pointer-events-none absolute inset-y-0 left-full overflow-hidden"
+        style={{ width: "max(0px, calc((100vw - var(--content-max)) / 2))" }}
+      >
+        <span class="absolute inset-y-0 left-0 w-px bg-rule" />
+      </div>
       <div>
         <div class="flex items-center gap-2">
           <span

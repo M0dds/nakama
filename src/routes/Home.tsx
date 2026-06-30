@@ -5,6 +5,7 @@ import {
   Index,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
@@ -59,6 +60,7 @@ import {
 } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
@@ -118,6 +120,12 @@ export default function Home() {
   const greetingName = () =>
     profileQ.data?.displayName?.trim() || profileQ.data?.username?.trim() || null;
 
+  // Home's ambient cover-art backdrop follows the focused "Was kommt" card: on
+  // desktop, hovering a card activates it, so the wash drifts to whatever the
+  // user is eyeing (crossfading via CoverBackdrop). WasKommt reports its active
+  // cover up through onActiveCover; null (no upcoming items) → no backdrop.
+  const [washCover, setWashCover] = createSignal<string | null>(null);
+
   useRealtimeInvalidation("home", [
     { table: "episode_watches", invalidates: [homeQueryKey] },
     { table: "episodes", invalidates: [homeQueryKey] },
@@ -129,6 +137,7 @@ export default function Home() {
 
   return (
     <main class="w-full">
+      <CoverBackdrop coverUrl={washCover()} />
       <PageHeader
         title={
           <Show when={greetingName()} fallback={<>Willkommen.</>}>
@@ -153,7 +162,10 @@ export default function Home() {
                 when={upcomingQ.data && upcomingQ.data.length > 0}
                 fallback={<EmptyUpcoming firstRun={firstRun()} />}
               >
-                <WasKommt items={upcomingQ.data!} />
+                <WasKommt
+                  items={upcomingQ.data!}
+                  onActiveCover={setWashCover}
+                />
               </Show>
             </Show>
           </BentoModule>
@@ -200,7 +212,12 @@ export default function Home() {
 const WAS_KOMMT_SHOWN = 4; // desktop page size + mobile initial count
 const WAS_KOMMT_ROW = 2; // mobile: cards revealed per "weitere"-tap (one row)
 
-function WasKommt(props: { items: UpcomingItem[] }) {
+function WasKommt(props: {
+  items: UpcomingItem[];
+  /** Reports the focused card's resolved cover URL up to Home, which paints it
+   *  as the ambient backdrop. Fires on hover/activation + page changes. */
+  onActiveCover?: (url: string | null) => void;
+}) {
   const navigate = useNavigate();
   // Identity is per ENTRY, not per item: an item with diverging lanes (own Mo
   // vs synced Fr) appears more than once, so keying on itemId alone would
@@ -211,6 +228,17 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   const [activeId, setActiveId] = createSignal<string | null>(
     entryKey(props.items[0]),
   );
+
+  // Push the focused card's cover up to Home for the ambient backdrop. Tracks
+  // activeId + items, so it follows desktop hover (which activates the card)
+  // and page changes; coverFor sharpens the stored URL.
+  createEffect(() => {
+    const active = props.items.find((it) => entryKey(it) === activeId());
+    props.onActiveCover?.(active ? coverFor(active.coverUrl) ?? null : null);
+  });
+  // Clear the backdrop if WasKommt unmounts (upcoming list went empty), so a
+  // stale cover doesn't linger behind the empty state.
+  onCleanup(() => props.onActiveCover?.(null));
 
   // Desktop pages through groups of 4 (numbered Pager, like Fortsetzen);
   // mobile reveals one more row (2 cards) per tap on the "+N weitere" button.
@@ -282,9 +310,13 @@ function WasKommt(props: { items: UpcomingItem[] }) {
   // The grid template animates on activeIndex change — the active column is
   // 2fr, the others 1fr. With fewer than four items the trailing columns
   // stay empty (the row deliberately doesn't stretch to fill).
+  // Active card stays the clear focus (widest) but no longer hogs 2fr — at 2fr
+  // it grew almost landscape and object-cover zoomed the poster past recognition.
+  // 1.4fr keeps it the widest while staying close to the cover's portrait format,
+  // so its cover crops far less, and hands the freed width to the other cards.
   const gridCols = () =>
     Array.from({ length: WAS_KOMMT_SHOWN }, (_, i) =>
-      i === activeIndex() ? "2fr" : "1fr",
+      i === activeIndex() ? "1.4fr" : "1fr",
     ).join(" ");
 
   // Mobile: a 2-up grid laid out in rows of two. Within each row the active
@@ -367,10 +399,10 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                 onMouseEnter={() => onCardEnter(item)}
                 onClick={(e) => onCardClick(item, e)}
                 onKeyDown={(e) => onCardKey(item, e)}
-                class="group relative flex h-96 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                class="group relative flex h-[26rem] w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                 classList={{
-                  "border-accent bg-accent": active(),
-                  "border-border bg-bg": !active(),
+                  "border-accent": active(),
+                  "border-border": !active(),
                 }}
                 style={{ transition: COLOR_T }}
               >
@@ -378,7 +410,6 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                   item={item}
                   active={active()}
                   isHero={i() === 0}
-                  coverClass="relative min-h-0 flex-1 overflow-hidden"
                 />
               </A>
             );
@@ -446,15 +477,14 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                       onMouseEnter={() => onCardEnter(item)}
                       onClick={(e) => onCardClick(item, e)}
                       onKeyDown={(e) => onCardKey(item, e)}
-                      // Fixed height (like the desktop h-80 cards) → only the
-                      // WIDTH springs, so every card stays the same height and
-                      // the 2×2 always reads as a filled rectangle, never a gap.
-                      // The cover fills via object-cover: active (wide) ≈ square,
-                      // inactive (narrow) ≈ portrait.
-                      class="group relative flex h-72 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border focus:outline-none"
+                      // Fixed height → only the WIDTH springs, so every card
+                      // stays the same height and the 2×2 always reads as a
+                      // filled rectangle. The cover fills the whole card via
+                      // object-cover; the caption floats over it in a glass box.
+                      class="group relative flex h-80 w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                       classList={{
-                        "border-accent bg-accent": active(),
-                        "border-border bg-bg": !active(),
+                        "border-accent": active(),
+                        "border-border": !active(),
                       }}
                       style={{ transition: COLOR_T }}
                     >
@@ -462,7 +492,6 @@ function WasKommt(props: { items: UpcomingItem[] }) {
                         item={item}
                         active={active()}
                         isHero={isHeroItem(item)}
-                        coverClass="relative min-h-0 flex-1 overflow-hidden"
                       />
                     </A>
                   );
@@ -508,54 +537,57 @@ function WasKommt(props: { items: UpcomingItem[] }) {
 }
 
 /**
- * The cover + caption shared by every Was-kommt card. The cover-box sizing is
- * passed in (`coverClass`): desktop fills the card height (flex-1), the mobile
- * 2-up cards are 2:3 portrait — so covers keep a real aspect on each surface
- * instead of being squashed flat.
+ * The card face shared by every Was-kommt card (desktop + mobile). The cover
+ * fills the whole card (object-cover) and the caption floats over its lower edge
+ * in a frosted glass box — accent-tinted when the card is active, neutral
+ * otherwise. Replaces the old cover-on-top / caption-below-it split, so the card
+ * reads as a poster with a glass label instead of an image with a footer.
  */
 function WasKommtCardFace(props: {
   item: UpcomingItem;
   active: boolean;
   isHero: boolean;
-  coverClass: string;
 }) {
+  const cover = () =>
+    props.item.coverUrl ? coverFor(props.item.coverUrl) ?? null : null;
+
   return (
     <>
-      {/* Cover above the caption; bg shows through as the placeholder for
-          items without a real cover. coverFor sharpens the stored URL per
-          source (AniList medium→large, Steam header→capsule) so it stays
-          crisp at hero size / on hover-scale. */}
-      <div class={props.coverClass}>
+      {/* Cover area — the cover fills the whole card width (object-cover), no
+          side gaps. It crops to fit; the solid footer below carries the caption. */}
+      <div class="relative min-h-0 flex-1 overflow-hidden">
         <Show
-          when={props.item.coverUrl}
+          when={cover()}
           fallback={
             <div class="flex h-full items-center justify-center">
-              <span
-                class="font-mono text-mini font-medium opacity-60"
-                classList={{
-                  "text-accent-on": props.active,
-                  "text-text-muted": !props.active,
-                }}
-              >
+              <span class="font-mono text-mini font-medium text-text-muted opacity-60">
                 {typeInitial(props.item.type)}
               </span>
             </div>
           }
         >
-          <img
-            ref={fadeOnLoad}
-            src={coverFor(props.item.coverUrl)!}
-            alt=""
-            // object-cover fills the slot for every type — a filled grid reads
-            // calmer than letterboxed gaps. Game covers (Steam's landscape
-            // capsule) get cropped to a central strip here; the detail page is
-            // where they show in full (design call: fill > complete).
-            class="h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
-          />
+          {(src) => (
+            <img
+              ref={fadeOnLoad}
+              src={src()}
+              alt=""
+              class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
+            />
+          )}
         </Show>
       </div>
 
-      <div class="shrink-0 p-3">
+      {/* Footer — a clean solid panel below the cover: accent when the card is
+          active, neutral (with a hairline off the cover) otherwise. The frosted
+          mirrored-cover treatment was removed — glass stays reserved for the
+          ambient depth layers, not micro-elements. */}
+      <div
+        class="shrink-0 border-t p-3"
+        classList={{
+          "border-accent bg-accent": props.active,
+          "border-border bg-bg": !props.active,
+        }}
+      >
         <DayTag
           airDate={props.item.airDate}
           type={props.item.type}
@@ -1368,15 +1400,15 @@ function WasKommtSkeleton() {
     <div>
       <div
         class="hidden gap-3 md:grid"
-        style={{ "grid-template-columns": "2fr 1fr 1fr 1fr" }}
+        style={{ "grid-template-columns": "1.4fr 1fr 1fr 1fr" }}
       >
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-96 w-full" />}
+          {() => <Skeleton class="h-[26rem] w-full" />}
         </For>
       </div>
       <div class="grid grid-cols-2 gap-3 md:hidden">
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-72 w-full" />}
+          {() => <Skeleton class="h-80 w-full" />}
         </For>
       </div>
     </div>

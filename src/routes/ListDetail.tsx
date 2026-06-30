@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -35,6 +35,7 @@ import {
 import { typeInitial, typeLabel } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
@@ -271,6 +272,11 @@ export default function ListDetail() {
   // a single instance for whichever row is being moved.
   const [movingEntry, setMovingEntry] = createSignal<ListEntry | null>(null);
 
+  // Ambient cover backdrop follows the focused entry: hovering a row blooms its
+  // cover behind the page (crossfading via CoverBackdrop), defaulting to the
+  // first entry's cover at rest. Driven from ListEntries via onActiveCover.
+  const [washCover, setWashCover] = createSignal<string | null>(null);
+
   const createdLabel = (iso: string) =>
     new Date(iso).toLocaleDateString("de-DE", {
       day: "2-digit",
@@ -285,6 +291,7 @@ export default function ListDetail() {
     <Show when={!notFound()} fallback={<NotFound kind="list" />}>
     <>
     <main class="w-full">
+      <CoverBackdrop coverUrl={washCover()} />
       <PageHeader
         kicker="LISTEN"
         title={
@@ -357,6 +364,7 @@ export default function ListDetail() {
                     listShortCode={params.shortCode}
                     tracksHome={list.data?.tracksHome ?? true}
                     dragSettling={dragSettling}
+                    onActiveCover={setWashCover}
                     onRequestMove={(entry) => setMovingEntry(entry)}
                     onTogglePin={handleTogglePin}
                   />
@@ -551,6 +559,7 @@ function ListEntries(props: {
   listShortCode: string;
   tracksHome: boolean;
   dragSettling: () => boolean;
+  onActiveCover?: (url: string | null) => void;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
 }) {
@@ -571,12 +580,20 @@ function ListEntries(props: {
   };
   const visibleUnpinnedIds = () => visibleUnpinned().map((e) => e.listItemId);
 
+  // Cover backdrop: a row reports its cover on hover; default to the first
+  // entry's cover, and reset to it when the pointer leaves the list.
+  const coverOf = (e?: ListEntry) =>
+    e?.coverUrl ? coverFor(e.coverUrl) ?? null : null;
+  const defaultCover = () => coverOf(props.items[0]);
+  onMount(() => props.onActiveCover?.(defaultCover()));
+
   const row = (entry: ListEntry) => (
     <SortableEntryRow
       entry={entry}
       listShortCode={props.listShortCode}
       tracksHome={props.tracksHome}
       dragSettling={props.dragSettling}
+      onHover={() => props.onActiveCover?.(coverOf(entry))}
       onRequestMove={props.onRequestMove}
       onTogglePin={props.onTogglePin}
     />
@@ -584,7 +601,10 @@ function ListEntries(props: {
 
   return (
     <>
-      <ul class="-mx-5">
+      <ul
+        class="-mx-5"
+        onMouseLeave={() => props.onActiveCover?.(defaultCover())}
+      >
         <SortableProvider ids={pinnedIds()}>
           <For each={pinned()}>{row}</For>
         </SortableProvider>
@@ -603,6 +623,7 @@ function SortableEntryRow(props: {
   listShortCode: string;
   tracksHome: boolean;
   dragSettling: () => boolean;
+  onHover?: () => void;
   onRequestMove: (entry: ListEntry) => void;
   onTogglePin: (entry: ListEntry) => void;
 }) {
@@ -629,6 +650,7 @@ function SortableEntryRow(props: {
         classList={{
           "transition-colors hover:bg-surface": !props.dragSettling(),
         }}
+        onMouseEnter={() => props.onHover?.()}
       >
         <A
           href={`/lists/${props.listShortCode}/item/${props.entry.type}/${props.entry.slug}`}

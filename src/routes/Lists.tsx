@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import {
   createMutation,
@@ -31,6 +31,7 @@ import {
 } from "@/lib/sortable";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
@@ -38,7 +39,8 @@ import { InvitationsInbox } from "@/components/InvitationsInbox";
 import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 import { Skeleton } from "@/components/Skeleton";
-import { ListCover } from "@/components/GeneratedCover";
+import { ListCover, coverSeedDataUri } from "@/components/GeneratedCover";
+import { useResolvedMode } from "@/lib/use-resolved-mode";
 
 /**
  * /lists — overview. Left 2/3: category-first sections — "Meine Listen"
@@ -62,6 +64,23 @@ export default function Lists() {
     ...listsQueryOptions(auth.user()!),
     enabled: !!auth.user(),
   }));
+
+  // Ambient cover backdrop follows the hovered list row: an uploaded cover →
+  // photo wash; a generated cover → the seed's themed pattern as a data-URI,
+  // which CoverBackdrop's heavy blur dissolves into a soft seed-colour field.
+  // The backdrop shows the hovered list's wash, falling back to a DEFAULT (the
+  // topmost list) — so at rest, and when the pointer leaves the list column
+  // (e.g. up to the header), it returns to the default instead of going grey.
+  const resolvedMode = useResolvedMode();
+  const [washCover, setWashCover] = createSignal<string | null>(null);
+  const washOf = (l: ListSummary) =>
+    l.coverUrl ?? coverSeedDataUri(l.coverSeed, resolvedMode());
+  // Topmost list overall = first section's first entry (sections' lists are
+  // pin-then-sortOrder sorted). Reactive, so it tracks data + theme mode.
+  const defaultWash = () => {
+    const first = sections()[0]?.lists[0];
+    return first ? washOf(first) : null;
+  };
 
   // Live updates: a partner creating a list, joining, leaving, recategorising,
   // or toggling tracks_home anywhere reflects here without a refresh. The
@@ -262,6 +281,7 @@ export default function Lists() {
 
   return (
     <main class="w-full">
+      <CoverBackdrop coverUrl={washCover() ?? defaultWash()} />
       <PageHeader title="Listen" />
 
       <ColumnGuide />
@@ -274,7 +294,10 @@ export default function Lists() {
         <MovePointerSensor />
         <div class="flex flex-col md:flex-row md:items-start">
           {/* Linke Spalte 2/3 — Einladungen + Kategorie-Sektionen */}
-          <div class="md:w-2/3">
+          <div
+            class="md:w-2/3"
+            onMouseLeave={() => setWashCover(null)}
+          >
             <InvitationsInbox />
             <Show
               when={lists.data}
@@ -309,6 +332,7 @@ export default function Lists() {
                           lists={sectionOf(s.cat)?.lists ?? []}
                           cat={s.cat}
                           dragSettling={dragSettling}
+                          onHover={(l) => setWashCover(washOf(l))}
                           onTogglePin={handleTogglePin}
                         />
                       </BentoModule>
@@ -422,6 +446,7 @@ function ListRows(props: {
   lists: ListSummary[];
   cat: CatKey;
   dragSettling: () => boolean;
+  onHover?: (list: ListSummary) => void;
   onTogglePin: (list: ListSummary) => void;
 }) {
   // Two sortable groups per category — pinned + unpinned. Each section's
@@ -441,6 +466,7 @@ function ListRows(props: {
               list={list}
               cat={props.cat}
               dragSettling={props.dragSettling}
+              onHover={props.onHover}
               onTogglePin={props.onTogglePin}
             />
           )}
@@ -453,6 +479,7 @@ function ListRows(props: {
               list={list}
               cat={props.cat}
               dragSettling={props.dragSettling}
+              onHover={props.onHover}
               onTogglePin={props.onTogglePin}
             />
           )}
@@ -466,6 +493,7 @@ function SortableListRow(props: {
   list: ListSummary;
   cat: CatKey;
   dragSettling: () => boolean;
+  onHover?: (list: ListSummary) => void;
   onTogglePin: (list: ListSummary) => void;
 }) {
   const sortable = createSortable(props.list.id, {
@@ -486,6 +514,7 @@ function SortableListRow(props: {
         classList={{
           "transition-colors hover:bg-surface": !props.dragSettling(),
         }}
+        onMouseEnter={() => props.onHover?.(props.list)}
       >
         <A
           href={`/lists/${props.list.shortCode}`}
