@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.16.0",
+    date: "2026-06-30",
+    title: "Frisches Design mit Cover-Tiefe",
+    changes: [
+      "Neu: Das Cover des Titels, auf den du dich gerade konzentrierst, schimmert jetzt als sanfter, unscharfer Hintergrund hinter der ganzen Seite — auf der Startseite, in Listen, im Kalender, auf Detailseiten und im Profil. Beim Überfahren der Einträge wandert er weich mit.",
+      "Frischeres, ruhigeres Erscheinungsbild: durchgehend klare, scharfe Kanten — die App wirkt aufgeräumter und materialbetonter.",
+      "Die „Was kommt“-Karten zeigen das Cover jetzt vollflächig, mit einer kompakten Info-Leiste darunter.",
+      "Die Milchglas-Kopfzeile läuft jetzt randlos über die volle Breite und passt sich der Hintergrund-Helligkeit an, statt als dunkleres Band zu wirken.",
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-06-25",
     title: "Anzeige-Tag & schnellere Suche",
