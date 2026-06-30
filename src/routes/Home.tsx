@@ -399,7 +399,7 @@ function WasKommt(props: {
                 onMouseEnter={() => onCardEnter(item)}
                 onClick={(e) => onCardClick(item, e)}
                 onKeyDown={(e) => onCardKey(item, e)}
-                class="group relative flex h-[29rem] w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
+                class="group relative flex h-[26rem] w-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-bg focus:outline-none"
                 classList={{
                   "border-accent": active(),
                   "border-border": !active(),
@@ -1403,7 +1403,7 @@ function WasKommtSkeleton() {
         style={{ "grid-template-columns": "1.4fr 1fr 1fr 1fr" }}
       >
         <For each={Array.from({ length: WAS_KOMMT_SHOWN })}>
-          {() => <Skeleton class="h-[29rem] w-full" />}
+          {() => <Skeleton class="h-[26rem] w-full" />}
         </For>
       </div>
       <div class="grid grid-cols-2 gap-3 md:hidden">
