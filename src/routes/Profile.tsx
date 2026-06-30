@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
 import { PageHeader } from "@/components/PageHeader";
+import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { BentoModule } from "@/components/BentoModule";
 import { PushSettings } from "@/components/PushSettings";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -61,6 +62,9 @@ export default function Profile() {
 
   return (
     <main class="w-full">
+      {/* Profil has no media cover — the user's own avatar is the page's
+          identity, so it drives the ambient backdrop (static; no avatar → none). */}
+      <CoverBackdrop coverUrl={avatarUrl()} />
       <PageHeader
         title="Profil"
         aside={
