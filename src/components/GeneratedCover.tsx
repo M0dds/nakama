@@ -112,6 +112,14 @@ function buildSvg(seed: number, mode: ThemeMode): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">${inner}</svg>`;
 }
 
+/** Data-URI of the seed's generated cover, for use anywhere an image SOURCE is
+ *  expected (not just the inline component) — e.g. feeding the ambient
+ *  CoverBackdrop on the lists overview, where a heavy blur dissolves the motif
+ *  into a soft field of the seed's theme colours. */
+export function coverSeedDataUri(seed: number, mode: ThemeMode): string {
+  return `data:image/svg+xml,${encodeURIComponent(buildSvg(seed, mode))}`;
+}
+
 export function GeneratedCover(props: { seed: number; class?: string }) {
   const mode = useResolvedMode();
   const svg = createMemo(() => buildSvg(props.seed, mode()));
