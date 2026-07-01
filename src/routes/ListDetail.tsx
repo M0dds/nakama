@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { A, useParams } from "@solidjs/router";
 import {
   createMutation,
@@ -49,8 +49,9 @@ import { MembersModule } from "@/components/MembersModule";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
-import { ListCover, PinBadge } from "@/components/GeneratedCover";
+import { ListCover, PinBadge, coverSeedDataUri } from "@/components/GeneratedCover";
 import { EditableListCover } from "@/components/EditableListCover";
+import { useResolvedMode } from "@/lib/use-resolved-mode";
 import { EditableListDescription } from "@/components/EditableListDescription";
 import { Pager } from "@/components/Pager";
 
@@ -272,10 +273,17 @@ export default function ListDetail() {
   // a single instance for whichever row is being moved.
   const [movingEntry, setMovingEntry] = createSignal<ListEntry | null>(null);
 
-  // Ambient cover backdrop follows the focused entry: hovering a row blooms its
-  // cover behind the page (crossfading via CoverBackdrop), defaulting to the
-  // first entry's cover at rest. Driven from ListEntries via onActiveCover.
+  // Ambient cover backdrop. Default at rest = the LIST's own cover (matches the
+  // overview, where hovering this list showed the same cover) — uploaded cover
+  // → photo wash, generated → its seed pattern as a soft colour field. Hovering
+  // an entry overrides it (via ListEntries → onActiveCover); leaving the list
+  // resets to null → falls back to the list cover.
+  const resolvedMode = useResolvedMode();
   const [washCover, setWashCover] = createSignal<string | null>(null);
+  const listCoverWash = () => {
+    const d = list.data;
+    return d ? d.coverUrl ?? coverSeedDataUri(d.coverSeed, resolvedMode()) : null;
+  };
 
   const createdLabel = (iso: string) =>
     new Date(iso).toLocaleDateString("de-DE", {
@@ -291,7 +299,7 @@ export default function ListDetail() {
     <Show when={!notFound()} fallback={<NotFound kind="list" />}>
     <>
     <main class="w-full">
-      <CoverBackdrop coverUrl={washCover()} />
+      <CoverBackdrop coverUrl={washCover() ?? listCoverWash()} />
       <PageHeader
         kicker="LISTEN"
         title={
@@ -580,12 +588,10 @@ function ListEntries(props: {
   };
   const visibleUnpinnedIds = () => visibleUnpinned().map((e) => e.listItemId);
 
-  // Cover backdrop: a row reports its cover on hover; default to the first
-  // entry's cover, and reset to it when the pointer leaves the list.
+  // Cover backdrop: a row reports its cover on hover; leaving the list clears it
+  // (null) so the page falls back to the list's own cover (see ListDetail).
   const coverOf = (e?: ListEntry) =>
     e?.coverUrl ? coverFor(e.coverUrl) ?? null : null;
-  const defaultCover = () => coverOf(props.items[0]);
-  onMount(() => props.onActiveCover?.(defaultCover()));
 
   const row = (entry: ListEntry) => (
     <SortableEntryRow
@@ -603,7 +609,7 @@ function ListEntries(props: {
     <>
       <ul
         class="-mx-5"
-        onMouseLeave={() => props.onActiveCover?.(defaultCover())}
+        onMouseLeave={() => props.onActiveCover?.(null)}
       >
         <SortableProvider ids={pinnedIds()}>
           <For each={pinned()}>{row}</For>
