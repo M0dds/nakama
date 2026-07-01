@@ -654,7 +654,10 @@ function SortableEntryRow(props: {
       <div
         class="group flex items-center gap-2 px-5 py-3"
         classList={{
-          "transition-colors hover:bg-surface": !props.dragSettling(),
+          // Translucent SURFACE tint: lightens in both modes (like the other
+          // rows) but stays see-through, so it blends over the cover wash
+          // instead of sitting on it as an opaque block.
+          "transition-colors hover:bg-surface/[0.7]": !props.dragSettling(),
         }}
         onMouseEnter={() => props.onHover?.()}
       >
