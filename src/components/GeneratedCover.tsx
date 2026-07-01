@@ -1,121 +1,302 @@
 import { createMemo, Show } from "solid-js";
 import { Pin } from "lucide-solid";
-import { THEMES, getThemeMeta, type ThemeId, type ThemeMode } from "@/lib/themes";
+import { type ThemeMode } from "@/lib/themes";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
 import { fadeOnLoad } from "@/lib/image-fade";
 
 /**
- * GeneratedCover — the default list cover when no custom image is uploaded.
+ * GeneratedCover — the default list cover when no image is uploaded.
  *
- * A list stores only a `cover_seed` (a random integer assigned at creation).
- * From the seed we deterministically derive a theme (random across the 8), a
- * Japanese-geometric pattern, and a scale. The cover is rendered as an inline
- * SVG coloured from that theme's palette — NOT stored as an image. Benefits:
- * zero storage, always crisp, and it re-colours with light/dark automatically
- * (we resolve the active mode and read swatch[mode]).
+ * A list stores only a `cover_seed` (a random integer). From it we
+ * deterministically derive a soft, Apple-Music-ish cover: a base gradient +
+ * blurred colour "orbs" + a faint motif pattern + grain. Rendered as inline SVG
+ * or a data-URI (no storage), re-tuned for light/dark automatically.
  *
- * Patterns are two-tone (field = bg, motif = accent), drawn from the theme
- * registry so a new theme works for free.
+ * The generator is a small self-contained SYSTEM, independent of the app's
+ * named themes: a cover's identity is a continuous (hue, scheme, motif) triple
+ * derived from the seed, so the colour space is effectively unbounded — no two
+ * covers look alike — and adding/removing app themes never affects covers. Each
+ * dimension comes from its OWN hash of the seed, so they vary independently and
+ * small/sequential seeds don't correlate. To retune the look, adjust the SL
+ * (saturation/lightness) tables below; everything else follows.
  */
 
-const PATTERNS = ["seigaiha", "shippo"] as const;
-type Pattern = (typeof PATTERNS)[number];
+// ── Seed → a well-spread deterministic stream ───────────────────────────────
+// fmix32 the seed first (so small/sequential seeds avalanche instead of
+// clustering), then mulberry32 for a stable stream of [0,1) draws. Every cover
+// dimension (hue, scheme, motif, jitter, positions) is drawn in a fixed order,
+// so the cover is identical across reloads/devices yet neighbouring seeds land
+// far apart.
+function rng(seed: number) {
+  let a = Math.abs(Math.trunc(seed)) >>> 0;
+  a ^= a >>> 16;
+  a = Math.imul(a, 0x45d9f3b);
+  a ^= a >>> 16;
+  a = Math.imul(a, 0x45d9f3b);
+  a ^= a >>> 16;
+  a = (a >>> 0) || 0x9e3779b9;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const MOTIFS = ["mesh", "aurora", "lines", "bloom", "dunes", "spotlight"] as const;
+type Motif = (typeof MOTIFS)[number];
+
+// c2's hue offset relative to the base hue — the "scheme" (analogous → near-
+// complementary). Seed-picked so the two-colour relationship varies too.
+const SCHEMES = [24, 40, 68, 152, 192, -34] as const;
 
 export interface CoverSpec {
-  themeId: ThemeId;
-  pattern: Pattern;
-  /** 0 = large motif, 2 = fine motif. */
-  sizeStep: number;
+  /** Base hue 0..360 (continuous) — the cover's colour identity. */
+  hue: number;
+  /** c2 hue offset from the base (the palette scheme). */
+  scheme: number;
+  motif: Motif;
 }
 
-/** Deterministic seed → cover recipe. Stable across reloads + devices. */
+/** Deterministic seed → cover recipe (hue + scheme + motif). Stable across
+ *  reloads/devices; each dimension from an independent hash so they don't
+ *  correlate and neighbouring seeds look nothing alike. */
+/** frac(x) = x − ⌊x⌋. */
+const frac = (x: number) => x - Math.floor(x);
+
+/** fmix32 (murmur3 finalizer) — a strong integer avalanche hash. */
+function fmix(n: number): number {
+  let a = n >>> 0;
+  a ^= a >>> 16;
+  a = Math.imul(a, 0x45d9f3b);
+  a ^= a >>> 16;
+  a = Math.imul(a, 0x45d9f3b);
+  a ^= a >>> 16;
+  return a >>> 0;
+}
+
+/** Deterministic seed → cover recipe.
+ *  hue + motif are the two axes of an R2 low-discrepancy sequence (Roberts'
+ *  1/plastic constants), which spreads the (hue, motif) PAIR evenly in 2D — so
+ *  no two covers share a motif at a similar hue. (A single golden ratio per
+ *  axis instead builds a visible lattice where seed s and s+8 collide; the R2
+ *  pair doesn't.) Scheme — the subtler c2 hue offset — comes from a hash,
+ *  decorrelated from the pair. Independent of the app themes; stable per seed. */
 export function coverSpecFromSeed(seed: number): CoverSpec {
-  const s = Math.abs(Math.trunc(seed)) || 0;
-  const theme = THEMES[s % THEMES.length];
-  const pattern = PATTERNS[Math.floor(s / THEMES.length) % PATTERNS.length];
-  const sizeStep = Math.floor(s / (THEMES.length * PATTERNS.length)) % 3;
-  return { themeId: theme.id, pattern, sizeStep };
+  const n = Math.abs(Math.trunc(seed));
+  return {
+    hue: 360 * frac(0.5 + n * 0.7548776662),
+    motif: MOTIFS[Math.floor(MOTIFS.length * frac(0.5 + n * 0.5698402910))],
+    scheme: SCHEMES[fmix(n ^ 0xc2b2ae35) % SCHEMES.length],
+  };
 }
 
-const f = (n: number) => n.toFixed(2);
+const f = (n: number) => n.toFixed(3);
+const hx = (c: number) =>
+  Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0");
 
-// ── Contrast control ──────────────────────────────────────────────────────
-// Covers read calmer when field + motif stay in one tonal family. We mute the
-// motif toward the bg and tint the field slightly toward the accent, instead
-// of pure accent-on-bg. Both knobs are 0..1; bump them to soften further.
-const MOTIF_MUTE = 0.6; // motif = accent blended this far toward bg
-const FIELD_TINT = 0.05; // field = bg blended this far toward accent
-
-function hx(c: number): string {
-  return Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0");
-}
-/** Linear blend a→b by t (0..1). Both must be #rrggbb. */
-function mix(a: string, b: string, t: number): string {
-  const ar = parseInt(a.slice(1, 3), 16);
-  const ag = parseInt(a.slice(3, 5), 16);
-  const ab = parseInt(a.slice(5, 7), 16);
-  const br = parseInt(b.slice(1, 3), 16);
-  const bg = parseInt(b.slice(3, 5), 16);
-  const bb = parseInt(b.slice(5, 7), 16);
-  return `#${hx(ar + (br - ar) * t)}${hx(ag + (bg - ag) * t)}${hx(ab + (bb - ab) * t)}`;
-}
-
-/** Seigaiha (青海波) — overlapping fan/wave scales. Concentric filled circles
- *  on an offset grid, drawn top→bottom so lower rows occlude upper ones into
- *  fish-scale arcs. */
-function seigaihaSvg(bg: string, fg: string, sizeStep: number): string {
-  const D = [36, 27, 21][sizeStep]; // scale diameter
-  const r = D / 2;
-  const rings = [1, 0.7, 0.44, 0.2]; // radius fractions, alternating fg/bg
-  const rowH = r * 0.6;
-  let els = `<rect width="100" height="100" fill="${bg}"/>`;
-  let row = 0;
-  for (let y = 0; y <= 100 + r; y += rowH, row++) {
-    const off = row % 2 ? r : 0;
-    for (let x = -r + off; x <= 100 + r; x += D) {
-      rings.forEach((frac, i) => {
-        els += `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r * frac)}" fill="${
-          i % 2 ? bg : fg
-        }"/>`;
-      });
-    }
-  }
-  return els;
+/** HSL (h any°, s/l 0..1) → #rrggbb, clamped. The only colour source now — the
+ *  whole palette is generated, not sampled from theme swatches. */
+function hsl(h: number, s: number, l: number): string {
+  h = ((h % 360) + 360) % 360;
+  s = Math.max(0, Math.min(1, s));
+  l = Math.max(0, Math.min(1, l));
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g] = [c, x];
+  else if (h < 120) [r, g] = [x, c];
+  else if (h < 180) [g, b] = [c, x];
+  else if (h < 240) [g, b] = [x, c];
+  else if (h < 300) [r, b] = [x, c];
+  else [r, b] = [c, x];
+  return `#${hx((r + m) * 255)}${hx((g + m) * 255)}${hx((b + m) * 255)}`;
 }
 
-/** Shippō (七宝, "seven treasures") — equal circles whose centres sit a radius
- *  apart, so each passes through its neighbours' centres, forming a petal
- *  lattice. Stroked, not filled. */
-function shippoSvg(bg: string, fg: string, sizeStep: number): string {
-  const R = [17, 13, 10][sizeStep];
-  const sw = [1.4, 1.1, 0.9][sizeStep];
-  let els = `<rect width="100" height="100" fill="${bg}"/>`;
-  els += `<g fill="none" stroke="${fg}" stroke-width="${sw}">`;
-  for (let y = -R; y <= 100 + R; y += R) {
-    for (let x = -R; x <= 100 + R; x += R) {
-      els += `<circle cx="${f(x)}" cy="${f(y)}" r="${R}"/>`;
-    }
-  }
-  els += `</g>`;
-  return els;
+/** A soft colour orb — a full-canvas rect painted by a positioned radial
+ *  gradient (colour centre → transparent). Layered orbs make the mesh glow.
+ *  `cx/cy/rad` are fractions of the 100×100 canvas. */
+function orb(
+  id: string,
+  cx: number,
+  cy: number,
+  rad: number,
+  color: string,
+  alpha: number,
+) {
+  return {
+    def: `<radialGradient id="${id}" cx="${f(cx)}" cy="${f(cy)}" r="${f(
+      rad,
+    )}"><stop offset="0" stop-color="${color}" stop-opacity="${f(
+      alpha,
+    )}"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient>`,
+    use: `<rect width="100" height="100" fill="url(#${id})"/>`,
+  };
 }
+
+// Saturation/lightness tables per mode — the one knob for the overall look.
+// [c1, c2, glow, deep(base ground), light(base top), pattern].
+const SL = {
+  light: {
+    c1: [0.55, 0.6],
+    c2: [0.5, 0.52],
+    glow: [0.55, 0.56],
+    deep: [0.32, 0.46],
+    light: [0.4, 0.75],
+    pat: [0.22, 0.5],
+  },
+  dark: {
+    c1: [0.5, 0.48],
+    c2: [0.46, 0.42],
+    glow: [0.5, 0.45],
+    deep: [0.42, 0.14],
+    light: [0.34, 0.28],
+    pat: [0.3, 0.6],
+  },
+} as const;
 
 function buildSvg(seed: number, mode: ThemeMode): string {
-  const spec = coverSpecFromSeed(seed);
-  const { bg, accent } = getThemeMeta(spec.themeId).swatch[mode];
-  const field = mix(bg, accent, FIELD_TINT); // bg, faintly accent-tinted
-  const motif = mix(accent, bg, MOTIF_MUTE); // accent, muted toward bg
-  const inner =
-    spec.pattern === "seigaiha"
-      ? seigaihaSvg(field, motif, spec.sizeStep)
-      : shippoSvg(field, motif, spec.sizeStep);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">${inner}</svg>`;
+  const { hue, scheme, motif } = coverSpecFromSeed(seed);
+  const t = SL[mode];
+  // Incidental variation (jitter/angle/orb positions) off a warmed stream — two
+  // discards so its first real draw decorrelates from neighbouring seeds.
+  const r = rng(seed);
+  r();
+  r();
+  const lj = (r() * 2 - 1) * 0.06; // per-seed lightness jitter
+
+  const c1 = hsl(hue, t.c1[0], t.c1[1] + lj);
+  const c2 = hsl(hue + scheme, t.c2[0], t.c2[1] - lj);
+  const glow = hsl(hue + scheme / 2, t.glow[0], t.glow[1]);
+  const deep = hsl(hue, t.deep[0], t.deep[1]);
+  const light = hsl(hue + scheme * 0.3, t.light[0], t.light[1]);
+  const pat = hsl(hue, t.pat[0], t.pat[1]);
+  const angle = Math.floor(r() * 360);
+
+  const uid = `c${Math.abs(Math.trunc(seed)) >>> 0}`;
+  const defs: string[] = [];
+  const uses: string[] = [];
+
+  // Base gradient (deep → light), rotated per seed.
+  defs.push(
+    `<linearGradient id="${uid}b" gradientTransform="rotate(${angle} .5 .5)"><stop offset="0" stop-color="${deep}"/><stop offset="1" stop-color="${light}"/></linearGradient>`,
+  );
+  uses.push(`<rect width="100" height="100" fill="url(#${uid}b)"/>`);
+
+  let i = 0;
+  const orbUses: string[] = [];
+  const add = (
+    cx: number,
+    cy: number,
+    rad: number,
+    color: string,
+    alpha: number,
+  ) => {
+    const o = orb(`${uid}o${i++}`, cx, cy, rad, color, alpha);
+    defs.push(o.def);
+    orbUses.push(o.use);
+  };
+
+  // Each motif carries its OWN faint pattern (texture, not decoration): the
+  // muted `pat` tone at low opacity so it never competes with the wash. `grid`
+  // returns a centred grid (symmetric margins) for the given step.
+  const sw = 0.5;
+  const grid = (step: number) => {
+    const n = Math.floor(100 / step);
+    return { n, start: (100 - (n - 1) * step) / 2 };
+  };
+  let pattern = "";
+
+  if (motif === "mesh") {
+    add(r() * 0.5 + 0.1, r() * 0.4 + 0.1, 0.6, c1, 0.9);
+    add(r() * 0.4 + 0.5, r() * 0.4 + 0.5, 0.55, c2, 0.85);
+    add(r() * 0.6 + 0.2, r() * 0.5 + 0.3, 0.45, glow, 0.5);
+    for (let o = -100; o < 100; o += 14) {
+      pattern += `<line x1="${f(o)}" y1="0" x2="${f(o + 100)}" y2="100" stroke="${pat}" stroke-width="${sw}"/>`;
+    }
+  } else if (motif === "aurora") {
+    add(0.2, 0.22, 0.85, c1, 0.85);
+    add(0.82, 0.8, 0.85, c2, 0.8);
+    add(0.5, 0.5, 0.5, glow, 0.3);
+    const g = grid(11);
+    for (let gy = 0; gy < g.n; gy++) {
+      for (let gx = 0; gx < g.n; gx++) {
+        pattern += `<circle cx="${f(g.start + gx * 11)}" cy="${f(g.start + gy * 11)}" r="0.85" fill="${pat}"/>`;
+      }
+    }
+  } else if (motif === "lines") {
+    add(r() * 0.5 + 0.25, r() * 0.35 + 0.1, 0.85, c1, 0.7);
+    const g = grid(11);
+    for (let c = 0; c < g.n; c++) {
+      const x = g.start + c * 11;
+      pattern += `<line x1="${f(x)}" y1="0" x2="${f(x)}" y2="100" stroke="${pat}" stroke-width="${sw}"/>`;
+    }
+  } else if (motif === "bloom") {
+    const cx = r() * 0.5 + 0.25;
+    const cy = r() * 0.5 + 0.25;
+    add(cx, cy, 0.95, c1, 0.9);
+    add(cx, cy, 0.34, c2, 0.85);
+    for (let rr = 10; rr <= 84; rr += 12) {
+      pattern += `<circle cx="${f(cx * 100)}" cy="${f(cy * 100)}" r="${rr}" fill="none" stroke="${pat}" stroke-width="${sw}"/>`;
+    }
+  } else if (motif === "dunes") {
+    add(0.5, 0.14 + r() * 0.1, 0.9, c1, 0.7);
+    add(0.5, 0.58 + r() * 0.1, 0.9, c2, 0.7);
+    add(0.5, 0.95, 0.7, deep, 0.6);
+    const g = grid(11);
+    for (let c = 0; c < g.n; c++) {
+      const y = g.start + c * 11;
+      pattern += `<line x1="0" y1="${f(y)}" x2="100" y2="${f(y)}" stroke="${pat}" stroke-width="${sw}"/>`;
+    }
+  } else {
+    // spotlight — a corner glow + a soft counter-glow + a fine plus-mark grid.
+    const corner = Math.floor(r() * 4);
+    const cx = corner % 2 ? 0.85 : 0.15;
+    const cy = corner < 2 ? 0.15 : 0.85;
+    add(cx, cy, 0.95, c1, 0.95);
+    add(1 - cx, 1 - cy, 0.55, c2, 0.5);
+    const g = grid(14);
+    for (let gy = 0; gy < g.n; gy++) {
+      for (let gx = 0; gx < g.n; gx++) {
+        const px = g.start + gx * 14;
+        const py = g.start + gy * 14;
+        pattern += `<line x1="${f(px - 1.6)}" y1="${f(py)}" x2="${f(px + 1.6)}" y2="${f(py)}" stroke="${pat}" stroke-width="${sw}"/><line x1="${f(px)}" y1="${f(py - 1.6)}" x2="${f(px)}" y2="${f(py + 1.6)}" stroke="${pat}" stroke-width="${sw}"/>`;
+      }
+    }
+  }
+
+  // Orbs (mesh blurred hard into a wash); then the faint pattern on top.
+  if (motif === "mesh") {
+    defs.push(
+      `<filter id="${uid}bl" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="8"/></filter>`,
+    );
+    uses.push(`<g filter="url(#${uid}bl)">${orbUses.join("")}</g>`);
+  } else {
+    uses.push(orbUses.join(""));
+  }
+  uses.push(`<g opacity="0.5">${pattern}</g>`);
+
+  // Faint grain — greyscale fractal noise, overlay-blended (matches the app's
+  // grain layer).
+  defs.push(
+    `<filter id="${uid}g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>`,
+  );
+  uses.push(
+    `<rect width="100" height="100" filter="url(#${uid}g)" opacity="0.12" style="mix-blend-mode:overlay"/>`,
+  );
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>${defs.join(
+    "",
+  )}</defs>${uses.join("")}</svg>`;
 }
 
 /** Data-URI of the seed's generated cover, for use anywhere an image SOURCE is
  *  expected (not just the inline component) — e.g. feeding the ambient
- *  CoverBackdrop on the lists overview, where a heavy blur dissolves the motif
- *  into a soft field of the seed's theme colours. */
+ *  CoverBackdrop, where a heavy blur dissolves the motif into a soft field of
+ *  the seed's colours. */
 export function coverSeedDataUri(seed: number, mode: ThemeMode): string {
   return `data:image/svg+xml,${encodeURIComponent(buildSvg(seed, mode))}`;
 }
@@ -148,7 +329,7 @@ export function PinBadge() {
 
 /**
  * A list's cover: the owner-uploaded custom image if present, else the
- * generated themed cover from the seed. `class` sizes the box (e.g.
+ * generated cover from the seed. `class` sizes the box (e.g.
  * `aspect-square w-full overflow-hidden`); the image/pattern fills it, so
  * swapping a custom cover in/out doesn't shift layout. `pinned` overlays a
  * PinBadge in the corner.

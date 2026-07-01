@@ -652,10 +652,10 @@ export default function Styleguide() {
         <p class="mb-4 text-body text-text-muted">
           Default-Cover für Listen ohne eigenes Bild: Inline-SVG aus einem{" "}
           <code class="font-mono text-mini">cover_seed</code> → deterministisch
-          zufälliges Theme + japanisch-geometrisches Muster (Seigaiha-Wellen /
-          Shippō-Kreise). Kein Storage, immer scharf, folgt Light/Dark
-          automatisch — toggle den Mode oben in Sektion 01 und sieh zu, wie alle
-          Cover umfärben.
+          eine generierte Farbpalette (kontinuierlicher Hue, unabhängig von den
+          App-Themes) + eines von sechs weichen Motiven mit Grain (Mesh, Aurora,
+          Lines, Bloom, Dunes, Spotlight). Kein Storage, immer scharf, folgt
+          Light/Dark automatisch — toggle den Mode oben in Sektion 01.
         </p>
         <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8">
           <For each={Array.from({ length: 24 }, (_, i) => i)}>
@@ -668,7 +668,7 @@ export default function Styleguide() {
                     class="aspect-square w-full overflow-hidden"
                   />
                   <p class="mt-1 truncate font-mono text-mini text-text-muted">
-                    {spec.themeId} · {spec.pattern}
+                    {Math.round(spec.hue)}° · {spec.motif}
                   </p>
                 </div>
               );
