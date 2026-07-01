@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.17.0",
+    date: "2026-07-01",
+    title: "Neue Listen-Cover & Mitglieder-Gesichter",
+    changes: [
+      "Neu: Die generierten Listen-Cover sind komplett überarbeitet — weiche Farbverläufe mit dezenten Mustern und feiner Körnung statt der harten geometrischen Muster, deutlich abwechslungsreicher (jede Liste bekommt ihren eigenen Look) und in hellem wie dunklem Modus gleich.",
+      "Neu: Gefällt dir das Cover einer Liste nicht? Fahr auf der Detailseite über das Cover und würfle mit „Neu würfeln“ ein frisches — oder lad wie gewohnt ein eigenes Bild hoch.",
+      "In der Listen-Übersicht zeigen geteilte Listen jetzt die Profilbilder ihrer Mitglieder statt des Worts „geteilt“; private Listen bleiben schlicht.",
+      "Öffnest du eine Liste, nimmt ihr Cover jetzt sanft den Seitenhintergrund auf — beim Überfahren der Einträge wechselt er zum jeweiligen Titel.",
+    ],
+  },
+  {
     version: "0.16.0",
     date: "2026-06-30",
     title: "Frisches Design mit Cover-Tiefe",
