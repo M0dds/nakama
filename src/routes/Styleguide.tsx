@@ -654,8 +654,9 @@ export default function Styleguide() {
           <code class="font-mono text-mini">cover_seed</code> → deterministisch
           eine generierte Farbpalette (kontinuierlicher Hue, unabhängig von den
           App-Themes) + eines von sechs weichen Motiven mit Grain (Mesh, Aurora,
-          Lines, Bloom, Dunes, Spotlight). Kein Storage, immer scharf, folgt
-          Light/Dark automatisch — toggle den Mode oben in Sektion 01.
+          Lines, Bloom, Dunes, Spotlight). Kein Storage, immer scharf. Bewusst
+          mode-unabhängig — ein Cover sieht in Light wie Dark gleich aus, damit
+          die Muster überall sichtbar bleiben.
         </p>
         <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8">
           <For each={Array.from({ length: 24 }, (_, i) => i)}>

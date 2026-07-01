@@ -10,7 +10,8 @@ import { fadeOnLoad } from "@/lib/image-fade";
  * A list stores only a `cover_seed` (a random integer). From it we
  * deterministically derive a soft, Apple-Music-ish cover: a base gradient +
  * blurred colour "orbs" + a faint motif pattern + grain. Rendered as inline SVG
- * or a data-URI (no storage), re-tuned for light/dark automatically.
+ * or a data-URI (no storage). Covers are mode-independent — a list's cover
+ * looks the same in light and dark (see the palette note below).
  *
  * The generator is a small self-contained SYSTEM, independent of the app's
  * named themes: a cover's identity is a continuous (hue, scheme, motif) triple
@@ -137,26 +138,23 @@ function orb(
   };
 }
 
-// Saturation/lightness tables per mode — the one knob for the overall look.
+// Saturation/lightness per role — the one knob for the overall look:
 // [c1, c2, glow, deep(base ground), light(base top), pattern].
-const SL = {
-  light: {
-    c1: [0.55, 0.6],
-    c2: [0.5, 0.52],
-    glow: [0.55, 0.56],
-    deep: [0.32, 0.46],
-    light: [0.4, 0.75],
-    pat: [0.22, 0.5],
-  },
-  dark: {
-    c1: [0.5, 0.48],
-    c2: [0.46, 0.42],
-    glow: [0.5, 0.45],
-    deep: [0.42, 0.14],
-    light: [0.34, 0.28],
-    pat: [0.3, 0.6],
-  },
+//
+// Covers are intentionally mode-INDEPENDENT: they keep this richer "dark" look
+// in light mode too. A light base washed the motif patterns out (they'd sit
+// dark on a light field, barely visible), so a list's cover reads the SAME in
+// light and dark. Both modes map to the one palette; `mode` stays in the
+// signatures for API symmetry.
+const PALETTE = {
+  c1: [0.5, 0.48],
+  c2: [0.46, 0.42],
+  glow: [0.5, 0.45],
+  deep: [0.42, 0.14],
+  light: [0.34, 0.28],
+  pat: [0.3, 0.6],
 } as const;
+const SL = { light: PALETTE, dark: PALETTE };
 
 function buildSvg(seed: number, mode: ThemeMode): string {
   const { hue, scheme, motif } = coverSpecFromSeed(seed);
