@@ -996,3 +996,21 @@ export async function setListCover(input: {
   if (!data) return { coverUrl: null, blocked: true };
   return { coverUrl: (data as { cover_url: string | null }).cover_url, blocked: false };
 }
+
+/** Write lists.cover_seed (owner only — same lists_update_owner policy as the
+ *  cover_url). Rerolls the generated cover to a fresh random look. `.select()`
+ *  back to detect a silent RLS block (0 rows, no error). */
+export async function setListCoverSeed(input: {
+  listId: string;
+  coverSeed: number;
+}): Promise<{ coverSeed: number | null; blocked: boolean }> {
+  const { data, error } = await supabase
+    .from("lists")
+    .update({ cover_seed: input.coverSeed })
+    .eq("id", input.listId)
+    .select("cover_seed")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { coverSeed: null, blocked: true };
+  return { coverSeed: (data as { cover_seed: number }).cover_seed, blocked: false };
+}

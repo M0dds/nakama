@@ -1,11 +1,12 @@
 import { createSignal } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Camera, Loader2, RotateCcw } from "lucide-solid";
+import { Camera, Dices, Loader2, RotateCcw } from "lucide-solid";
 import { Show } from "solid-js";
 import { useToast } from "@/lib/toast";
 import {
   uploadListCover,
   setListCover,
+  setListCoverSeed,
   listQueryKey,
   listsQueryKey,
   MAX_COVER_BYTES,
@@ -49,6 +50,22 @@ export function EditableListCover(props: {
         if (!state) return state;
         const patch = (l: ListSummary) =>
           l.id === props.listId ? { ...l, coverUrl } : l;
+        return { private: state.private.map(patch), shared: state.shared.map(patch) };
+      },
+    );
+  };
+
+  /** Patch coverSeed in both caches (for reroll → new generated look). */
+  const patchSeed = (coverSeed: number) => {
+    queryClient.setQueryData<ListSummary | null>(detailKey(), (l) =>
+      l ? { ...l, coverSeed } : l,
+    );
+    queryClient.setQueryData<{ private: ListSummary[]; shared: ListSummary[] }>(
+      listsQueryKey,
+      (state) => {
+        if (!state) return state;
+        const patch = (l: ListSummary) =>
+          l.id === props.listId ? { ...l, coverSeed } : l;
         return { private: state.private.map(patch), shared: state.shared.map(patch) };
       },
     );
@@ -104,6 +121,31 @@ export function EditableListCover(props: {
     onSuccess: () => toast("Cover zurückgesetzt.", { icon: RotateCcw }),
   }));
 
+  // Reroll the generated cover: write a fresh random cover_seed → a new look.
+  // The seed is generated in the click handler and passed in, so the optimistic
+  // preview and the server write share the SAME seed (no flip on settle).
+  const rerollMutation = createMutation(() => ({
+    mutationFn: async (seed: number) => {
+      const res = await setListCoverSeed({ listId: props.listId, coverSeed: seed });
+      if (res.blocked) throw new Error("blocked");
+    },
+    onMutate: (seed: number) => {
+      const prevDetail = queryClient.getQueryData<ListSummary | null>(detailKey());
+      patchSeed(seed);
+      return { prevDetail };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevDetail !== undefined)
+        queryClient.setQueryData(detailKey(), ctx.prevDetail);
+      queryClient.invalidateQueries({ queryKey: listsQueryKey });
+      toast("Cover konnte nicht neu gewürfelt werden.");
+    },
+    onSuccess: () => toast("Neues Cover gewürfelt.", { icon: Dices }),
+  }));
+
+  const doReroll = () =>
+    rerollMutation.mutate(Math.floor(Math.random() * 2_000_000_000));
+
   const onPick = (e: Event & { currentTarget: HTMLInputElement }) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = ""; // allow re-picking the same file
@@ -136,15 +178,18 @@ export function EditableListCover(props: {
           class="size-full"
         />
 
-        {/* Hover overlay, revealed on cover-hover. With a custom cover it splits
-            into two stacked zones — TOP uploads, BOTTOM resets to the generated
-            default; a base dim shows both, and the hovered zone deepens so the
-            target is unambiguous. Without a custom cover the reset zone is
-            absent, so the upload label fills the cover (flex-1, sole child).
-            Stays visible while either op is pending so the spinner shows. */}
+        {/* Hover overlay, revealed on cover-hover. Two stacked zones — TOP
+            uploads a custom image; BOTTOM either RESETS to the generated cover
+            (when a custom one is set) or REROLLS the generated cover to a fresh
+            look (when none is). A base dim shows both, the hovered zone deepens
+            so the target is unambiguous. Stays visible while any op is pending
+            so the spinner shows. */}
         <div
           class="pointer-events-none absolute inset-0 flex flex-col opacity-0 transition-opacity group-hover:opacity-100"
-          classList={{ "opacity-100": uploading() || resetMutation.isPending }}
+          classList={{
+            "opacity-100":
+              uploading() || resetMutation.isPending || rerollMutation.isPending,
+          }}
         >
           <div class="pointer-events-none absolute inset-0 bg-black/40" aria-hidden />
           <label
@@ -184,6 +229,25 @@ export function EditableListCover(props: {
               )}
               <span class="font-mono text-mini uppercase tracking-wider">
                 Zurücksetzen
+              </span>
+            </button>
+          </Show>
+          <Show when={!props.coverUrl}>
+            <button
+              type="button"
+              onClick={doReroll}
+              disabled={rerollMutation.isPending || uploading()}
+              class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              title="Neues Cover würfeln"
+              aria-label="Neues Cover würfeln"
+            >
+              {rerollMutation.isPending ? (
+                <Loader2 class="size-5 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <Dices class="size-5" strokeWidth={1.75} aria-hidden />
+              )}
+              <span class="font-mono text-mini uppercase tracking-wider">
+                Neu würfeln
               </span>
             </button>
           </Show>
