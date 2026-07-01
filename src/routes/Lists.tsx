@@ -41,6 +41,7 @@ import { DragHandle } from "@/components/DragHandle";
 import { Skeleton } from "@/components/Skeleton";
 import { ListCover, coverSeedDataUri } from "@/components/GeneratedCover";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
+import { AvatarStack } from "@/components/AvatarStack";
 
 /**
  * /lists — overview. Left 2/3: category-first sections — "Meine Listen"
@@ -412,16 +413,15 @@ function newCountLabel(counts: {
   return folgen === 1 ? "Neue Folge" : "Neue Folgen";
 }
 
-/** "12 Einträge · privat · Archiv" — count, visibility, optional archive marker. */
+/** "12 Einträge · Archiv" — count + optional archive marker. Visibility is no
+ *  longer a word here: a shared list shows an avatar stack (see the row), a
+ *  private one shows nothing. */
 function metaLine(list: ListSummary): string {
   const count =
     list.itemCount === 0
       ? "Noch leer"
       : `${list.itemCount} ${list.itemCount === 1 ? "Eintrag" : "Einträge"}`;
-  const visibility = list.isShared ? "geteilt" : "privat";
-  return list.tracksHome
-    ? `${count} · ${visibility}`
-    : `${count} · ${visibility} · Archiv`;
+  return list.tracksHome ? count : `${count} · Archiv`;
 }
 
 /**
@@ -553,9 +553,19 @@ function SortableListRow(props: {
                 )}
               </Show>
             </div>
-            <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-              {metaLine(props.list)}
-            </p>
+            <div class="mt-0.5 flex items-center gap-2">
+              {/* Shared → faces of the members (owner first, incl. you);
+                  private → nothing. Replaces the old "geteilt/privat" word. */}
+              <Show when={props.list.isShared && props.list.members.length > 0}>
+                <AvatarStack members={props.list.members} size={18} />
+                <span aria-hidden class="font-mono text-mini text-text-muted">
+                  ·
+                </span>
+              </Show>
+              <p class="min-w-0 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                {metaLine(props.list)}
+              </p>
+            </div>
           </div>
         </A>
         <RowActions

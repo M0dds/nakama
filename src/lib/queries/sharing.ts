@@ -52,6 +52,9 @@ export interface IncomingInvitation {
 export interface PendingInvitation {
   invitationId: string;
   inviteeName: string;
+  /** Invitee's profile picture (joined server-side — see get_list_invitations;
+   *  null → Avatar falls back to the initial). */
+  inviteeAvatarUrl: string | null;
   createdAt: string;
 }
 
@@ -113,7 +116,7 @@ export const coWatchersKey = (itemId: string) =>
 // `profileNames` but also carries avatar_url for the roster + co-watcher UI.
 // ──────────────────────────────────────────────────────────────────────────
 
-interface ProfileBits {
+export interface ProfileBits {
   /** Display label: display_name preferred, else @handle, else null. */
   name: string | null;
   /** "@username" if a username exists, else null. */
@@ -121,7 +124,9 @@ interface ProfileBits {
   avatarUrl: string | null;
 }
 
-async function profilesById(
+/** Batch-resolve profiles by user_id → {name, handle, avatar}. Shared across
+ *  sharing.ts (roster/co-watchers) and lists.ts (per-list member avatars). */
+export async function profilesById(
   ids: string[],
 ): Promise<Map<string, ProfileBits>> {
   const map = new Map<string, ProfileBits>();
@@ -231,11 +236,17 @@ export function listInvitationsOptions(listId: string) {
       if (error) throw error;
       return (
         (data as
-          | { invitation_id: string; invitee_name: string; created_at: string }[]
+          | {
+              invitation_id: string;
+              invitee_name: string;
+              invitee_avatar_url: string | null;
+              created_at: string;
+            }[]
           | null) ?? []
       ).map((r) => ({
         invitationId: r.invitation_id,
         inviteeName: r.invitee_name,
+        inviteeAvatarUrl: r.invitee_avatar_url ?? null,
         createdAt: r.created_at,
       }));
     },

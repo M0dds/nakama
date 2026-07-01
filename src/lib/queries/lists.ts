@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
 import { embedCount, snapToWeekday, unique } from "@/lib/format";
+import { profilesById } from "@/lib/queries/sharing";
 
 /**
  * Lists data layer — typed query options + mutation functions. Components
@@ -50,6 +51,14 @@ export function listCategoryLabel(cat: ListCategory): string {
   return LIST_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
 }
 
+/** One member's identity for the /lists overview avatar stack. */
+export interface ListMemberAvatar {
+  userId: string;
+  name: string | null;
+  handle: string | null;
+  avatarUrl: string | null;
+}
+
 export interface ListSummary {
   /** UUID — used for RPC calls (delete, rename, set-tracks-home). */
   id: string;
@@ -76,6 +85,11 @@ export interface ListSummary {
   coverSeed: number;
   itemCount: number;
   memberCount: number;
+  /** The list's members (owner first), resolved to {name, handle, avatar} for
+   *  the /lists overview avatar stack. Replaces the old "geteilt/privat" text:
+   *  a stack of faces on a shared list, nothing on a private one. Only the
+   *  overview query populates this; the single-list query leaves it []. */
+  members: ListMemberAvatar[];
   /** True when the caller is the list's creator. Used to gate the "Liste
    *  löschen" action (everyone else gets "Liste verlassen" once sharing
    *  lands). */
@@ -134,8 +148,10 @@ export const listItemsQueryKey = (shortCode: string) =>
 // Query options — pass to createQuery() in components
 // ──────────────────────────────────────────────────────────────────────────
 
-/** PostgREST embed shape — list_items(count) and list_members(count) return
- *  as a single-element array of { count }. */
+/** PostgREST embed shape — list_items(count) returns as a single-element array
+ *  of { count }; list_members embeds the member rows (user_id) so we can both
+ *  count them (length) and resolve their profiles for the avatar stack. RLS
+ *  (list_members_select_member) returns ALL members of lists the caller is in. */
 interface RawListRow {
   id: string;
   short_code: string;
@@ -148,11 +164,11 @@ interface RawListRow {
   cover_url: string | null;
   cover_seed: number;
   list_items: { count: number }[] | null;
-  list_members: { count: number }[] | null;
+  list_members: { user_id: string }[] | null;
 }
 
 const LIST_SELECT =
-  "id, short_code, name, description, category, is_shared, owner_id, created_at, cover_url, cover_seed, list_items(count), list_members(count)";
+  "id, short_code, name, description, category, is_shared, owner_id, created_at, cover_url, cover_seed, list_items(count), list_members(user_id)";
 
 function toSummary(
   row: RawListRow,
@@ -172,7 +188,10 @@ function toSummary(
     coverUrl: row.cover_url,
     coverSeed: row.cover_seed,
     itemCount: embedCount(row.list_items),
-    memberCount: embedCount(row.list_members),
+    memberCount: row.list_members?.length ?? 0,
+    // Resolved profiles are attached by the overview query (toSummary runs
+    // before the batched profile lookup); single-list callers leave it empty.
+    members: [],
     isOwner: row.owner_id === user.id,
     pinned: membership.pinned,
     sortOrder: membership.sortOrder,
@@ -454,18 +473,45 @@ export function listsQueryOptions(user: User) {
       // candidate set. Per-list_item (sync-aware) so a synced instance and a
       // global entry of the same item get independent badges; see
       // findItemsWithNewEpisodes.
-      const newEpisodeCounts = await findItemsWithNewEpisodes(
-        user.id,
-        flatPairs.map((p) => ({
-          itemId: p.item_id,
-          listItemId: p.listItemId,
-          syncEnabled: p.syncEnabled,
-          instanceWeekday: p.instanceWeekday,
-        })),
+      const rows = (membershipRes.data ?? []) as unknown as RawMembershipJoinRow[];
+
+      // All member ids across the caller's lists → one batched profile lookup,
+      // run in parallel with the new-episode window check (both only need the
+      // already-fetched membership/pairs data, so no extra serial round-trip).
+      const memberIds = unique(
+        rows.flatMap((r) => (r.lists.list_members ?? []).map((m) => m.user_id)),
       );
+      const [newEpisodeCounts, profiles] = await Promise.all([
+        findItemsWithNewEpisodes(
+          user.id,
+          flatPairs.map((p) => ({
+            itemId: p.item_id,
+            listItemId: p.listItemId,
+            syncEnabled: p.syncEnabled,
+            instanceWeekday: p.instanceWeekday,
+          })),
+        ),
+        profilesById(memberIds),
+      ]);
       const newCountsByList = aggregateNewCounts(flatPairs, newEpisodeCounts);
 
-      const rows = (membershipRes.data ?? []) as unknown as RawMembershipJoinRow[];
+      // Owner-first member list per row (mirrors the roster order), resolved
+      // from the batched profiles → drives the /lists avatar stack.
+      const membersForList = (row: RawListRow): ListMemberAvatar[] =>
+        (row.list_members ?? [])
+          .map((m) => {
+            const p = profiles.get(m.user_id);
+            return {
+              userId: m.user_id,
+              name: p?.name ?? null,
+              handle: p?.handle ?? null,
+              avatarUrl: p?.avatarUrl ?? null,
+            };
+          })
+          .sort((a, b) =>
+            a.userId === row.owner_id ? -1 : b.userId === row.owner_id ? 1 : 0,
+          );
+
       const summaries: ListSummary[] = rows
         .map((r) => ({
           ...toSummary(r.lists, user, {
@@ -473,6 +519,7 @@ export function listsQueryOptions(user: User) {
             pinned: r.pinned_at !== null,
             sortOrder: r.sort_order,
           }),
+          members: membersForList(r.lists),
           newCounts: newCountsByList.get(r.lists.id) ?? { ...EMPTY_COUNTS },
         }))
         .sort(bySectionThenSort);
