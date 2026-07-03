@@ -560,42 +560,35 @@ export async function revokeInvitation(invitationId: string): Promise<void> {
     throw new Error("Einladung konnte nicht zurückgezogen werden.");
 }
 
-/** Leave a list — delete the caller's own membership row
- *  (list_members_delete_owner_or_self). The owner can't leave; they transfer
- *  ownership or delete the list instead (gated in the UI). */
+/** Leave a list — via the `leave_list` DEFINER RPC, NOT a bare list_members
+ *  DELETE: leaving must union-merge the caller's sync-instance progress back
+ *  into their global lane first (migration 20260703100000). A bare delete
+ *  stranded that progress AND left ghost "Jemand" activity in the remaining
+ *  members' Logbuch. The owner can't leave; they transfer ownership or delete
+ *  the list instead (gated in the UI, re-asserted in the RPC). Raise-on-deny,
+ *  so no `.select()` null-check is needed. */
 export async function leaveList(input: {
   listId: string;
   userId: string;
 }): Promise<void> {
-  const { data, error } = await supabase
-    .from("list_members")
-    .delete()
-    .eq("list_id", input.listId)
-    .eq("user_id", input.userId)
-    .select("user_id")
-    .maybeSingle();
+  const { error } = await supabase.rpc("leave_list", {
+    _list_id: input.listId,
+  });
   if (error) throw error;
-  if (data === null) throw new Error("Liste konnte nicht verlassen werden.");
 }
 
-/** Remove another member — owner-only (PRELAUNCH-2). Same DELETE as leaveList
- *  but on someone else's row; the RLS policy (list_members_delete_owner_or_self)
- *  only lets it through when the caller owns the list and isn't removing
- *  themselves. The `.select()` + null-check surfaces a silent RLS block (a
- *  non-owner gets data === null instead of a thrown error). */
+/** Remove another member — owner-only (PRELAUNCH-2), via the
+ *  `remove_list_member` DEFINER RPC for the same merge-before-delete reason
+ *  as leaveList (the REMOVED member's instance progress must survive). */
 export async function removeMember(input: {
   listId: string;
   userId: string;
 }): Promise<void> {
-  const { data, error } = await supabase
-    .from("list_members")
-    .delete()
-    .eq("list_id", input.listId)
-    .eq("user_id", input.userId)
-    .select("user_id")
-    .maybeSingle();
+  const { error } = await supabase.rpc("remove_list_member", {
+    _list_id: input.listId,
+    _member: input.userId,
+  });
   if (error) throw error;
-  if (data === null) throw new Error("Mitglied konnte nicht entfernt werden.");
 }
 
 /** Transfer ownership to another member — definer RPC swaps owner_id + roles
