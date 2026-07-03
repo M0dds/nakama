@@ -782,10 +782,37 @@ export async function deleteList(listId: string): Promise<void> {
  *  list. Watch progress is keyed on items.id, so it's preserved even if the
  *  same item gets re-added later.
  *
+ *  CRITICAL: a synced row must run the REAL un-sync (`unsync_item`) BEFORE the
+ *  delete — same rationale as moveListItem below, but worse if skipped: the
+ *  instance watch rows hang off list_items via ON DELETE CASCADE (migration
+ *  20260531100000), so a bare delete doesn't just strand every member's
+ *  instance progress, it destroys it. `unsync_item` unions each member's
+ *  instance rows back into their own global lane first, so the confirm
+ *  dialog's "Fortschritt bleibt erhalten" promise actually holds.
+ *
+ *  Like moveListItem, sync state is re-read server-fresh rather than trusted
+ *  from the caller's cache — a co-member may have toggled sync mid-session.
+ *
  *  `.select()` after the delete so a silent RLS block (0 rows, no error)
  *  surfaces as a thrown error instead of the optimistic UI claiming success
  *  while the row stays in the table. */
 export async function removeListItem(listItemId: string): Promise<void> {
+  const { data: li, error: liErr } = await supabase
+    .from("list_items")
+    .select("sync_enabled")
+    .eq("id", listItemId)
+    .maybeSingle();
+  if (liErr) throw liErr;
+  if (li === null)
+    throw new Error("Eintrag konnte nicht entfernt werden.");
+
+  if (li.sync_enabled) {
+    const { error: unsyncErr } = await supabase.rpc("unsync_item", {
+      _list_item_id: listItemId,
+    });
+    if (unsyncErr) throw unsyncErr;
+  }
+
   const { data, error } = await supabase
     .from("list_items")
     .delete()

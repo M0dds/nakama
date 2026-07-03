@@ -10,6 +10,9 @@ import {
   resetItemProgress,
 } from "@/lib/queries/episodes";
 import { listsQueryKey, removeListItem } from "@/lib/queries/lists";
+import { coWatchersKey, syncContextKey } from "@/lib/queries/sharing";
+import { homeQueryKey } from "@/lib/queries/home";
+import { calendarQueryKey } from "@/lib/queries/calendar";
 
 /**
  * Unified row-edge action cluster. Pin lives in the SAME flex group as
@@ -36,6 +39,14 @@ export interface DestructiveBundle {
   itemType: string;
   itemSlug: string;
   listShortCode: string;
+  /** Sync-instance awareness (handshake §Sync-Instanzen): reset must target
+   *  the visible lane (instance when synced, global otherwise), and remove
+   *  must tear the sync down via unsync_item before the row delete. Both
+   *  also pick the honest confirm copy. */
+  syncEnabled: boolean;
+  /** Shared list ⇒ removing the one shared list_items row takes the entry
+   *  away from every member — the confirm copy must say so. */
+  listIsShared: boolean;
   onRequestMove: () => void;
   confirming: () => Confirming;
   setConfirming: (next: Confirming) => void;
@@ -61,17 +72,25 @@ export function RowActions(props: Props) {
   // invoked from inside the destructive cluster's <Show>, where the
   // bundle is guaranteed present — hence the non-null assertions.
   const resetMut = createMutation(() => ({
-    mutationFn: () => resetItemProgress(props.destructive!.itemId),
+    // Lane-matched like ResetItemButton: a synced row's visible progress lives
+    // in the INSTANCE lane — resetting without the listItemId would wipe the
+    // caller's unrelated GLOBAL progress while the row appears unchanged.
+    mutationFn: () => {
+      const d = props.destructive!;
+      return resetItemProgress(d.itemId, d.syncEnabled ? d.listItemId : null);
+    },
     onSuccess: () => {
       const d = props.destructive!;
       // Reset flips the "Neue Folge" badge on every list this item is in
       // (same item can live in multiple lists). Same fan-out as the
-      // toggle/cascade mutations on ItemDetail.
+      // toggle/cascade mutations on ItemDetail; co-watchers because a synced
+      // reset fans out to every member (migration 20260531160000).
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(d.itemType, d.itemSlug),
       });
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      void queryClient.invalidateQueries({ queryKey: coWatchersKey(d.itemId) });
       toast(`Fortschritt für „${d.itemTitle}“ zurückgesetzt.`, {
         icon: RotateCcw,
       });
@@ -89,6 +108,22 @@ export function RowActions(props: Props) {
       // covered by the ["list"] prefix).
       void queryClient.invalidateQueries({ queryKey: listsQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["list"] });
+      if (d.syncEnabled) {
+        // removeListItem ran unsync_item first (instance → global lanes for
+        // every member) — same teardown fan-out as MoveItemDialog: stale sync
+        // context, co-watcher eye, lane-switched episode reads, Home/Kalender.
+        void queryClient.invalidateQueries({
+          queryKey: syncContextKey(d.listItemId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: coWatchersKey(d.itemId),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: episodesQueryKey(d.itemType, d.itemSlug),
+        });
+        void queryClient.invalidateQueries({ queryKey: homeQueryKey });
+        void queryClient.invalidateQueries({ queryKey: calendarQueryKey });
+      }
       toast(`„${d.itemTitle}“ aus der Liste entfernt.`, { icon: ListX });
       d.setConfirming(null);
     },
@@ -167,8 +202,14 @@ export function RowActions(props: Props) {
               title={getD().itemTitle}
               body={
                 getD().confirming() === "remove"
-                  ? "Der Titel wird aus dieser Liste entfernt. Dein Fortschritt bleibt erhalten."
-                  : "Dein Fortschritt für diesen Titel wird auf null gesetzt. Das lässt sich nicht rückgängig machen."
+                  ? getD().listIsShared
+                    ? getD().syncEnabled
+                      ? "Diese Liste ist geteilt. Entfernen nimmt den Titel auch den anderen Mitgliedern und beendet die Synchronisierung. Der Fortschritt aller bleibt erhalten."
+                      : "Diese Liste ist geteilt. Entfernen nimmt den Titel auch den anderen Mitgliedern. Dein Fortschritt bleibt erhalten."
+                    : "Der Titel wird aus dieser Liste entfernt. Dein Fortschritt bleibt erhalten."
+                  : getD().syncEnabled
+                    ? "Der synchronisierte Fortschritt für diesen Titel wird für alle Mitglieder auf null gesetzt. Das lässt sich nicht rückgängig machen."
+                    : "Dein Fortschritt für diesen Titel wird auf null gesetzt. Das lässt sich nicht rückgängig machen."
               }
               confirmLabel={
                 getD().confirming() === "remove" ? "Entfernen" : "Zurücksetzen"

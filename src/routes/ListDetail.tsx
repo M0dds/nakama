@@ -370,6 +370,7 @@ export default function ListDetail() {
                   <ListEntries
                     items={items.data!}
                     listShortCode={params.shortCode}
+                    listIsShared={list.data?.isShared ?? false}
                     tracksHome={list.data?.tracksHome ?? true}
                     dragSettling={dragSettling}
                     onActiveCover={setWashCover}
@@ -565,6 +566,7 @@ const UNPINNED_PER_PAGE = 12;
 function ListEntries(props: {
   items: ListEntry[];
   listShortCode: string;
+  listIsShared: boolean;
   tracksHome: boolean;
   dragSettling: () => boolean;
   onActiveCover?: (url: string | null) => void;
@@ -597,6 +599,7 @@ function ListEntries(props: {
     <SortableEntryRow
       entry={entry}
       listShortCode={props.listShortCode}
+      listIsShared={props.listIsShared}
       tracksHome={props.tracksHome}
       dragSettling={props.dragSettling}
       onHover={() => props.onActiveCover?.(coverOf(entry))}
@@ -627,6 +630,7 @@ function ListEntries(props: {
 function SortableEntryRow(props: {
   entry: ListEntry;
   listShortCode: string;
+  listIsShared: boolean;
   tracksHome: boolean;
   dragSettling: () => boolean;
   onHover?: () => void;
@@ -729,6 +733,8 @@ function SortableEntryRow(props: {
             itemType: props.entry.type,
             itemSlug: props.entry.slug,
             listShortCode: props.listShortCode,
+            syncEnabled: props.entry.syncEnabled,
+            listIsShared: props.listIsShared,
             onRequestMove: () => props.onRequestMove(props.entry),
             confirming,
             setConfirming,
