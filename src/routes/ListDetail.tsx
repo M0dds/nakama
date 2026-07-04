@@ -41,7 +41,11 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
 import { DeleteListButton } from "@/components/DeleteListButton";
 import { LeaveListButton } from "@/components/LeaveListButton";
-import { RowActions, type Confirming } from "@/components/RowActions";
+import {
+  RowActions,
+  RowActionsToggle,
+  type Confirming,
+} from "@/components/RowActions";
 import { Skeleton } from "@/components/Skeleton";
 import { ListTrackingToggle } from "@/components/ListTrackingToggle";
 import { ListCategoryControl } from "@/components/ListCategoryControl";
@@ -645,6 +649,9 @@ function SortableEntryRow(props: {
   // no callback roundtrip. When non-null, pin + drag-handle fade out (same
   // 200ms ease-quart) so the destructive prompt owns the row's attention.
   const [confirming, setConfirming] = createSignal<Confirming>(null);
+  // Coarse-pointer reveal: hover can't show the action cluster on touch, so
+  // the row-edge "⋯" (RowActionsToggle) pins it visible instead.
+  const [touchOpen, setTouchOpen] = createSignal(false);
 
   return (
     <li
@@ -725,6 +732,7 @@ function SortableEntryRow(props: {
         <RowActions
           pinned={props.entry.pinned}
           noun="Eintrag"
+          forceVisible={touchOpen()}
           onTogglePin={() => props.onTogglePin(props.entry)}
           destructive={{
             itemId: props.entry.itemId,
@@ -744,7 +752,13 @@ function SortableEntryRow(props: {
           activators={sortable.dragActivators}
           noun={props.entry.title}
           hidden={confirming() !== null}
+          forceVisible={touchOpen()}
           class="ml-2"
+        />
+        <RowActionsToggle
+          open={touchOpen()}
+          noun="Eintrag"
+          onToggle={() => setTouchOpen((o) => !o)}
         />
       </div>
     </li>

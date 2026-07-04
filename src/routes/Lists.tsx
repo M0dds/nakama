@@ -36,7 +36,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
 import { InvitationsInbox } from "@/components/InvitationsInbox";
-import { RowActions } from "@/components/RowActions";
+import { RowActions, RowActionsToggle } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 import { Skeleton } from "@/components/Skeleton";
 import { ListCover, coverSeedDataUri } from "@/components/GeneratedCover";
@@ -499,6 +499,9 @@ function SortableListRow(props: {
   const sortable = createSortable(props.list.id, {
     section: sectionKey(props.cat, props.list.pinned),
   });
+  // Coarse-pointer reveal: hover can't show pin/handle on touch, so the
+  // row-edge "⋯" (RowActionsToggle) pins them visible instead.
+  const [touchOpen, setTouchOpen] = createSignal(false);
 
   return (
     <li
@@ -574,12 +577,19 @@ function SortableListRow(props: {
         <RowActions
           pinned={props.list.pinned}
           noun="Liste"
+          forceVisible={touchOpen()}
           onTogglePin={() => props.onTogglePin(props.list)}
         />
         <DragHandle
           activators={sortable.dragActivators}
           noun={props.list.name}
+          forceVisible={touchOpen()}
           class="ml-2"
+        />
+        <RowActionsToggle
+          open={touchOpen()}
+          noun="Liste"
+          onToggle={() => setTouchOpen((o) => !o)}
         />
       </div>
     </li>

@@ -25,6 +25,10 @@ interface Props {
    *  RowActions are in a two-step confirm — the pinned pin shouldn't
    *  compete with a destructive prompt for attention. */
   hidden?: boolean;
+  /** Force-show override — the row's coarse-pointer "⋯" toggle is open.
+   *  Hover can't reveal anything on touch, so the toggle pins the whole
+   *  cluster visible instead (`hidden` still wins). */
+  forceVisible?: boolean;
   onToggle: () => void;
 }
 
@@ -59,11 +63,20 @@ export function PinButton(props: Props) {
           // disappear matches the destructive cluster's hard-cut Show swap
           // — otherwise the pin would linger 200ms after Reset/Move/Remove
           // are already gone, reading as a flash.
+          //
+          // Rest state on coarse pointers is display:none (not opacity-0):
+          // hover can never reveal it there, so an in-flow invisible button
+          // would only squeeze the row title and be invisibly tappable. The
+          // row's "⋯" toggle brings it back via forceVisible.
           props.hidden
             ? "pointer-events-none opacity-0"
-            : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 ${
-                props.pinned ? "text-accent" : "text-text-muted hover:text-text"
-              }`
+            : props.forceVisible
+              ? `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] opacity-100 hover:bg-bg ${
+                  props.pinned ? "text-accent" : "text-text-muted hover:text-text"
+                }`
+              : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:hidden ${
+                  props.pinned ? "text-accent" : "text-text-muted hover:text-text"
+                }`
         }`}
       >
         <Pin

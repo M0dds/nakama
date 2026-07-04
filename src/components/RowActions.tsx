@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { ArrowRightLeft, ListX, RotateCcw, X } from "lucide-solid";
+import { ArrowRightLeft, Ellipsis, ListX, RotateCcw, X } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
 import { PinButton } from "@/components/PinButton";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -59,6 +59,10 @@ interface Props {
   pinned: boolean;
   /** Used in pin aria-labels + the destructive prompts. "Liste" or "Eintrag". */
   noun: string;
+  /** The row's coarse-pointer "⋯" toggle is open — pin the whole cluster
+   *  visible. On touch there is no hover to reveal anything; at rest the
+   *  cluster is display:none there (see RowActionsToggle). */
+  forceVisible?: boolean;
   onTogglePin: () => void;
   destructive?: DestructiveBundle;
 }
@@ -130,11 +134,13 @@ export function RowActions(props: Props) {
   }));
 
   // Keep the destructive cluster pinned visible whenever a confirm is
-  // active OR the parent's MoveDialog is open. PinButton uses its own
-  // independent visibility logic (sticky when item is pinned).
+  // active, the parent's MoveDialog is open, OR the row's coarse-pointer
+  // "⋯" toggle is open. PinButton uses its own independent visibility
+  // logic (sticky when item is pinned).
   const isDestructivePinned = () =>
     props.destructive?.confirming() !== null ||
-    props.destructive?.externallyPinned === true;
+    props.destructive?.externallyPinned === true ||
+    props.forceVisible === true;
 
   return (
     <div class="flex shrink-0 items-center gap-1">
@@ -142,6 +148,7 @@ export function RowActions(props: Props) {
         pinned={props.pinned}
         noun={props.noun}
         hidden={!!props.destructive?.confirming()}
+        forceVisible={props.forceVisible}
         onToggle={props.onTogglePin}
       />
       <Show when={props.destructive}>
@@ -151,7 +158,10 @@ export function RowActions(props: Props) {
               class={`flex items-center gap-1 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] ${
                 isDestructivePinned()
                   ? "opacity-100"
-                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+                  : // Rest state on coarse pointers is display:none — hover
+                    // can't reveal it there, and in-flow invisible buttons
+                    // would squeeze the row title (see RowActionsToggle).
+                    "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:hidden"
               }`}
             >
               <Tooltip label="Fortschritt zurücksetzen">
@@ -229,5 +239,47 @@ export function RowActions(props: Props) {
         )}
       </Show>
     </div>
+  );
+}
+
+/**
+ * Coarse-pointer entry to the row's hover-reveal vocabulary. The whole
+ * cluster (pin / reset / move / remove / drag handle) reveals on hover —
+ * which doesn't exist on touch, where the controls are display:none at
+ * rest. This "⋯" renders ONLY on coarse pointers, at the row's right edge,
+ * and toggles the row's forceVisible signal: the same cluster appears
+ * inline and its buttons open the same (touch-friendly) dialogs.
+ *
+ * Quiet at rest (muted ghost icon, like the episode-tick idiom); open state
+ * carries the surface tint so the second tap reads as "close".
+ */
+export function RowActionsToggle(props: {
+  open: boolean;
+  /** For the aria-label: "Liste" / "Eintrag". */
+  noun: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        // Sits beside (lists detail) or near (overview) the row's <A> —
+        // never navigate on toggle.
+        e.preventDefault();
+        e.stopPropagation();
+        props.onToggle();
+      }}
+      aria-expanded={props.open}
+      aria-label={
+        props.open
+          ? `Aktionen für ${props.noun} ausblenden`
+          : `Aktionen für ${props.noun} anzeigen`
+      }
+      class={`hidden size-7 shrink-0 items-center justify-center rounded-xs transition-colors pointer-coarse:inline-flex ${
+        props.open ? "bg-surface text-text" : "text-text-muted"
+      }`}
+    >
+      <Ellipsis class="size-4" strokeWidth={1.75} aria-hidden />
+    </button>
   );
 }
