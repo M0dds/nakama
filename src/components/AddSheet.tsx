@@ -382,6 +382,12 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
    *  viewport). Not updated on rotation — acceptable for one open cycle. */
   const baseViewportH =
     typeof window !== "undefined" ? window.innerHeight : 0;
+  /** Installed-PWA mode. There iOS handles the keyboard by resizing the
+   *  layout viewport (no webview pan), so the preemptive bridge lift is
+   *  pure needless motion — skipped entirely. */
+  const isStandalone =
+    typeof window !== "undefined" &&
+    window.matchMedia("(display-mode: standalone)").matches;
 
   let inputEl: HTMLInputElement | undefined;
 
@@ -520,22 +526,27 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     // to rise (otherwise iOS pans the webview to free it). Neither → the
     // nav-pill's position.
     //
-    // The preemptive tier is a BRIDGE for the focus→keyboard-arrival gap
-    // only — it must stand down the moment the environment reacts. Two
-    // reaction styles exist: Safari-tab keeps the layout viewport and
-    // shrinks the visual one (→ keyboardOffset takes over, first tier);
-    // standalone-PWA iOS SHRINKS window.innerHeight itself. In that second
-    // mode the re-measured nav anchor (o.top) is already correct — and
-    // applying lastKeyboardInset (measured against the FULL viewport)
-    // against the shrunken one shot the pill to the top edge with the card
-    // collapsing to a sliver behind it. viewportShrunk() detects that mode
-    // by comparing against the mount-time height (the sheet opens with the
-    // keyboard closed, so that baseline is honest).
+    // Two keyboard reaction styles exist, and they want OPPOSITE handling:
+    //
+    //  • Safari-tab keeps the layout viewport and shrinks the visual one →
+    //    keyboardOffset carries the truth, and the preemptive bridge tier
+    //    covers the focus→keyboard-arrival gap (without it iOS pans the
+    //    webview to free an input sitting under the rising keyboard).
+    //
+    //  • Standalone-PWA iOS SHRINKS window.innerHeight itself. There the
+    //    re-measured nav anchor (o.top) is the ONLY truth: residual
+    //    visual-viewport deltas (accessory-bar quirks) parked the pill too
+    //    high on refocus, lastKeyboardInset (measured against the FULL
+    //    viewport) shot it to the top edge, and the bridge added needless
+    //    motion in a mode that never pans. viewportShrunk detects the
+    //    reacted state (mount-time baseline is keyboard-closed, so it's
+    //    honest); isStandalone kills the bridge for the pre-shrink gap too.
     const viewportShrunk = h < baseViewportH - 80;
-    const bottomInset =
-      keyboardOffset() > 0
+    const bottomInset = viewportShrunk
+      ? 0
+      : keyboardOffset() > 0
         ? keyboardOffset()
-        : inputFocused() && !viewportShrunk
+        : !isStandalone && inputFocused()
           ? // Cap the bridge lift: never park the pill above ~60% viewport,
             // whatever a polluted measurement says.
             Math.min(lastKeyboardInset, h * 0.6)
