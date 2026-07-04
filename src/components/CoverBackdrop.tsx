@@ -1,15 +1,27 @@
-import { Show, createEffect, createSignal, untrack } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, untrack } from "solid-js";
 
 /**
  * Ambient cover-art backdrop — the depth layer that gives the glass header and
  * the whole page something real to refract. A cover image is blown up, heavily
- * blurred and PINNED (position: fixed) across the entire viewport, then graded
+ * softened and PINNED (position: fixed) across the entire viewport, then graded
  * into the page bg so text stays legible. Because it's fixed, content scrolls
  * OVER a static image — a parallax-like depth read across the full page, not a
  * band that scrolls away. Deliberately restrained — a hint of depth, not a
  * dominant field. Decorative (aria-hidden, no pointer events); renders nothing
  * when there's no cover — glass over a flat bg is pointless, which is the whole
  * reason this layer exists.
+ *
+ * PERFORMANCE (the 2026-07 standalone-PWA lag): the softening is baked ONCE
+ * per cover into a tiny offscreen canvas (~48px wide, cached per URL) and the
+ * result is simply upscaled full-screen — bilinear stretching from 48px IS the
+ * blur. The previous implementation used CSS `blur(80px)` on a full-viewport
+ * layer, which iOS re-rasterizes on every mount — i.e. on every route change,
+ * since each page mounts its own backdrop — and that single filter dominated
+ * the 1–2s tab-switch freeze in the installed PWA (standalone WebKit is
+ * already slower than Safari, forums.thread/714477). The canvas path needs
+ * CORS-clean pixels: prod covers ride the same-origin media proxy, Supabase
+ * storage sends ACAO:* — dev hits providers directly and may taint, so a
+ * failed bake falls back to the old CSS-blur rendering (dev-only cost).
  *
  * `coverUrl` is reactive: when it changes (e.g. hovering a different card on
  * Home) the two-buffer crossfade fades the new cover in over the old, so the
@@ -23,6 +35,49 @@ import { Show, createEffect, createSignal, untrack } from "solid-js";
  * NOT being a stacking context — otherwise this fixed layer's context would
  * nest inside it and paint above the root-level frame lines.
  */
+
+/** Bake width — small enough that the fullscreen upscale reads as a heavy
+ *  blur, big enough to keep the color fields of a cover recognizable. */
+const BAKE_W = 48;
+
+/** url → baked tiny data-URL ("" = bake failed, use the CSS-blur fallback).
+ *  Module-level: survives route changes, so revisiting a page (or crossfading
+ *  back to a recently hovered cover) never re-decodes or re-draws. */
+const bakeCache = new Map<string, string>();
+
+async function bakeAmbient(url: string): Promise<string> {
+  const cached = bakeCache.get(url);
+  if (cached !== undefined) return cached;
+  let baked = "";
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.decoding = "async";
+    img.src = url;
+    await img.decode();
+    const h = Math.max(
+      1,
+      Math.round((img.naturalHeight / Math.max(1, img.naturalWidth)) * BAKE_W),
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = BAKE_W;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      // Slight in-bake soften + the saturation lift the CSS filter used to
+      // apply. Safari versions without canvas filters just ignore this —
+      // the upscale still does the heavy lifting.
+      ctx.filter = "saturate(1.25) blur(1.5px)";
+      ctx.drawImage(img, 0, 0, BAKE_W, h);
+      baked = canvas.toDataURL("image/png"); // throws on tainted canvas
+    }
+  } catch {
+    baked = ""; // CORS-tainted or undecodable → CSS-blur fallback
+  }
+  bakeCache.set(url, baked);
+  return baked;
+}
+
 export function CoverBackdrop(props: { coverUrl: string | null }) {
   // Two ping-pong buffers. `top` names the buffer currently shown at full
   // opacity; on a cover change we write the new url into the OTHER buffer and
@@ -68,19 +123,35 @@ export function CoverBackdrop(props: { coverUrl: string | null }) {
   );
 }
 
-/** One crossfade buffer: a blurred, overscanned cover that fades its opacity
- *  between 1 (live) and 0 (parked) on the canonical ease-quart curve. */
+/** One crossfade buffer: the baked-tiny cover stretched over the viewport
+ *  (see bakeAmbient), fading its opacity between 1 (live) and 0 (parked) on
+ *  the canonical ease-quart curve. Falls back to the original CSS-blur
+ *  rendering when the bake failed (CORS-tainted dev images). */
 function CoverLayer(props: { url: string | null; visible: boolean }) {
+  const [baked, setBaked] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    const url = props.url;
+    setBaked(null);
+    if (!url) return;
+    let alive = true;
+    void bakeAmbient(url).then((b) => {
+      if (alive) setBaked(b);
+    });
+    onCleanup(() => {
+      alive = false;
+    });
+  });
+
   return (
-    <Show when={props.url}>
-      {(u) => (
-        <img
-          src={u()}
-          alt=""
-          class="absolute inset-0 size-full scale-125 object-cover blur-[80px] saturate-[1.25] transition-opacity duration-500 [transition-timing-function:var(--ease-quart)]"
-          style={{ opacity: props.visible ? 1 : 0 }}
-        />
-      )}
+    <Show when={props.url && baked() !== null}>
+      <img
+        src={baked() || props.url!}
+        alt=""
+        class="absolute inset-0 size-full scale-125 object-cover transition-opacity duration-500 [transition-timing-function:var(--ease-quart)]"
+        classList={{ "blur-[80px] saturate-[1.25]": baked() === "" }}
+        style={{ opacity: props.visible ? 1 : 0 }}
+      />
     </Show>
   );
 }
