@@ -417,19 +417,23 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     vv?.addEventListener("scroll", onResize);
     onResize();
 
-    // 4) Focus. Coarse pointers: focus SYNCHRONOUSLY — we are still inside
-    //    the "+"-tap's call stack (Solid mounts the sheet synchronously on
-    //    the signal flip), and iOS only auto-opens the soft keyboard for a
-    //    focus that happens within a user gesture. A delayed focus (the old
-    //    ANIM_MS timeout) silently failed there: no keyboard until the user
-    //    tapped the pill a second time. The keyboard now rises alongside the
-    //    pill morph, and the visualViewport tracking seats the pill on top of
-    //    it as it comes up. preventScroll: the pill is fixed-positioned —
-    //    Safari's scroll-into-view would fight the body lock.
+    // 4) Focus. Coarse pointers: AppShell's openAdd focused a throwaway
+    //    warm-up input synchronously inside the "+"-tap (iOS only opens the
+    //    soft keyboard for a gesture-attributed focus — both a delayed focus
+    //    AND a mount-time focus of this input proved too indirect). Steal
+    //    the focus onto the real search input here — the keyboard stays up
+    //    across a focus transfer — and clean the warm-up element away. The
+    //    keyboard rises alongside the pill morph; the visualViewport
+    //    tracking seats the pill on top of it. preventScroll: the pill is
+    //    fixed-positioned — Safari's scroll-into-view would fight the lock.
     //    Fine pointers (hardware keyboard, nothing slides up): after the
     //    morph, as before.
-    if (window.matchMedia("(pointer: coarse)").matches) {
+    const warm = document.querySelector<HTMLElement>(
+      "[data-add-keyboard-warmup]",
+    );
+    if (warm) {
       inputEl?.focus({ preventScroll: true });
+      warm.remove();
     } else {
       window.setTimeout(() => inputEl?.focus(), ANIM_MS - 50);
     }

@@ -37,6 +37,24 @@ export function AppShell(props: ParentProps) {
   const ANIM_MS = 500;
 
   const openAdd = () => {
+    // iOS keyboard warm-up (coarse pointers): the soft keyboard only opens
+    // for a focus that iOS attributes to THIS tap, and focusing the sheet's
+    // real input during its mount proved too indirect for Safari. The
+    // battle-tested pattern: synchronously focus a throwaway input right
+    // here in the click handler — the keyboard commits to opening — then
+    // the AddSheet steals focus to the real search input in its onMount
+    // (keyboard stays up across a focus transfer) and removes this element.
+    // font-size 16px so the warm-up itself never triggers the input-zoom.
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      const warm = document.createElement("input");
+      warm.type = "text";
+      warm.setAttribute("data-add-keyboard-warmup", "");
+      warm.setAttribute("aria-hidden", "true");
+      warm.style.cssText =
+        "position:fixed;bottom:24px;left:50%;width:1px;height:24px;opacity:0;border:0;padding:0;font-size:16px;";
+      document.body.appendChild(warm);
+      warm.focus({ preventScroll: true });
+    }
     setAddMounted(true);
     // Double-rAF: a single rAF isn't enough in Solid's render loop. With one
     // rAF the browser may apply BOTH the mount and the visible-flip styles

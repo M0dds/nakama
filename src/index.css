@@ -384,6 +384,22 @@ body {
     color 200ms ease;
 }
 
+/* iOS auto-zooms the whole page when a focused input's font-size is < 16px —
+   and the zoom STAYS after blur (the "tap the search field → the window
+   shoots off top-left → everything is zoomed in afterwards" bug; our body
+   text-* inputs are 15px). Floor every text-entry control at 1rem on touch
+   devices. UNLAYERED on purpose: it must beat text-body/text-mini utilities
+   (cascade layers lose to unlayered rules — the same mechanism the
+   theme-transition note below warns about, here it IS the intent). Range/
+   checkbox/radio carry no text caret, so iOS never zooms them — excluded. */
+@media (pointer: coarse) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: max(1rem, 1em);
+  }
+}
+
 /* Theme-switch crossfade. applyTheme() adds `theme-transition` to <html> for
    the switch window (~--dur-base) so static surfaces (which carry no transition
    of their own) glide their colours instead of hard-cutting — before, only the
