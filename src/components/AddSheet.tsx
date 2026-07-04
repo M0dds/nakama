@@ -375,6 +375,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     w: typeof window !== "undefined" ? window.innerWidth : 0,
     h: typeof window !== "undefined" ? window.innerHeight : 0,
   });
+  /** Layout-viewport height at mount — the sheet always opens with the
+   *  keyboard closed, so this is an honest "no keyboard" baseline. Used to
+   *  detect standalone-PWA iOS, which shrinks window.innerHeight itself
+   *  when the keyboard opens (vs Safari-tab, which only shrinks the visual
+   *  viewport). Not updated on rotation — acceptable for one open cycle. */
+  const baseViewportH =
+    typeof window !== "undefined" ? window.innerHeight : 0;
 
   let inputEl: HTMLInputElement | undefined;
 
@@ -512,11 +519,26 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     // inset, so the input is already clear of where the keyboard is about
     // to rise (otherwise iOS pans the webview to free it). Neither → the
     // nav-pill's position.
+    //
+    // The preemptive tier is a BRIDGE for the focus→keyboard-arrival gap
+    // only — it must stand down the moment the environment reacts. Two
+    // reaction styles exist: Safari-tab keeps the layout viewport and
+    // shrinks the visual one (→ keyboardOffset takes over, first tier);
+    // standalone-PWA iOS SHRINKS window.innerHeight itself. In that second
+    // mode the re-measured nav anchor (o.top) is already correct — and
+    // applying lastKeyboardInset (measured against the FULL viewport)
+    // against the shrunken one shot the pill to the top edge with the card
+    // collapsing to a sliver behind it. viewportShrunk() detects that mode
+    // by comparing against the mount-time height (the sheet opens with the
+    // keyboard closed, so that baseline is honest).
+    const viewportShrunk = h < baseViewportH - 80;
     const bottomInset =
       keyboardOffset() > 0
         ? keyboardOffset()
-        : inputFocused()
-          ? lastKeyboardInset
+        : inputFocused() && !viewportShrunk
+          ? // Cap the bridge lift: never park the pill above ~60% viewport,
+            // whatever a polluted measurement says.
+            Math.min(lastKeyboardInset, h * 0.6)
           : 0;
     const top = bottomInset > 0 ? h - bottomInset - pillH - 16 : o.top;
     if (isDesktop) {
@@ -566,7 +588,9 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       left: `${t.left}px`,
       top: `${topGap}px`,
       width: `${t.width}px`,
-      height: `${t.top - topGap - innerGap}px`,
+      // Clamped: a transient bad pill-top (mid keyboard animation) must
+      // never invert into a negative height.
+      height: `${Math.max(0, t.top - topGap - innerGap)}px`,
     };
   };
 
