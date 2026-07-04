@@ -201,13 +201,17 @@ export function ItemNotes(props: { listId: string; itemId: string }) {
                     </div>
                   </Show>
                 </div>
-                {/* Delete — own blocks only, hover-revealed. */}
+                {/* Delete — own blocks only. Hover-revealed on fine pointers
+                    (pointer-events follow visibility — an invisible X must
+                    not be tappable); always visible on coarse, where hover
+                    can't reveal it. Low-stakes either way: delete has an
+                    undo toast. */}
                 <Show when={n.isSelf && !n.id.startsWith("temp-")}>
                   <button
                     type="button"
                     onClick={() => del.mutate(n)}
                     aria-label="Notiz löschen"
-                    class="shrink-0 rounded-xs p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface hover:text-text focus:opacity-100 group-hover:opacity-100"
+                    class="pointer-events-none shrink-0 rounded-xs p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface hover:text-text focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
                   >
                     <X class="size-4" strokeWidth={1.75} aria-hidden />
                   </button>
