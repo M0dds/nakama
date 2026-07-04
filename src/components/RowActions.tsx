@@ -143,7 +143,18 @@ export function RowActions(props: Props) {
     props.forceVisible === true;
 
   return (
-    <div class="flex shrink-0 items-center gap-1">
+    // On coarse pointers the WHOLE cluster rests at display:none (carried
+    // here on the root, so the row's gap-2 doesn't double up around an empty
+    // box) and re-displays when the "⋯" toggle opens it — display can't
+    // transition, so the reveal-row keyframe animation (fade + slide from
+    // the toggle's side) plays on re-display instead.
+    <div
+      class="flex shrink-0 items-center gap-1"
+      classList={{
+        "pointer-coarse:hidden": !props.forceVisible,
+        "motion-safe:animate-reveal-row": props.forceVisible,
+      }}
+    >
       <PinButton
         pinned={props.pinned}
         noun={props.noun}
@@ -158,10 +169,9 @@ export function RowActions(props: Props) {
               class={`flex items-center gap-1 transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] ${
                 isDestructivePinned()
                   ? "opacity-100"
-                  : // Rest state on coarse pointers is display:none — hover
-                    // can't reveal it there, and in-flow invisible buttons
-                    // would squeeze the row title (see RowActionsToggle).
-                    "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:hidden"
+                  : // Coarse-pointer rest state is handled on the ROOT div
+                    // (display:none until the "⋯" toggle opens it).
+                    "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
               }`}
             >
               <Tooltip label="Fortschritt zurücksetzen">

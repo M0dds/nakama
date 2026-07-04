@@ -592,16 +592,15 @@ function SortableListRow(props: {
           forceVisible={touchOpen()}
           onTogglePin={() => props.onTogglePin(props.list)}
         />
-        <DragHandle
-          activators={sortable.dragActivators}
-          noun={props.list.name}
-          forceVisible={touchOpen()}
-          class="ml-2"
-        />
         <RowActionsToggle
           open={touchOpen()}
           noun="Liste"
           onToggle={() => setTouchOpen((o) => !o)}
+        />
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.list.name}
+          class="ml-2"
         />
       </div>
     </li>

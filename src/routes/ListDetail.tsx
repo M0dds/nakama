@@ -758,17 +758,16 @@ function SortableEntryRow(props: {
             setConfirming,
           }}
         />
-        <DragHandle
-          activators={sortable.dragActivators}
-          noun={props.entry.title}
-          hidden={confirming() !== null}
-          forceVisible={touchOpen()}
-          class="ml-2"
-        />
         <RowActionsToggle
           open={touchOpen()}
           noun="Eintrag"
           onToggle={() => setTouchOpen((o) => !o)}
+        />
+        <DragHandle
+          activators={sortable.dragActivators}
+          noun={props.entry.title}
+          hidden={confirming() !== null}
+          class="ml-2"
         />
       </div>
     </li>

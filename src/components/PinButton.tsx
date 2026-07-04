@@ -64,17 +64,16 @@ export function PinButton(props: Props) {
           // — otherwise the pin would linger 200ms after Reset/Move/Remove
           // are already gone, reading as a flash.
           //
-          // Rest state on coarse pointers is display:none (not opacity-0):
-          // hover can never reveal it there, so an in-flow invisible button
-          // would only squeeze the row title and be invisibly tappable. The
-          // row's "⋯" toggle brings it back via forceVisible.
+          // Coarse-pointer rest state is handled by the RowActions ROOT div
+          // (display:none until the "⋯" toggle opens it via forceVisible —
+          // hover can never reveal anything on touch).
           props.hidden
             ? "pointer-events-none opacity-0"
             : props.forceVisible
               ? `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] opacity-100 hover:bg-bg ${
                   props.pinned ? "text-accent" : "text-text-muted hover:text-text"
                 }`
-              : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:hidden ${
+              : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 ${
                   props.pinned ? "text-accent" : "text-text-muted hover:text-text"
                 }`
         }`}
