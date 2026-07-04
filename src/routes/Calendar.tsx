@@ -683,13 +683,16 @@ function DayPane(props: {
   onActiveCover?: (url: string | null) => void;
 }) {
   // Cover backdrop: hovering an event reports its cover up; default to the
-  // selected day's first event. Track the DAY (iso) only via on() — a realtime
-  // refetch (same day, new event objects) must not clobber a live hover.
+  // selected day's first event. Deps are the DAY (iso) + the first event's
+  // IDENTITY (episodeId, not the object) — iso alone fires once on mount
+  // while events is still [] (cold load: no default wash until the first
+  // hover), and the object reference would refire on every realtime refetch
+  // (same day, new event objects) and clobber a live hover.
   const coverOf = (e?: CalendarEvent) =>
     e ? coverFor(e.coverUrl) ?? e.coverUrl ?? null : null;
   createEffect(
     on(
-      () => props.iso,
+      [() => props.iso, () => props.events[0]?.episodeId],
       () => props.onActiveCover?.(coverOf(props.events[0])),
     ),
   );
