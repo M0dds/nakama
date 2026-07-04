@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { Camera, Dices, Loader2, RotateCcw } from "lucide-solid";
+import { Camera, Dices, Loader2, Pencil, RotateCcw, X } from "lucide-solid";
 import { Show } from "solid-js";
 import { useToast } from "@/lib/toast";
 import {
@@ -36,6 +36,11 @@ export function EditableListCover(props: {
   const [uploading, setUploading] = createSignal(false);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
   const [cropOpen, setCropOpen] = createSignal(false);
+  // Coarse-pointer reveal: hover can't show the overlay on touch — worse, its
+  // zones used to be invisible-but-tappable (a blind tap could reroll a shared
+  // list's cover, the old seed gone for good). A visible pencil chip toggles
+  // the overlay open instead; the zones only accept input while visible.
+  const [touchOpen, setTouchOpen] = createSignal(false);
 
   const detailKey = () => listQueryKey(props.shortCode);
 
@@ -146,6 +151,17 @@ export function EditableListCover(props: {
   const doReroll = () =>
     rerollMutation.mutate(Math.floor(Math.random() * 2_000_000_000));
 
+  const busy = () =>
+    uploading() || resetMutation.isPending || rerollMutation.isPending;
+
+  /** Zone interactivity follows zone visibility. Exclusive branches: when
+   *  revealed (touch-open or op pending) plain auto; otherwise none at rest,
+   *  hover-restored on fine pointers only. */
+  const zoneEvents = () =>
+    touchOpen() || busy()
+      ? { "pointer-events-auto": true }
+      : { "pointer-events-none group-hover:pointer-events-auto": true };
+
   const onPick = (e: Event & { currentTarget: HTMLInputElement }) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = ""; // allow re-picking the same file
@@ -178,22 +194,26 @@ export function EditableListCover(props: {
           class="size-full"
         />
 
-        {/* Hover overlay, revealed on cover-hover. Two stacked zones — TOP
-            uploads a custom image; BOTTOM either RESETS to the generated cover
-            (when a custom one is set) or REROLLS the generated cover to a fresh
-            look (when none is). A base dim shows both, the hovered zone deepens
-            so the target is unambiguous. Stays visible while any op is pending
-            so the spinner shows. */}
+        {/* Overlay — revealed on cover-hover (fine pointers) or via the pencil
+            chip (coarse). Two stacked zones — TOP uploads a custom image;
+            BOTTOM either RESETS to the generated cover (when a custom one is
+            set) or REROLLS the generated cover to a fresh look (when none is).
+            A base dim shows both, the hovered zone deepens so the target is
+            unambiguous. Stays visible while any op is pending so the spinner
+            shows. The zones' pointer-events FOLLOW visibility (exclusive
+            classList branches, never both — cascade order between two naked
+            pointer-events utilities is arbitrary): invisible zones must never
+            eat a tap. */}
         <div
           class="pointer-events-none absolute inset-0 flex flex-col opacity-0 transition-opacity group-hover:opacity-100"
           classList={{
-            "opacity-100":
-              uploading() || resetMutation.isPending || rerollMutation.isPending,
+            "opacity-100": touchOpen() || busy(),
           }}
         >
           <div class="pointer-events-none absolute inset-0 bg-black/40" aria-hidden />
           <label
-            class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30"
+            class="relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30"
+            classList={zoneEvents()}
             title="Neues Cover hochladen"
             aria-label="Neues Cover hochladen"
           >
@@ -218,7 +238,8 @@ export function EditableListCover(props: {
               type="button"
               onClick={() => resetMutation.mutate()}
               disabled={resetMutation.isPending || uploading()}
-              class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              class="relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              classList={zoneEvents()}
               title="Auf generiertes Cover zurücksetzen"
               aria-label="Auf generiertes Cover zurücksetzen"
             >
@@ -237,7 +258,8 @@ export function EditableListCover(props: {
               type="button"
               onClick={doReroll}
               disabled={rerollMutation.isPending || uploading()}
-              class="pointer-events-auto relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              class="relative flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-white transition-colors hover:bg-black/30 disabled:cursor-default"
+              classList={zoneEvents()}
               title="Neues Cover würfeln"
               aria-label="Neues Cover würfeln"
             >
@@ -252,6 +274,25 @@ export function EditableListCover(props: {
             </button>
           </Show>
         </div>
+
+        {/* Coarse-pointer entry: hover can't reveal the overlay on touch, so
+            a visible pencil chip toggles it. Renders only on coarse pointers;
+            sits above the overlay (z) so it stays tappable as the close. */}
+        <button
+          type="button"
+          onClick={() => setTouchOpen((o) => !o)}
+          aria-expanded={touchOpen()}
+          aria-label={
+            touchOpen() ? "Cover-Aktionen ausblenden" : "Cover bearbeiten"
+          }
+          class="absolute bottom-1.5 right-1.5 z-10 hidden size-7 items-center justify-center rounded-xs bg-black/45 text-white pointer-coarse:flex"
+        >
+          {touchOpen() ? (
+            <X class="size-4" strokeWidth={1.75} aria-hidden />
+          ) : (
+            <Pencil class="size-3.5" strokeWidth={1.75} aria-hidden />
+          )}
+        </button>
       </div>
 
       <AvatarCropDialog
