@@ -379,10 +379,13 @@ function WasKommt(props: {
         class="hidden gap-3 md:grid"
         style={{ "grid-template-columns": gridCols(), transition: SPRING }}
         onMouseLeave={() => {
-          // Snap the highlight back to the first card on hover-capable
-          // devices only — touch's tap-to-activate stays sticky.
+          // Snap the highlight back to the first card ON THIS PAGE on
+          // hover-capable devices only — touch's tap-to-activate stays
+          // sticky. items[0] would point at page 1's card, which isn't
+          // rendered on page ≥2: no card would carry the active state and
+          // the backdrop would follow an invisible cover.
           if (window.matchMedia("(hover: hover)").matches) {
-            setActiveId(entryKey(props.items[0]));
+            setActiveId(entryKey(desktopVisible()[0]));
           }
         }}
       >
