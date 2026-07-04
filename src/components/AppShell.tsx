@@ -42,16 +42,19 @@ export function AppShell(props: ParentProps) {
     // real input during its mount proved too indirect for Safari. The
     // battle-tested pattern: synchronously focus a throwaway input right
     // here in the click handler — the keyboard commits to opening — then
-    // the AddSheet steals focus to the real search input in its onMount
+    // the AddSheet steals focus to the real search input once IT is visible
     // (keyboard stays up across a focus transfer) and removes this element.
-    // font-size 16px so the warm-up itself never triggers the input-zoom.
+    // Positioned mid-screen, NOT at the bottom: iOS pans the whole webview
+    // up when the focused element would sit under the rising keyboard —
+    // that pan was the "overlay slides off the top" bug. font-size 16px so
+    // the warm-up itself never triggers the input-zoom.
     if (window.matchMedia("(pointer: coarse)").matches) {
       const warm = document.createElement("input");
       warm.type = "text";
       warm.setAttribute("data-add-keyboard-warmup", "");
       warm.setAttribute("aria-hidden", "true");
       warm.style.cssText =
-        "position:fixed;bottom:24px;left:50%;width:1px;height:24px;opacity:0;border:0;padding:0;font-size:16px;";
+        "position:fixed;top:35%;left:16px;width:1px;height:24px;opacity:0;border:0;padding:0;font-size:16px;pointer-events:none;";
       document.body.appendChild(warm);
       warm.focus({ preventScroll: true });
     }

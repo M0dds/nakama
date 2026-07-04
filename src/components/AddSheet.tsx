@@ -347,6 +347,12 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   /** Bottom-edge offset for the pill — reads as 0 normally, grows when the
    *  mobile soft keyboard pushes the visualViewport up. */
   const [keyboardOffset, setKeyboardOffset] = createSignal(0);
+  /** The visual viewport's offset inside the layout viewport. Stays 0 until
+   *  iOS pans the webview (it does when it decides a focused element sits
+   *  under the keyboard). Fixed-position chrome is laid out in LAYOUT
+   *  coordinates, so the card must add this to stay on screen during a pan
+   *  — otherwise it slides off the top. */
+  const [vvTop, setVvTop] = createSignal(0);
   /** Viewport size — re-evaluated on resize so the pill/card recompute
    *  their target geometry on rotation / window-resize. */
   const [viewport, setViewport] = createSignal({
@@ -410,6 +416,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       if (vv) {
         const offset = window.innerHeight - vv.height - vv.offsetTop;
         setKeyboardOffset(Math.max(0, offset));
+        setVvTop(vv.offsetTop);
       }
     };
     window.addEventListener("resize", onResize);
@@ -420,25 +427,31 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     // 4) Focus. Coarse pointers: AppShell's openAdd focused a throwaway
     //    warm-up input synchronously inside the "+"-tap (iOS only opens the
     //    soft keyboard for a gesture-attributed focus — both a delayed focus
-    //    AND a mount-time focus of this input proved too indirect). Steal
-    //    the focus onto the real search input here — the keyboard stays up
-    //    across a focus transfer — and clean the warm-up element away. The
-    //    keyboard rises alongside the pill morph; the visualViewport
-    //    tracking seats the pill on top of it. preventScroll: the pill is
-    //    fixed-positioned — Safari's scroll-into-view would fight the lock.
-    //    Fine pointers (hardware keyboard, nothing slides up): after the
-    //    morph, as before.
+    //    AND a mount-time focus of this input proved too indirect). The
+    //    warm-up HOLDS the focus (and the keyboard) through the morph — an
+    //    immediate transfer killed the keyboard, because the real input
+    //    still sat inside the opacity-0 pill and iOS drops the keyboard for
+    //    an invisible focus target. Once the pill has landed (ANIM_MS) —
+    //    seated above the keyboard by the visualViewport tracking, so the
+    //    hand-over triggers no pan — steal the focus onto the real input
+    //    (the keyboard survives a focus transfer) and clean the warm-up
+    //    away. preventScroll: the pill is fixed-positioned — Safari's
+    //    scroll-into-view would fight the lock.
+    //    Fine pointers (hardware keyboard, nothing slides up): as before.
     const warm = document.querySelector<HTMLElement>(
       "[data-add-keyboard-warmup]",
     );
-    if (warm) {
-      inputEl?.focus({ preventScroll: true });
-      warm.remove();
-    } else {
-      window.setTimeout(() => inputEl?.focus(), ANIM_MS - 50);
-    }
+    const focusTimer = window.setTimeout(
+      () => {
+        inputEl?.focus({ preventScroll: true });
+        warm?.remove();
+      },
+      warm ? ANIM_MS : ANIM_MS - 50,
+    );
 
     onCleanup(() => {
+      window.clearTimeout(focusTimer);
+      warm?.remove();
       document.removeEventListener("keydown", onKey);
       b.position = prevLock.position;
       b.top = prevLock.top;
@@ -508,10 +521,14 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   };
 
   /** Card sits just above the pill, fills the space up to the top of the
-   *  viewport (minus a small safe-area). */
+   *  VISUAL viewport (minus a small safe-area) — vvTop() anchors it to the
+   *  visible region when iOS pans the webview for the keyboard; anchored to
+   *  the layout viewport it slides off the top of the screen. (The pill
+   *  needs no such term: its keyboard branch is bottom-anchored via
+   *  keyboardOffset, whose formula already contains vv.offsetTop.) */
   const cardStyle = () => {
     const t = targetRect();
-    const topGap = 24;
+    const topGap = vvTop() + 24;
     const innerGap = 12; // space between card and pill
     return {
       left: `${t.left}px`,
