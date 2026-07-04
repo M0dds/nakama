@@ -372,13 +372,33 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     // 1) Measure the BottomNav pill — that's our morph origin.
     measureOrigin();
 
-    // 2) Lock body scroll, esc-to-close.
+    // 2) Scroll lock + esc-to-close. `overflow: hidden` alone does NOT stop
+    //    iOS touch panning — with the soft keyboard up, Safari could still
+    //    drag the layout viewport around (the whole sheet slid off-screen,
+    //    the pill visually "fell" below the keyboard, and everything
+    //    re-settled on release). The classic position:fixed body lock makes
+    //    the document genuinely unscrollable; scroll position is restored on
+    //    close.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") props.onClose();
     };
     document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const scrollY = window.scrollY;
+    const b = document.body.style;
+    const prevLock = {
+      position: b.position,
+      top: b.top,
+      left: b.left,
+      right: b.right,
+      width: b.width,
+      overflow: b.overflow,
+    };
+    b.position = "fixed";
+    b.top = `-${scrollY}px`;
+    b.left = "0";
+    b.right = "0";
+    b.width = "100%";
+    b.overflow = "hidden";
 
     // 3) Visual-viewport tracking for the mobile soft keyboard. When it
     //    opens, vv.height shrinks below window.innerHeight; we offset the
@@ -397,14 +417,32 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     vv?.addEventListener("scroll", onResize);
     onResize();
 
-    // Focus the input after the morph is well underway so iOS doesn't open
-    // the keyboard before the pill has reached its target — that would
-    // yank vvOffset mid-transition and look jittery.
-    window.setTimeout(() => inputEl?.focus(), ANIM_MS - 50);
+    // 4) Focus. Coarse pointers: focus SYNCHRONOUSLY — we are still inside
+    //    the "+"-tap's call stack (Solid mounts the sheet synchronously on
+    //    the signal flip), and iOS only auto-opens the soft keyboard for a
+    //    focus that happens within a user gesture. A delayed focus (the old
+    //    ANIM_MS timeout) silently failed there: no keyboard until the user
+    //    tapped the pill a second time. The keyboard now rises alongside the
+    //    pill morph, and the visualViewport tracking seats the pill on top of
+    //    it as it comes up. preventScroll: the pill is fixed-positioned —
+    //    Safari's scroll-into-view would fight the body lock.
+    //    Fine pointers (hardware keyboard, nothing slides up): after the
+    //    morph, as before.
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      inputEl?.focus({ preventScroll: true });
+    } else {
+      window.setTimeout(() => inputEl?.focus(), ANIM_MS - 50);
+    }
 
     onCleanup(() => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      b.position = prevLock.position;
+      b.top = prevLock.top;
+      b.left = prevLock.left;
+      b.right = prevLock.right;
+      b.width = prevLock.width;
+      b.overflow = prevLock.overflow;
+      window.scrollTo(0, scrollY);
       window.removeEventListener("resize", onResize);
       vv?.removeEventListener("resize", onResize);
       vv?.removeEventListener("scroll", onResize);
@@ -546,7 +584,10 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           </button>
         </header>
 
-        <div class="min-h-0 flex-1 overflow-y-auto">
+        {/* overscroll-contain: reaching the end of the results must not chain
+            the scroll into the (locked) page — iOS would rubber-band the whole
+            sheet. */}
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <Show
             when={listOptions().length > 0}
             fallback={
@@ -660,6 +701,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               class="min-w-0 flex-1 bg-transparent py-2 text-body text-nav-fg placeholder:text-nav-fg/50 focus:outline-none"
               autocomplete="off"
               spellcheck={false}
+              enterkeyhint="search"
               aria-label="Suchen"
             />
           </div>
