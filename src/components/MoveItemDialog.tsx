@@ -114,6 +114,10 @@ export function MoveItemDialog(props: Props) {
     null,
   );
   let closeTimer: number | null = null;
+  let cardEl: HTMLDivElement | undefined;
+  // The element that opened the dialog — focus returns there on close so
+  // keyboard/SR users don't drop to <body>.
+  let opener: HTMLElement | null = null;
 
   createEffect(() => {
     if (props.open) {
@@ -127,9 +131,16 @@ export function MoveItemDialog(props: Props) {
         itemSynced: props.itemSynced,
       });
       setPendingTarget(null);
+      opener = document.activeElement as HTMLElement | null;
       setMounted(true);
       requestAnimationFrame(() =>
-        requestAnimationFrame(() => setVisible(true)),
+        requestAnimationFrame(() => {
+          setVisible(true);
+          // Move focus INTO the dialog (SR announces it via aria-labelledby,
+          // Tab stops walking the background). The card, not the first list
+          // row — a stray Enter must not fire a move.
+          cardEl?.focus();
+        }),
       );
     } else {
       setVisible(false);
@@ -140,6 +151,8 @@ export function MoveItemDialog(props: Props) {
         setPendingTarget(null);
         closeTimer = null;
       }, ANIM_MS);
+      if (opener?.isConnected) opener.focus();
+      opener = null;
     }
   });
 
@@ -267,7 +280,9 @@ export function MoveItemDialog(props: Props) {
             there); the consistency makes both dialogs read as the same
             opening gesture. */}
         <div
-          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+          ref={cardEl}
+          tabindex="-1"
+          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] focus:outline-none ${
             visible() ? "opacity-100" : "opacity-0"
           }`}
         >

@@ -61,6 +61,11 @@ export function ConfirmDialog(props: Props) {
   const [snap, setSnap] = createSignal<ConfirmContent | null>(null);
   const [typed, setTyped] = createSignal("");
   let closeTimer: number | null = null;
+  let cardEl: HTMLDivElement | undefined;
+  let phraseEl: HTMLInputElement | undefined;
+  // The element that opened the dialog — focus returns there on close so
+  // keyboard/SR users don't drop to <body>.
+  let opener: HTMLElement | null = null;
 
   const normalize = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
   // No phrase required → always satisfied; otherwise the typed value must match.
@@ -83,9 +88,18 @@ export function ConfirmDialog(props: Props) {
         confirmPhrase: props.confirmPhrase,
       });
       setTyped("");
+      opener = document.activeElement as HTMLElement | null;
       setMounted(true);
       requestAnimationFrame(() =>
-        requestAnimationFrame(() => setVisible(true)),
+        requestAnimationFrame(() => {
+          setVisible(true);
+          // Move focus INTO the dialog (SR announces it, Tab stops walking the
+          // background). The phrase field when one is required — it's the
+          // gating control — otherwise the card itself: focusing a button
+          // would put Enter one keypress away from a destructive commit.
+          // (isConnected: the ref survives a previous phrase-dialog unmount.)
+          (phraseEl?.isConnected ? phraseEl : cardEl)?.focus();
+        }),
       );
     } else {
       setVisible(false);
@@ -95,6 +109,8 @@ export function ConfirmDialog(props: Props) {
         setSnap(null);
         closeTimer = null;
       }, ANIM_MS);
+      if (opener?.isConnected) opener.focus();
+      opener = null;
     }
   });
 
@@ -142,7 +158,9 @@ export function ConfirmDialog(props: Props) {
           }`}
         />
         <div
-          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+          ref={cardEl}
+          tabindex="-1"
+          class={`relative flex w-full max-w-sm flex-col overflow-hidden rounded-sm bg-bg dark:bg-surface shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] focus:outline-none ${
             visible() ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -192,6 +210,7 @@ export function ConfirmDialog(props: Props) {
                   Bestätigen
                 </label>
                 <input
+                  ref={phraseEl}
                   id="confirm-dialog-phrase"
                   type="text"
                   autocomplete="off"
