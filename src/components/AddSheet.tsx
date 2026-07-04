@@ -42,23 +42,26 @@ const MEDIA_FILTERS: { value: MediaType; label: string; disabled?: boolean }[] =
  *
  * The visual idea (Apple-style shared-element transition):
  *
- *   ┌─────────────────────────┐
- *   │ ●HINZUFÜGEN ZU ▾Liste ✕│ ← Card (page-tier: bg, hairlines, hard corners)
- *   ├─────────────────────────┤
- *   │ Result rows …           │
- *   └─────────────────────────┘
- *   [🔍  Anime suchen …       ] ← Search-Pill (nav-tier: nav-bg, capsule)
+ *   Desktop (pill below card):        Mobile (pill on TOP, card below):
+ *
+ *   ┌─────────────────────────┐       [🔍  Anime suchen …      ]
+ *   │ ●HINZUFÜGEN ZU ▾Liste ✕│       ┌─────────────────────────┐
+ *   ├─────────────────────────┤       │ ●HINZUFÜGEN ZU ▾Liste ✕│
+ *   │ Result rows …           │       ├─────────────────────────┤
+ *   └─────────────────────────┘       │ Result rows …           │
+ *   [🔍  Anime suchen …       ]       └─────────────────────────┘
+ *                                      ▓▓▓▓▓▓▓ keyboard ▓▓▓▓▓▓▓
  *
  *   The Pill MORPHS from the BottomNav's `+`-button rect: it starts at that
  *   button's exact bounding rect (44×44, fully round) and animates left/top/
- *   width/height in lockstep to its target geometry above the (mobile)
- *   keyboard. The `+` in the nav fades to opacity-0 on the same curve, so
- *   it visually reads as the button *becoming* the search tool. The Card
- *   fades in from above on the same timing.
+ *   width/height in lockstep to its target geometry. The `+` in the nav
+ *   fades to opacity-0 on the same curve, so it visually reads as the
+ *   button *becoming* the search tool. The Card fades in on the same timing.
  *
- * Mobile keyboard handling: a visualViewport listener keeps the pill seated
- * above the keyboard as it slides up/down — so typing doesn't push the pill
- * off-screen and the Card resizes to match the available space.
+ * Mobile keyboard strategy: the pill is TOP-anchored, i.e. categorically out
+ * of the keyboard's reach — see targetRect() for why keyboard-glued
+ * positioning was abandoned (iOS pan/resize behaviors + an active iOS 26
+ * visualViewport bug). The keyboard only ever shortens the results card.
  *
  * Search-as-you-type with a small debounce; AbortController kills in-flight
  * fetches so a fast typist doesn't get rows from an older query trail in.
@@ -74,13 +77,6 @@ interface Rect {
  *  async — a fast close→reopen would create a second channel on the SAME
  *  topic while the first is still tearing down. Unique key per mount. */
 let addSheetMountSeq = 0;
-
-/** Last measured soft-keyboard inset (px), module-level so it survives
- *  close/reopen. Used to lift the pill PREEMPTIVELY when the input regains
- *  focus while the keyboard is still closed: left at the bottom edge, the
- *  input would sit under the rising keyboard for a moment and iOS pans the
- *  whole webview up (the "window slides off the top" bug, refocus edition). */
-let lastKeyboardInset = 0;
 export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -351,43 +347,21 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   // for the two-state mount/visible split that enables that.
   const ANIM_MS = 420;
   const [origin, setOrigin] = createSignal<Rect | null>(null);
-  /** Bottom-edge offset for the pill — reads as 0 normally, grows when the
-   *  mobile soft keyboard pushes the visualViewport up. */
+  /** Soft-keyboard inset (px from the layout-viewport bottom). On mobile it
+   *  ONLY trims the results card's height — the pill itself is top-anchored
+   *  there and never interacts with the keyboard (the load-bearing design
+   *  decision: iOS 26 has an active WebKit bug where visualViewport values
+   *  don't revert after keyboard dismissal, so anything POSITIONED off
+   *  those values eventually strands — a height that's transiently a bit
+   *  short is harmless). */
   const [keyboardOffset, setKeyboardOffset] = createSignal(0);
-  /** The visual viewport's offset inside the layout viewport. Stays 0 until
-   *  iOS pans the webview (it does when it decides a focused element sits
-   *  under the keyboard). Fixed-position chrome is laid out in LAYOUT
-   *  coordinates, so the card must add this to stay on screen during a pan
-   *  — otherwise it slides off the top. */
-  const [vvTop, setVvTop] = createSignal(0);
-  /** Whether the search input holds focus — drives the preemptive lift
-   *  (see lastKeyboardInset). */
-  const [inputFocused, setInputFocused] = createSignal(false);
-  /** True once the entry morph has finished. Afterwards the pill tracks
-   *  viewport/keyboard changes INSTANTLY — retargeting the 500 ms morph
-   *  transition on every visualViewport tick made the sheet chase pans and
-   *  keyboard resizes elastically (the "stretches and glitches" bug). The
-   *  close morph re-enables the transition via `!props.visible`. */
-  const [settled, setSettled] = createSignal(false);
   /** Viewport size — re-evaluated on resize so the pill/card recompute
-   *  their target geometry on rotation / window-resize. */
+   *  their target geometry on rotation / window-resize (and, in standalone
+   *  PWA mode, when iOS shrinks the layout viewport for the keyboard). */
   const [viewport, setViewport] = createSignal({
     w: typeof window !== "undefined" ? window.innerWidth : 0,
     h: typeof window !== "undefined" ? window.innerHeight : 0,
   });
-  /** Layout-viewport height at mount — the sheet always opens with the
-   *  keyboard closed, so this is an honest "no keyboard" baseline. Used to
-   *  detect standalone-PWA iOS, which shrinks window.innerHeight itself
-   *  when the keyboard opens (vs Safari-tab, which only shrinks the visual
-   *  viewport). Not updated on rotation — acceptable for one open cycle. */
-  const baseViewportH =
-    typeof window !== "undefined" ? window.innerHeight : 0;
-  /** Installed-PWA mode. There iOS handles the keyboard by resizing the
-   *  layout viewport (no webview pan), so the preemptive bridge lift is
-   *  pure needless motion — skipped entirely. */
-  const isStandalone =
-    typeof window !== "undefined" &&
-    window.matchMedia("(display-mode: standalone)").matches;
 
   let inputEl: HTMLInputElement | undefined;
 
@@ -445,8 +419,6 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       if (vv) {
         const offset = window.innerHeight - vv.height - vv.offsetTop;
         setKeyboardOffset(Math.max(0, offset));
-        setVvTop(vv.offsetTop);
-        if (offset > 0) lastKeyboardInset = offset;
       }
     };
     window.addEventListener("resize", onResize);
@@ -462,10 +434,10 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     //    immediate transfer killed the keyboard, because the real input
     //    still sat inside the opacity-0 pill and iOS drops the keyboard for
     //    an invisible focus target. Once the pill has landed (ANIM_MS) —
-    //    seated above the keyboard by the visualViewport tracking, so the
-    //    hand-over triggers no pan — steal the focus onto the real input
-    //    (the keyboard survives a focus transfer) and clean the warm-up
-    //    away. preventScroll: the pill is fixed-positioned — Safari's
+    //    top-anchored, always clear of the keyboard, so the hand-over can
+    //    never trigger a pan — steal the focus onto the real input (the
+    //    keyboard survives a focus transfer) and clean the warm-up away.
+    //    preventScroll: the pill is fixed-positioned — Safari's
     //    scroll-into-view would fight the lock.
     //    Fine pointers (hardware keyboard, nothing slides up): as before.
     const warm = document.querySelector<HTMLElement>(
@@ -479,13 +451,8 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       warm ? ANIM_MS : ANIM_MS - 50,
     );
 
-    // 5) After the entry morph, viewport tracking goes instant (see
-    //    `settled`). 520 > the 500 ms transition, with a hair of slack.
-    const settleTimer = window.setTimeout(() => setSettled(true), 520);
-
     onCleanup(() => {
       window.clearTimeout(focusTimer);
-      window.clearTimeout(settleTimer);
       warm?.remove();
       document.removeEventListener("keydown", onKey);
       b.position = prevLock.position;
@@ -504,10 +471,23 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   });
 
   // ── Target geometry ────────────────────────────────────────────────────
-  /** Where the pill should LAND. Height + vertical position match the nav-
-   *  pill exactly (so the morph is pure width-expansion, no height jump);
-   *  only the width grows and the pill recenters horizontally. When the
-   *  mobile soft keyboard appears, we lift the pill above it. */
+  /** Where the pill should LAND. Height matches the nav-pill exactly (so
+   *  the morph never jumps in height).
+   *
+   *  Desktop (≥768px): centered at the nav-pill's vertical position — the
+   *  classic bottom search bar; there's no soft keyboard to fight.
+   *
+   *  Mobile: TOP-anchored. The load-bearing decision of the 2026-07 mobile
+   *  rework: every attempt to keep the pill glued to the keyboard's upper
+   *  edge fought (a) Safari-tab's webview PAN when a focused input sits
+   *  under the rising keyboard, (b) standalone-PWA's layout-viewport
+   *  RESIZE, and (c) an active iOS 26 WebKit bug where visualViewport
+   *  offsetTop/height don't revert after keyboard dismissal
+   *  (developer.apple.com/forums/thread/800125). Anchored at the top — the
+   *  native iOS search idiom — the pill is categorically outside the
+   *  keyboard's reach: no tracking, no pan (the focused input is always
+   *  visible), no PWA-vs-tab mode detection. The keyboard at most covers
+   *  the tail of the scrollable results card below. */
   const targetRect = (): Rect => {
     const o = origin();
     if (!o) {
@@ -515,58 +495,16 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       return { left: 0, top: 0, width: 0, height: 56 };
     }
     const { w, h } = viewport();
-    const isDesktop = w >= 768;
     const pillH = o.height;
     const sideGap = 16;
-    // Vertical position, three tiers: keyboard up → seated just above its
-    // edge (the formula's keyboardOffset contains vv.offsetTop, so this
-    // tracks the VISUAL viewport bottom through iOS pans). Keyboard still
-    // closed but input focused → lift preemptively to the last measured
-    // inset, so the input is already clear of where the keyboard is about
-    // to rise (otherwise iOS pans the webview to free it). Neither → the
-    // nav-pill's position.
-    //
-    // Two keyboard reaction styles exist, and they want OPPOSITE handling:
-    //
-    //  • Safari-tab keeps the layout viewport and shrinks the visual one →
-    //    keyboardOffset carries the truth, and the preemptive bridge tier
-    //    covers the focus→keyboard-arrival gap (without it iOS pans the
-    //    webview to free an input sitting under the rising keyboard).
-    //
-    //  • Standalone-PWA iOS SHRINKS window.innerHeight itself. There the
-    //    re-measured nav anchor (o.top) is the ONLY truth: residual
-    //    visual-viewport deltas (accessory-bar quirks) parked the pill too
-    //    high on refocus, lastKeyboardInset (measured against the FULL
-    //    viewport) shot it to the top edge, and the bridge added needless
-    //    motion in a mode that never pans. viewportShrunk detects the
-    //    reacted state (mount-time baseline is keyboard-closed, so it's
-    //    honest); isStandalone kills the bridge for the pre-shrink gap too.
-    const viewportShrunk = h < baseViewportH - 80;
-    const bottomInset = viewportShrunk
-      ? 0
-      : keyboardOffset() > 0
-        ? keyboardOffset()
-        : !isStandalone && inputFocused()
-          ? // Cap the bridge lift: never park the pill above ~60% viewport,
-            // whatever a polluted measurement says.
-            Math.min(lastKeyboardInset, h * 0.6)
-          : 0;
-    const top = bottomInset > 0 ? h - bottomInset - pillH - 16 : o.top;
-    if (isDesktop) {
+    if (w >= 768) {
       const width = Math.min(w - 2 * sideGap, 576);
-      return {
-        left: (w - width) / 2,
-        top,
-        width,
-        height: pillH,
-      };
+      // If a soft keyboard does appear (touch tablets), lift above it.
+      const top =
+        keyboardOffset() > 0 ? h - keyboardOffset() - pillH - 16 : o.top;
+      return { left: (w - width) / 2, top, width, height: pillH };
     }
-    return {
-      left: sideGap,
-      top,
-      width: w - 2 * sideGap,
-      height: pillH,
-    };
+    return { left: sideGap, top: 16, width: w - 2 * sideGap, height: pillH };
   };
 
   /** Pill style — origin-rect while resting, target-rect while entered.
@@ -585,23 +523,33 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     };
   };
 
-  /** Card sits just above the pill, fills the space up to the top of the
-   *  VISUAL viewport (minus a small safe-area) — vvTop() anchors it to the
-   *  visible region when iOS pans the webview for the keyboard; anchored to
-   *  the layout viewport it slides off the top of the screen. (The pill
-   *  needs no such term: its keyboard branch is bottom-anchored via
-   *  keyboardOffset, whose formula already contains vv.offsetTop.) */
+  /** Results card. Desktop: above the pill, filling up to the viewport top.
+   *  Mobile: BELOW the top-anchored pill, filling down to the keyboard edge
+   *  — keyboardOffset only ever SHORTENS the card (standalone PWA shrinks
+   *  h itself and reads ~0 here; Safari-tab reports the overlap). A stale
+   *  offset after dismissal (iOS 26 bug) costs a few px of card height,
+   *  not the layout. */
   const cardStyle = () => {
     const t = targetRect();
-    const topGap = vvTop() + 24;
+    const { w, h } = viewport();
     const innerGap = 12; // space between card and pill
+    if (w >= 768) {
+      const topGap = 24;
+      return {
+        left: `${t.left}px`,
+        top: `${topGap}px`,
+        width: `${t.width}px`,
+        // Clamped: transient mid-animation geometry must never invert
+        // into a negative height.
+        height: `${Math.max(0, t.top - topGap - innerGap)}px`,
+      };
+    }
+    const top = t.top + t.height + innerGap;
     return {
       left: `${t.left}px`,
-      top: `${topGap}px`,
+      top: `${top}px`,
       width: `${t.width}px`,
-      // Clamped: a transient bad pill-top (mid keyboard animation) must
-      // never invert into a negative height.
-      height: `${Math.max(0, t.top - topGap - innerGap)}px`,
+      height: `${Math.max(0, h - keyboardOffset() - top - 16)}px`,
     };
   };
 
@@ -755,22 +703,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             // NavBar already at full opacity underneath. Either direction,
             // the combined alpha of "search-pill OR NavBar at the pill
             // location" stays at 1.0 throughout — no visible crossfade.
-            //
-            // Geometry only transitions while MORPHING (entry until settled,
-            // exit via !visible). In between, keyboard/viewport tracking is
-            // instant — an eased transition retargeted on every
-            // visualViewport tick chases pans elastically and reads as
-            // stretch-glitching.
-            transition:
-              !settled() || !props.visible
-                ? [
-                    "left 500ms var(--ease-quart)",
-                    "top 500ms var(--ease-quart)",
-                    "width 500ms var(--ease-quart)",
-                    "height 500ms var(--ease-quart)",
-                    `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
-                  ].join(", ")
-                : "opacity 50ms linear 0ms",
+            transition: [
+              "left 500ms var(--ease-quart)",
+              "top 500ms var(--ease-quart)",
+              "width 500ms var(--ease-quart)",
+              "height 500ms var(--ease-quart)",
+              `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
+            ].join(", "),
           }}
         >
           <div
@@ -796,8 +735,6 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               ref={inputEl}
               type="text"
               value={query()}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder={`${typeLabel(mediaFilter())} suchen …`}
               class="min-w-0 flex-1 bg-transparent py-2 text-body text-nav-fg placeholder:text-nav-fg/50 focus:outline-none"
