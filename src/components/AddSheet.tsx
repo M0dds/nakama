@@ -74,6 +74,13 @@ interface Rect {
  *  async — a fast close→reopen would create a second channel on the SAME
  *  topic while the first is still tearing down. Unique key per mount. */
 let addSheetMountSeq = 0;
+
+/** Last measured soft-keyboard inset (px), module-level so it survives
+ *  close/reopen. Used to lift the pill PREEMPTIVELY when the input regains
+ *  focus while the keyboard is still closed: left at the bottom edge, the
+ *  input would sit under the rising keyboard for a moment and iOS pans the
+ *  whole webview up (the "window slides off the top" bug, refocus edition). */
+let lastKeyboardInset = 0;
 export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -353,6 +360,15 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
    *  coordinates, so the card must add this to stay on screen during a pan
    *  — otherwise it slides off the top. */
   const [vvTop, setVvTop] = createSignal(0);
+  /** Whether the search input holds focus — drives the preemptive lift
+   *  (see lastKeyboardInset). */
+  const [inputFocused, setInputFocused] = createSignal(false);
+  /** True once the entry morph has finished. Afterwards the pill tracks
+   *  viewport/keyboard changes INSTANTLY — retargeting the 500 ms morph
+   *  transition on every visualViewport tick made the sheet chase pans and
+   *  keyboard resizes elastically (the "stretches and glitches" bug). The
+   *  close morph re-enables the transition via `!props.visible`. */
+  const [settled, setSettled] = createSignal(false);
   /** Viewport size — re-evaluated on resize so the pill/card recompute
    *  their target geometry on rotation / window-resize. */
   const [viewport, setViewport] = createSignal({
@@ -417,6 +433,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
         const offset = window.innerHeight - vv.height - vv.offsetTop;
         setKeyboardOffset(Math.max(0, offset));
         setVvTop(vv.offsetTop);
+        if (offset > 0) lastKeyboardInset = offset;
       }
     };
     window.addEventListener("resize", onResize);
@@ -449,8 +466,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       warm ? ANIM_MS : ANIM_MS - 50,
     );
 
+    // 5) After the entry morph, viewport tracking goes instant (see
+    //    `settled`). 520 > the 500 ms transition, with a hair of slack.
+    const settleTimer = window.setTimeout(() => setSettled(true), 520);
+
     onCleanup(() => {
       window.clearTimeout(focusTimer);
+      window.clearTimeout(settleTimer);
       warm?.remove();
       document.removeEventListener("keydown", onKey);
       b.position = prevLock.position;
@@ -483,10 +505,20 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     const isDesktop = w >= 768;
     const pillH = o.height;
     const sideGap = 16;
-    // Default: same vertical position as the nav-pill. If the keyboard is
-    // up, lift the pill so it sits just above the keyboard edge.
-    const top =
-      keyboardOffset() > 0 ? h - keyboardOffset() - pillH - 16 : o.top;
+    // Vertical position, three tiers: keyboard up → seated just above its
+    // edge (the formula's keyboardOffset contains vv.offsetTop, so this
+    // tracks the VISUAL viewport bottom through iOS pans). Keyboard still
+    // closed but input focused → lift preemptively to the last measured
+    // inset, so the input is already clear of where the keyboard is about
+    // to rise (otherwise iOS pans the webview to free it). Neither → the
+    // nav-pill's position.
+    const bottomInset =
+      keyboardOffset() > 0
+        ? keyboardOffset()
+        : inputFocused()
+          ? lastKeyboardInset
+          : 0;
+    const top = bottomInset > 0 ? h - bottomInset - pillH - 16 : o.top;
     if (isDesktop) {
       const width = Math.min(w - 2 * sideGap, 576);
       return {
@@ -545,11 +577,14 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           recede into the background — the search-pill on z-50 is now the
           only active control. Color + blur transition on the same 300ms
           ease-quart as the pill morph. */}
+      {/* touch-none: a drag on the backdrop must not become an iOS visual-
+          viewport pan (with the keyboard up, Safari grants pan room even on
+          a locked page — the sheet could be shoved around). */}
       <button
         type="button"
         aria-label="Schließen"
         onClick={props.onClose}
-        class={`fixed inset-0 z-40 transition-all duration-500 [transition-timing-function:var(--ease-quart)] ${
+        class={`fixed inset-0 z-40 touch-none transition-all duration-500 [transition-timing-function:var(--ease-quart)] ${
           props.visible
             ? "bg-black/50 backdrop-blur-sm"
             : "bg-black/0 backdrop-blur-none"
@@ -672,7 +707,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
           starting precisely on top of the `+`. */}
       <Show when={origin()}>
         <div
-          class={`fixed z-50 flex items-center overflow-hidden bg-nav-bg shadow-floating ${
+          class={`fixed z-50 flex touch-none items-center overflow-hidden bg-nav-bg shadow-floating ${
             props.visible ? "opacity-100" : "opacity-0"
           }`}
           style={{
@@ -685,13 +720,22 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             // NavBar already at full opacity underneath. Either direction,
             // the combined alpha of "search-pill OR NavBar at the pill
             // location" stays at 1.0 throughout — no visible crossfade.
-            transition: [
-              "left 500ms var(--ease-quart)",
-              "top 500ms var(--ease-quart)",
-              "width 500ms var(--ease-quart)",
-              "height 500ms var(--ease-quart)",
-              `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
-            ].join(", "),
+            //
+            // Geometry only transitions while MORPHING (entry until settled,
+            // exit via !visible). In between, keyboard/viewport tracking is
+            // instant — an eased transition retargeted on every
+            // visualViewport tick chases pans elastically and reads as
+            // stretch-glitching.
+            transition:
+              !settled() || !props.visible
+                ? [
+                    "left 500ms var(--ease-quart)",
+                    "top 500ms var(--ease-quart)",
+                    "width 500ms var(--ease-quart)",
+                    "height 500ms var(--ease-quart)",
+                    `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
+                  ].join(", ")
+                : "opacity 50ms linear 0ms",
           }}
         >
           <div
@@ -717,6 +761,8 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
               ref={inputEl}
               type="text"
               value={query()}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               onInput={(e) => setQuery(e.currentTarget.value)}
               placeholder={`${typeLabel(mediaFilter())} suchen …`}
               class="min-w-0 flex-1 bg-transparent py-2 text-body text-nav-fg placeholder:text-nav-fg/50 focus:outline-none"
@@ -814,6 +860,11 @@ function ResultRow(props: {
       <button
         type="button"
         onClick={props.onToggle}
+        // Don't steal focus from the search input: preventing mousedown's
+        // default keeps the caret (and the mobile keyboard) in the field
+        // while the click still fires — add a result, keep typing. Without
+        // this, every add closed the keyboard and the refocus dance began.
+        onMouseDown={(e) => e.preventDefault()}
         disabled={!props.canAdd || props.pending}
         aria-label={
           props.added
