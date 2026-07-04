@@ -524,11 +524,12 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   };
 
   /** Results card. Desktop: above the pill, filling up to the viewport top.
-   *  Mobile: BELOW the top-anchored pill, filling down to the keyboard edge
-   *  — keyboardOffset only ever SHORTENS the card (standalone PWA shrinks
-   *  h itself and reads ~0 here; Safari-tab reports the overlap). A stale
-   *  offset after dismissal (iOS 26 bug) costs a few px of card height,
-   *  not the layout. */
+   *  Mobile: BELOW the top-anchored pill, filling the full remaining screen
+   *  — deliberately NOT shortened by the keyboard (user call): the list
+   *  runs on behind it, which reads calmer than a card that resizes with
+   *  every keyboard show/hide. (In standalone-PWA mode iOS shrinks the
+   *  layout viewport itself, so "behind the keyboard" is physically capped
+   *  at its top edge there — still no resize churn from our side.) */
   const cardStyle = () => {
     const t = targetRect();
     const { w, h } = viewport();
@@ -549,7 +550,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       left: `${t.left}px`,
       top: `${top}px`,
       width: `${t.width}px`,
-      height: `${Math.max(0, h - keyboardOffset() - top - 16)}px`,
+      height: `${Math.max(0, h - top - 16)}px`,
     };
   };
 
