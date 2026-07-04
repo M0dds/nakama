@@ -44,6 +44,7 @@ import {
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Segmented } from "@/components/Segmented";
@@ -191,28 +192,40 @@ export default function Calendar() {
               onView={setView}
             />
 
+            {/* Error gate FIRST — a failed query must not render as an
+                empty week/month (indistinguishable from a quiet one). */}
             <Show
-              when={!eventsQ.isLoading}
-              fallback={<CalendarGridSkeleton view={view()} />}
+              when={!eventsQ.isError}
+              fallback={
+                <QueryErrorCard
+                  class="mt-4"
+                  onRetry={() => void eventsQ.refetch()}
+                />
+              }
             >
-              {view() === "week" ? (
-                <WeekGrid
-                  days={weekDays()}
-                  events={dayEvents}
-                  todayIso={todayIso}
-                  selectedIso={selectedIso()}
-                  onSelect={setSelectedIso}
-                />
-              ) : (
-                <MonthGrid
-                  days={monthDays()}
-                  refMonth={refDate().getMonth()}
-                  events={dayEvents}
-                  todayIso={todayIso}
-                  selectedIso={selectedIso()}
-                  onSelect={setSelectedIso}
-                />
-              )}
+              <Show
+                when={!eventsQ.isLoading}
+                fallback={<CalendarGridSkeleton view={view()} />}
+              >
+                {view() === "week" ? (
+                  <WeekGrid
+                    days={weekDays()}
+                    events={dayEvents}
+                    todayIso={todayIso}
+                    selectedIso={selectedIso()}
+                    onSelect={setSelectedIso}
+                  />
+                ) : (
+                  <MonthGrid
+                    days={monthDays()}
+                    refMonth={refDate().getMonth()}
+                    events={dayEvents}
+                    todayIso={todayIso}
+                    selectedIso={selectedIso()}
+                    onSelect={setSelectedIso}
+                  />
+                )}
+              </Show>
             </Show>
           </BentoModule>
         </div>

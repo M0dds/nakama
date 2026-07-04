@@ -60,6 +60,7 @@ import {
 } from "@/lib/format";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
@@ -520,6 +521,17 @@ export default function ItemDetail() {
                     watched={episodes.data?.watched ?? 0}
                     total={episodes.data?.total ?? 0}
                   />
+                  {/* Error gate FIRST — a failed query must not fall through
+                      to the episode empty-state or an eternal "Lade …". */}
+                  <Show
+                    when={!episodes.isError}
+                    fallback={
+                      <QueryErrorCard
+                        class="mt-6"
+                        onRetry={() => void episodes.refetch()}
+                      />
+                    }
+                  >
                   <Show
                     when={!episodes.isLoading && laneReady()}
                     fallback={
@@ -552,6 +564,7 @@ export default function ItemDetail() {
                         onPage={setPage}
                       />
                     </Show>
+                  </Show>
                   </Show>
                 </>
                 </Show>

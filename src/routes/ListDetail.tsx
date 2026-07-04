@@ -36,6 +36,7 @@ import { typeInitial, typeLabel } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { EditableListName } from "@/components/EditableListName";
@@ -360,28 +361,37 @@ export default function ListDetail() {
                 />
               )}
             </Show>
-            <Show when={!items.isLoading} fallback={<ItemRowsSkeleton />}>
-              <Show
-                when={items.data && items.data.length > 0}
-                fallback={<EntriesEmpty />}
-              >
-                <DragDropProvider
-                  onDragStart={onDragStart}
-                  onDragEnd={onDragEnd}
-                  collisionDetector={closestCenter}
+            {/* Error gate FIRST — a failed query must not fall through to
+                "Noch keine Einträge." */}
+            <Show
+              when={!items.isError}
+              fallback={
+                <QueryErrorCard onRetry={() => void items.refetch()} />
+              }
+            >
+              <Show when={!items.isLoading} fallback={<ItemRowsSkeleton />}>
+                <Show
+                  when={items.data && items.data.length > 0}
+                  fallback={<EntriesEmpty />}
                 >
-                  <MovePointerSensor />
-                  <ListEntries
-                    items={items.data!}
-                    listShortCode={params.shortCode}
-                    listIsShared={list.data?.isShared ?? false}
-                    tracksHome={list.data?.tracksHome ?? true}
-                    dragSettling={dragSettling}
-                    onActiveCover={setWashCover}
-                    onRequestMove={(entry) => setMovingEntry(entry)}
-                    onTogglePin={handleTogglePin}
-                  />
-                </DragDropProvider>
+                  <DragDropProvider
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                    collisionDetector={closestCenter}
+                  >
+                    <MovePointerSensor />
+                    <ListEntries
+                      items={items.data!}
+                      listShortCode={params.shortCode}
+                      listIsShared={list.data?.isShared ?? false}
+                      tracksHome={list.data?.tracksHome ?? true}
+                      dragSettling={dragSettling}
+                      onActiveCover={setWashCover}
+                      onRequestMove={(entry) => setMovingEntry(entry)}
+                      onTogglePin={handleTogglePin}
+                    />
+                  </DragDropProvider>
+                </Show>
               </Show>
             </Show>
           </BentoModule>

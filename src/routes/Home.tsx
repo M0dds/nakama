@@ -61,6 +61,7 @@ import {
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { Avatar } from "@/components/Avatar";
@@ -157,26 +158,45 @@ export default function Home() {
             number="01"
             class="border-b border-rule"
           >
-            <Show when={!upcomingQ.isLoading} fallback={<WasKommtSkeleton />}>
-              <Show
-                when={upcomingQ.data && upcomingQ.data.length > 0}
-                fallback={<EmptyUpcoming firstRun={firstRun()} />}
-              >
-                <WasKommt
-                  items={upcomingQ.data!}
-                  onActiveCover={setWashCover}
-                />
+            {/* Error gate FIRST — a failed query must not fall through to the
+                truthful-sounding empty copy ("Diese Woche ruhig."). */}
+            <Show
+              when={!upcomingQ.isError}
+              fallback={
+                <QueryErrorCard onRetry={() => void upcomingQ.refetch()} />
+              }
+            >
+              <Show when={!upcomingQ.isLoading} fallback={<WasKommtSkeleton />}>
+                <Show
+                  when={upcomingQ.data && upcomingQ.data.length > 0}
+                  fallback={<EmptyUpcoming firstRun={firstRun()} />}
+                >
+                  <WasKommt
+                    items={upcomingQ.data!}
+                    onActiveCover={setWashCover}
+                  />
+                </Show>
               </Show>
             </Show>
           </BentoModule>
 
           <BentoModule label="Fortsetzen" number="02">
-            <Show when={!continueQ.isLoading} fallback={<FortsetzenSkeleton />}>
+            <Show
+              when={!continueQ.isError}
+              fallback={
+                <QueryErrorCard onRetry={() => void continueQ.refetch()} />
+              }
+            >
               <Show
-                when={continueQ.data && continueQ.data.length > 0}
-                fallback={<EmptyContinue firstRun={firstRun()} />}
+                when={!continueQ.isLoading}
+                fallback={<FortsetzenSkeleton />}
               >
-                <Fortsetzen items={continueQ.data!} />
+                <Show
+                  when={continueQ.data && continueQ.data.length > 0}
+                  fallback={<EmptyContinue firstRun={firstRun()} />}
+                >
+                  <Fortsetzen items={continueQ.data!} />
+                </Show>
               </Show>
             </Show>
           </BentoModule>
@@ -185,12 +205,19 @@ export default function Home() {
         {/* Rechte Spalte 1/3 — Logbuch. */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
           <BentoModule label="Logbuch" number="03">
-            <Show when={!logbookQ.isLoading} fallback={<LogbuchSkeleton />}>
-              <Show
-                when={logbookQ.data && logbookQ.data.length > 0}
-                fallback={<EmptyLogbook />}
-              >
-                <Logbuch events={logbookQ.data!} />
+            <Show
+              when={!logbookQ.isError}
+              fallback={
+                <QueryErrorCard onRetry={() => void logbookQ.refetch()} />
+              }
+            >
+              <Show when={!logbookQ.isLoading} fallback={<LogbuchSkeleton />}>
+                <Show
+                  when={logbookQ.data && logbookQ.data.length > 0}
+                  fallback={<EmptyLogbook />}
+                >
+                  <Logbuch events={logbookQ.data!} />
+                </Show>
               </Show>
             </Show>
           </BentoModule>

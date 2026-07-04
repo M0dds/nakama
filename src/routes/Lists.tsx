@@ -32,6 +32,7 @@ import {
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
+import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
@@ -300,46 +301,57 @@ export default function Lists() {
             onMouseLeave={() => setWashCover(null)}
           >
             <InvitationsInbox />
+            {/* Error gate FIRST — a failed query must not render as an
+                eternal skeleton (indistinguishable from loading). */}
             <Show
-              when={lists.data}
+              when={!lists.isError}
               fallback={
                 <BentoModule label="Meine Listen" number="01">
-                  <ListRowsSkeleton />
+                  <QueryErrorCard onRetry={() => void lists.refetch()} />
                 </BentoModule>
               }
             >
               <Show
-                when={sections().length > 0}
+                when={lists.data}
                 fallback={
                   <BentoModule label="Meine Listen" number="01">
-                    <PrivateEmpty />
+                    <ListRowsSkeleton />
                   </BentoModule>
                 }
               >
-                <For each={SECTION_ORDER}>
-                  {(s) => (
-                    // Non-keyed Show: toggles only when the category gains its
-                    // first / loses its last list — reference churn in
-                    // sections() never remounts the module.
-                    <Show when={sectionOf(s.cat)}>
-                      <BentoModule
-                        label={s.label}
-                        number={numberOf(s.cat)}
-                        class={
-                          s.cat !== lastCat() ? "border-b border-rule" : undefined
-                        }
-                      >
-                        <ListRows
-                          lists={sectionOf(s.cat)?.lists ?? []}
-                          cat={s.cat}
-                          dragSettling={dragSettling}
-                          onHover={(l) => setWashCover(washOf(l))}
-                          onTogglePin={handleTogglePin}
-                        />
-                      </BentoModule>
-                    </Show>
-                  )}
-                </For>
+                <Show
+                  when={sections().length > 0}
+                  fallback={
+                    <BentoModule label="Meine Listen" number="01">
+                      <PrivateEmpty />
+                    </BentoModule>
+                  }
+                >
+                  <For each={SECTION_ORDER}>
+                    {(s) => (
+                      // Non-keyed Show: toggles only when the category gains its
+                      // first / loses its last list — reference churn in
+                      // sections() never remounts the module.
+                      <Show when={sectionOf(s.cat)}>
+                        <BentoModule
+                          label={s.label}
+                          number={numberOf(s.cat)}
+                          class={
+                            s.cat !== lastCat() ? "border-b border-rule" : undefined
+                          }
+                        >
+                          <ListRows
+                            lists={sectionOf(s.cat)?.lists ?? []}
+                            cat={s.cat}
+                            dragSettling={dragSettling}
+                            onHover={(l) => setWashCover(washOf(l))}
+                            onTogglePin={handleTogglePin}
+                          />
+                        </BentoModule>
+                      </Show>
+                    )}
+                  </For>
+                </Show>
               </Show>
             </Show>
           </div>
