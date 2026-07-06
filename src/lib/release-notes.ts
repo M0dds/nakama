@@ -24,6 +24,20 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.18.0",
+    date: "2026-07-06",
+    title: "Nakama am Handy — rundum besser",
+    changes: [
+      "Neu: Listen lassen sich jetzt komplett am Handy verwalten — der „⋯“-Knopf am Rand jeder Zeile zeigt Anpinnen, Zurücksetzen, Verschieben und Entfernen; der Griff zum Umsortieren ist immer sichtbar.",
+      "Die Suche ist am Handy neu gebaut: Sie öffnet jetzt oben am Bildschirm, die Tastatur geht automatisch mit auf und bleibt beim Hinzufügen offen — kein Springen, Verrutschen oder ungewolltes Zoomen mehr.",
+      "Die installierte App wechselt deutlich flotter zwischen den Seiten — der weiche Cover-Hintergrund wird jetzt einmalig vorberechnet statt bei jedem Wechsel neu.",
+      "„Fortsetzen“ ist am Handy aufgeräumter: Neben dem Titel steht nur noch der Zähler, alles Weitere sammelt sich ordentlich in der Zeile darunter.",
+      "Klappt beim Laden etwas nicht (z. B. ohne Netz), sagt die App das jetzt ehrlich — mit „Nochmal versuchen“ statt einer leeren Seite.",
+      "Ein Tipp auf „Neu laden“ bei einem Update zeigt jetzt sofort, dass die neue Version lädt.",
+      "Feinschliff: keine überflüssige Trennlinie mehr unter dem letzten Listen-Eintrag; Dialoge sind besser mit Tastatur und Screenreader bedienbar.",
+    ],
+  },
+  {
     version: "0.17.0",
     date: "2026-07-01",
     title: "Neue Listen-Cover & Mitglieder-Gesichter",
