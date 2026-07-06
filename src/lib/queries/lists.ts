@@ -130,6 +130,11 @@ export interface ListEntry {
   /** How many such episodes — drives singular vs plural wording on the badge
    *  ("Neue Folge" vs "Neue Folgen"). 0 when hasNewEpisode is false. */
   newEpisodeCount: number;
+  /** The caller's item_history 'completed' stamp exists for this item —
+   *  the movie/game seen-toggle or the episodic Abschluss (P3 #2). Drives
+   *  the quiet marker in the row's meta line. Per-user: co-members see
+   *  their own state. */
+  completed: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -588,6 +593,29 @@ interface RawListItemRow {
   } | null;
 }
 
+/** Which of these items the CALLER has completed (item_history 'completed'
+ *  — the movie/game seen-toggle or the episodic Abschluss stamp). Explicit
+ *  `.eq("user_id", …)` is load-bearing: the co-member read policy lets other
+ *  members' rows through, and RLS visibility ≠ per-user scope (§Gotchas).
+ *  One row per completed item → far under the 1000-row cap at list scale. */
+async function fetchCompletedItemIds(
+  userId: string,
+  itemIds: string[],
+): Promise<Set<string>> {
+  if (itemIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from("item_history")
+    .select("item_id")
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .in("item_id", unique(itemIds));
+  if (error) {
+    console.error("completed items query failed", error);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r) => r.item_id as string));
+}
+
 /** Items placed in a list, ordered pinned-first then by sort_order ASC,
  *  scoped by the list's short_code. PostgREST `lists!inner(short_code)`
  *  does the FK join + filter in one round-trip; RLS still scopes the rows
@@ -614,15 +642,21 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
       if (error) throw error;
 
       const rawRows = (data as unknown as RawListItemRow[]) ?? [];
-      const newEpisodeCounts = await findItemsWithNewEpisodes(
-        user.id,
-        rawRows.map((r) => ({
-          itemId: r.item_id,
-          listItemId: r.id,
-          syncEnabled: r.sync_enabled,
-          instanceWeekday: r.display_weekday,
-        })),
-      );
+      const [newEpisodeCounts, completedIds] = await Promise.all([
+        findItemsWithNewEpisodes(
+          user.id,
+          rawRows.map((r) => ({
+            itemId: r.item_id,
+            listItemId: r.id,
+            syncEnabled: r.sync_enabled,
+            instanceWeekday: r.display_weekday,
+          })),
+        ),
+        fetchCompletedItemIds(
+          user.id,
+          rawRows.map((r) => r.item_id),
+        ),
+      ]);
 
       const rows = rawRows.map((r) => {
         const count = newEpisodeCounts.get(r.id) ?? 0;
@@ -638,6 +672,7 @@ export function listItemsQueryOptions(user: User, shortCode: string) {
           sortOrder: r.sort_order,
           hasNewEpisode: count > 0,
           newEpisodeCount: count,
+          completed: completedIds.has(r.item_id),
         };
       });
       return rows.sort((a, b) => {

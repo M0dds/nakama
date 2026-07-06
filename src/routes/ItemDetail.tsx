@@ -1374,6 +1374,10 @@ function MoviePanel(props: {
       void queryClient.invalidateQueries({
         queryKey: movieSeenKey(props.item.id),
       });
+      // The stamp also drives the list-row done-marker + the Logbuch
+      // 'status' event — refresh both surfaces' caches.
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
+      void queryClient.invalidateQueries({ queryKey: ["home"] });
     },
   }));
 
@@ -1619,6 +1623,10 @@ function GamePanel(props: {
       void queryClient.invalidateQueries({
         queryKey: movieSeenKey(props.item.id),
       });
+      // The stamp also drives the list-row done-marker + the Logbuch
+      // 'status' event — refresh both surfaces' caches.
+      void queryClient.invalidateQueries({ queryKey: ["list"] });
+      void queryClient.invalidateQueries({ queryKey: ["home"] });
     },
   }));
 

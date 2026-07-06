@@ -563,6 +563,18 @@ function newEpisodeLabel(entry: ListEntry): string | null {
   return null;
 }
 
+/** Quiet done-marker appended to the row's meta line ("ANIME · ABGESCHLOSSEN")
+ *  when the caller's item_history 'completed' stamp exists. Wording matches
+ *  the detail page: movie → Gesehen, game → Gespielt, episodic → Abgeschlossen
+ *  (the P3-#2 Abschluss: lane watched == total + source finished). Muted on
+ *  purpose — the accent stays reserved for the "Neue Folge" signal. */
+function completedLabel(entry: ListEntry): string | null {
+  if (!entry.completed) return null;
+  if (entry.type === "movie") return "Gesehen";
+  if (entry.type === "game") return "Gespielt";
+  return "Abgeschlossen";
+}
+
 /** Items als Rows in einer Liste. Pattern: -mx-5 ul, hover-bg blutet zu den
  *  Spaltenrändern, ::after-Hairline pro li (last versteckt — wie auf der
  *  Listen-Übersicht trennt der letzte Eintrag nichts mehr; die Hairline
@@ -739,6 +751,9 @@ function SortableEntryRow(props: {
             </div>
             <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
               {typeLabel(props.entry.type)}
+              <Show when={completedLabel(props.entry)}>
+                {(label) => <> · {label()}</>}
+              </Show>
             </p>
           </div>
         </A>
