@@ -25,6 +25,13 @@ const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const [updateReady, setUpdateReady] = createSignal(false);
 export { updateReady };
 
+/** True from the moment applyUpdate() is tapped until the page actually
+ *  reloads (up to ~3s via the backstop) — the swap has no inherent visual,
+ *  so consumers show a spinner off this flag or the tap reads as a dead
+ *  no-op. Never reset: every path out of applyUpdate ends in a reload. */
+const [updating, setUpdating] = createSignal(false);
+export { updating };
+
 let updateSW: ((reload?: boolean) => Promise<void>) | null = null;
 let reg: ServiceWorkerRegistration | undefined;
 
@@ -51,6 +58,7 @@ if (typeof window !== "undefined") {
  * in a mixed/null-controller state.
  */
 export async function applyUpdate(): Promise<void> {
+  setUpdating(true);
   if (!("serviceWorker" in navigator)) {
     window.location.reload();
     return;

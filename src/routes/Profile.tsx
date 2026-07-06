@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { createQuery } from "@tanstack/solid-query";
 import { A, useNavigate } from "@solidjs/router";
-import { ChevronRight, RefreshCw } from "lucide-solid";
+import { ChevronRight, Loader2, RefreshCw } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { signOut, getUserHandle } from "@/lib/auth-actions";
 import { myProfileOptions } from "@/lib/queries/profile";
@@ -19,7 +19,7 @@ import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { InstallDialog } from "@/components/InstallDialog";
 import { VERSION_LABEL } from "@/lib/version";
 import { isStandalone } from "@/lib/pwa-install";
-import { applyUpdate, updateReady } from "@/lib/pwa-update";
+import { applyUpdate, updateReady, updating } from "@/lib/pwa-update";
 
 /**
  * Profile page. Konto module (left 2/3): editable identity — avatar upload
@@ -150,12 +150,16 @@ export default function Profile() {
                 instead of painting over it. */}
             <ul class="-mx-5">
               {/* Update verfügbar → neu laden (silent: only here + the nav
-                  badge, no toast). applyUpdate skip-waits the new SW + reloads. */}
+                  badge, no toast). applyUpdate skip-waits the new SW + reloads
+                  — that takes up to ~3s, so the row flips to a spinner +
+                  "Aktualisiere …" for the gap (otherwise the tap reads as a
+                  dead no-op until the page suddenly reloads). */}
               <Show when={updateReady()}>
                 <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
                   <button
                     type="button"
                     onClick={() => applyUpdate()}
+                    disabled={updating()}
                     class="group/row relative isolate flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left focus:outline-none"
                   >
                     <span
@@ -167,12 +171,32 @@ export default function Profile() {
                         Update verfügbar
                       </span>
                       <span class="mt-0.5 block text-label text-text">
-                        Neu laden, um zu aktualisieren
+                        {updating()
+                          ? "Neue Version wird geladen …"
+                          : "Neu laden, um zu aktualisieren"}
                       </span>
                     </span>
                     <span class="flex shrink-0 items-center gap-1 font-mono text-mini uppercase tracking-wider text-accent">
-                      Neu laden
-                      <RefreshCw class="size-3.5" strokeWidth={1.75} aria-hidden />
+                      <Show
+                        when={updating()}
+                        fallback={
+                          <>
+                            Neu laden
+                            <RefreshCw
+                              class="size-3.5"
+                              strokeWidth={1.75}
+                              aria-hidden
+                            />
+                          </>
+                        }
+                      >
+                        Aktualisiere
+                        <Loader2
+                          class="size-3.5 animate-spin"
+                          strokeWidth={1.75}
+                          aria-hidden
+                        />
+                      </Show>
                     </span>
                   </button>
                 </li>
