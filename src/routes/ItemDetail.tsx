@@ -157,6 +157,18 @@ export default function ItemDetail() {
   // calendar entry), where there's no single list to attach notes to.
   const notesListId = (): string | null => syncCtx.data?.listId ?? null;
 
+  // Header kicker: with list context the page reads as "inside that list"
+  // (matching the back target), so the line above the title carries the LIST
+  // name; context-free entries keep the media-type label. Held at "…" while
+  // the context resolves — otherwise the type label would flash first and
+  // swap to the list name.
+  const hasListContext = (): boolean =>
+    !!params.shortCode || !!location.state?.listItemId;
+  const kickerLabel = (): string | null => {
+    if (hasListContext()) return syncCtx.data?.listName ?? null;
+    return item.data ? typeLabel(item.data.type).toUpperCase() : null;
+  };
+
   const item = createQuery(() => ({
     ...itemQueryOptions(params.type, params.slug),
     enabled: !!auth.user() && !!params.type && !!params.slug,
@@ -442,20 +454,9 @@ export default function ItemDetail() {
       <CoverBackdrop coverUrl={item.data?.coverUrl ?? null} />
       <PageHeader
         kicker={
-          <Show
-            when={item.data}
-            fallback={
-              <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-                …
-              </span>
-            }
-          >
-            {(data) => (
-              <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
-                {typeLabel(data().type).toUpperCase()}
-              </span>
-            )}
-          </Show>
+          <span class="truncate font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
+            {kickerLabel() ?? "…"}
+          </span>
         }
         title={
           <Show when={item.data} fallback={<span>…</span>}>
