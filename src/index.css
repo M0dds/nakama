@@ -320,7 +320,6 @@
 
   --dur-fast: 200ms;
   --dur-base: 300ms;
-  --dur-slow: 320ms;
 
   /* Row-cluster reveal (coarse pointers): the "⋯" toggle flips the action
      cluster from display:none to flex — display can't transition, so a
