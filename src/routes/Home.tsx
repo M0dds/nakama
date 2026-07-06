@@ -1065,6 +1065,19 @@ function NextUpStrip(props: {
   const activeItem = () => props.items[activeIdx()];
   const hoverCapable = () => window.matchMedia("(hover: hover)").matches;
 
+  // The shelf's box is FIXED so nothing outside it ever moves: height pinned
+  // to the active tile's (mid-wave both movers dip below full size — an auto
+  // height would wobble every layout below on each hover step), width pinned
+  // to the interior-active sum (an edge-active tile has only ONE mid-tier
+  // neighbour → 1rem less content; without a fixed width mx-auto would
+  // re-center the whole row on every edge hover). The wave plays inside a
+  // static frame; only the tiles themselves slide.
+  const shelfWidth = () => {
+    const n = props.items.length;
+    const tiles = n >= 3 ? 7 + 2 * 5 + (n - 3) * 4 : n === 2 ? 7 + 5 : 7;
+    return `${tiles + 0.75 * (n - 1)}rem`;
+  };
+
   // The strip can unmount mid-hover (a partner's tick fills Fortsetzen via
   // realtime) — release the wash so no stale cover lingers.
   onCleanup(() => props.onActiveCover(null));
@@ -1074,14 +1087,16 @@ function NextUpStrip(props: {
       <p class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
         Als Nächstes
       </p>
-      <ul
-        class="scrollbar-none mx-auto mt-4 flex w-fit max-w-full items-end gap-3 overflow-x-auto px-1 pb-1"
-        onMouseLeave={() => {
-          props.onActiveCover(null);
-          if (hoverCapable()) setActive(middle());
-        }}
-      >
-        <For each={props.items}>
+      <div class="scrollbar-none -mx-1 mt-4 overflow-x-auto px-1">
+        <ul
+          class="mx-auto flex h-[10.5rem] items-end gap-3"
+          style={{ width: shelfWidth() }}
+          onMouseLeave={() => {
+            props.onActiveCover(null);
+            if (hoverCapable()) setActive(middle());
+          }}
+        >
+          <For each={props.items}>
           {(item, i) => {
             const tier = () => Math.min(Math.abs(i() - activeIdx()), 2);
             const isActive = () => i() === activeIdx();
@@ -1143,8 +1158,9 @@ function NextUpStrip(props: {
               </li>
             );
           }}
-        </For>
-      </ul>
+          </For>
+        </ul>
+      </div>
       {/* Caption — always the active tile's identity, full width so nothing
           truncates. Hard swap (content), only the shelf itself is liquid. */}
       <Show when={activeItem()}>
