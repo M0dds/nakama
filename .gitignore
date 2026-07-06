@@ -29,11 +29,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Vite scaffold demo assets — unused after we replaced App.tsx
-src/App.css
-src/assets/
-public/icons.svg
-
 # Supabase CLI link state + transient schema dumps (the real security
 # snapshot is supabase/migrations/00000000000000_baseline.sql)
 supabase/.temp/
