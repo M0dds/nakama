@@ -45,18 +45,15 @@ import {
 import { listsQueryOptions } from "@/lib/queries/lists";
 import { myProfileOptions } from "@/lib/queries/profile";
 import {
-  airDateHasClock,
   dateLabel,
   dayOffset,
   episodeCode,
   formatDate,
-  hasAirTime,
   newReleaseLabel,
   nextLabel,
   relTime,
   seasonEpisodeLabel,
   seasonRangeLabel,
-  timeLabel,
   typeInitial,
   typeLabel,
 } from "@/lib/format";
@@ -641,7 +638,6 @@ function WasKommtCardFace(props: {
       >
         <DayTag
           airDate={props.item.airDate}
-          type={props.item.type}
           isHero={props.isHero}
           active={props.active}
         />
@@ -682,16 +678,11 @@ function WasKommtCardFace(props: {
 
 function DayTag(props: {
   airDate: string;
-  type: string;
   isHero: boolean;
   active: boolean;
 }) {
   const offset = () => dayOffset(props.airDate);
   const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30. Mai"
-  const time = () =>
-    hasAirTime(props.airDate) && airDateHasClock(props.type)
-      ? timeLabel(props.airDate)
-      : null;
   const keyword = () => {
     if (offset() === 0) return props.isHero ? "HEUTE" : "AUCH HEUTE";
     if (offset() === 1) return "MORGEN";
@@ -699,14 +690,10 @@ function DayTag(props: {
   };
 
   // Hover/active detail after the keyword. Today/tomorrow drop the weekday —
-  // "HEUTE" already says the day — and read "30. Mai · 17:00"; other days keep
-  // the weekday and just gain the time → "MO · 01. Jun · 17:00". The air time
-  // is omitted for date-only entries (no real airing schedule).
-  const detail = () => {
-    const t = time();
-    const date = keyword() ? dateLabel(props.airDate) : weekdayDate();
-    return t ? `${date} · ${t}` : date;
-  };
+  // "HEUTE" already says the day — and read "30. Mai"; other days keep the
+  // weekday ("MO · 01. Jun"). Air dates are date-only app-wide, no clock.
+  const detail = () =>
+    keyword() ? dateLabel(props.airDate) : weekdayDate();
 
   return (
     <Show

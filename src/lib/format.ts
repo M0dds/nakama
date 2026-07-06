@@ -147,32 +147,13 @@ export function formatDate(d: Date): string {
   return `${wd} · ${String(d.getDate()).padStart(2, "0")}. ${MONTH_ABBR_3[d.getMonth()]}`;
 }
 
-/** "17:00" — 24h local time-of-day. */
-export function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-/** True when the timestamp carries a real time-of-day (not local midnight).
- *  AniList stores a precise airingAt, so scheduled episodes are always true;
- *  the guard just keeps a stray date-only entry from rendering a bogus
- *  "00:00". */
-export function hasAirTime(iso: string): boolean {
-  const d = new Date(iso);
-  return d.getHours() !== 0 || d.getMinutes() !== 0;
-}
-
-/** Whether this media type's air dates carry a real clock time. AniList anime
- *  store a precise airingAt (→ "Heute · 17:00" is meaningful). TMDB series
- *  air_dates are DATE-ONLY: we store the date as UTC-midnight, which a local
- *  +TZ then renders as a fabricated "02:00" — so we suppress the time for them
- *  and show the day alone. (Manga have no air dates at all.) Combine with
- *  hasAirTime: `hasAirTime(iso) && airDateHasClock(type)`. */
-export function airDateHasClock(type: string): boolean {
-  return type === "anime";
-}
+// App-wide rule: air dates are DATE-ONLY, no release clock times. AniList's
+// precise airingAt is truncated to the local day at ingest (anilist.ts), TMDB
+// and Steam never had times, and existing anime rows were normalized by
+// migration 20260706120000. An episode counts as released from the DAY it
+// airs (dayOffset <= 0 client-side; UTC-midnight <= now() server-side) —
+// which keeps release checks aligned with the display-weekday snapping.
+// The former timeLabel/hasAirTime/airDateHasClock helpers died with this.
 
 /** Calendar-day offset (0 = today, 1 = tomorrow). Uses local midnight on
  *  both ends, so an 8am-airing today stays "today" all day regardless of
@@ -200,8 +181,8 @@ export const WEEKDAY_OPTIONS = [
 /** Snap an ISO timestamp FORWARD to the next occurrence of `weekday`
  *  (0=Sun..6=Sat, Date.getDay()) on or after its own day — the per-lane
  *  display-weekday override. `weekday == null` → unchanged. Shifts by 0–6 whole
- *  days (time-of-day preserved). Day math is local, like dayOffset/timeLabel,
- *  so a German viewer's day is correct (the app's accepted convention). */
+ *  days. Day math is local, like dayOffset, so a German viewer's day is
+ *  correct (the app's accepted convention). */
 export function snapToWeekday(iso: string, weekday: number | null): string {
   if (weekday == null) return iso;
   const d = new Date(iso);

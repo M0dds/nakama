@@ -25,18 +25,15 @@ import {
 import {
   addDays,
   addMonths,
-  airDateHasClock,
   formatMonth,
   formatMonthAbbr,
   formatWeekRange,
   fromIsoDay,
-  hasAirTime,
   isoDay,
   mondayOf,
   MONTH_ABBR_3,
   nextLabel,
   startOfMonth,
-  timeLabel,
   typeInitial,
   typeLabel,
   WEEKDAYS_MON,
@@ -778,16 +775,12 @@ function DayPaneRow(props: {
 }) {
   const cover = () => coverFor(props.ev.coverUrl) ?? props.ev.coverUrl;
   const epLabel = () => nextLabel(props.ev.type, props.ev.episodeNumber);
-  // Meta line under the title: the air TIME instead of the episode title — in
-  // the calendar "when does it drop" beats the episode name (which lives on
-  // the item page). Future episodes without a known time keep the "noch nicht
-  // erschienen" hint; the dimmed style already marks them as upcoming.
+  // Meta line under the title: the episode label, with a "noch nicht
+  // erschienen" hint for upcoming ones (the dimmed style already marks them).
+  // Air dates are date-only app-wide — the day is the grid position, there is
+  // no clock time to show.
   const metaLine = () =>
-    hasAirTime(props.ev.airDate) && airDateHasClock(props.ev.type)
-      ? `${epLabel()} · ${timeLabel(props.ev.airDate)}`
-      : props.ev.released
-        ? epLabel()
-        : `${epLabel()} · noch nicht erschienen`;
+    props.ev.released ? epLabel() : `${epLabel()} · noch nicht erschienen`;
   const textClass = () => (props.ev.released ? "text-text" : "text-text-muted");
 
   return (

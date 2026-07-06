@@ -49,12 +49,9 @@ import {
 } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import {
-  airDateHasClock,
   dateLabelShortYear,
   dateLabelYear,
   dayOffset,
-  hasAirTime,
-  timeLabel,
   typeInitial,
   typeLabel,
 } from "@/lib/format";
@@ -868,26 +865,19 @@ function EpisodeListRow(props: {
   onTap: () => void;
   onCascade: () => void;
 }) {
+  // Day-based, matching the app-wide date-only rule: an episode counts as
+  // released from the day it airs — no clock gate (drives the text dimming;
+  // ticking itself is day-gated server-side in mark_episodes_watched_upto).
   const released = () =>
-    !props.ep.airDate || new Date(props.ep.airDate) <= new Date();
+    !props.ep.airDate || dayOffset(props.ep.airDate) <= 0;
 
-  // Day-bucket tag, based on calendar-day offset (NOT clock time): airDate
-  // today = "Heute" even if it already aired this morning; tomorrow = "Morgen";
-  // further out = "Demnächst". Past dates get no tag. Independent of the
-  // released() check above which still drives the text-muted dimming.
-  //
-  // Heute/Morgen also carry the air time ("Heute · 17:00") — the imminent rows
-  // where knowing WHEN it drops matters; Demnächst stays date-only (the date
-  // column already says enough). Time omitted for date-only entries.
+  // Day-bucket tag: airDate today = "Heute" all day, tomorrow = "Morgen",
+  // further out = "Demnächst". Past dates get no tag.
   const tagLabel = () => {
     if (!props.ep.airDate) return null;
     const offset = dayOffset(props.ep.airDate);
-    if (offset === 0 || offset === 1) {
-      const base = offset === 0 ? "Heute" : "Morgen";
-      return hasAirTime(props.ep.airDate) && airDateHasClock(props.itemType)
-        ? `${base} · ${timeLabel(props.ep.airDate)}`
-        : base;
-    }
+    if (offset === 0) return "Heute";
+    if (offset === 1) return "Morgen";
     if (offset > 1) return "Demnächst";
     return null;
   };

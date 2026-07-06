@@ -19,6 +19,7 @@ import { queryOptions } from "@tanstack/solid-query";
 import { supabase } from "@/lib/supabase";
 import {
   addMonths,
+  dayOffset,
   fromIsoDay,
   isoDay,
   snapToWeekday,
@@ -69,7 +70,8 @@ export interface CalendarEvent {
   /** Local calendar day "YYYY-MM-DD" — the grid bucket key. */
   day: string;
   airDate: string; // raw ISO
-  /** air_date <= now — only released episodes are tickable. */
+  /** Day-based: the (snapped) air day has begun locally. Drives the dot tier
+   *  + the dimmed row style. */
   released: boolean;
   /** Whether the caller has watched this episode. */
   watched: boolean;
@@ -160,7 +162,6 @@ async function fetchCalendarEvents(
     effectiveOverrides(userId),
   ]);
 
-  const now = Date.now();
   const events: CalendarEvent[] = [];
   for (const e of eps) {
     const air = e.air_date as string | null;
@@ -182,7 +183,8 @@ async function fetchCalendarEvents(
       coverUrl: m.coverUrl,
       day: isoDay(new Date(displayAir)),
       airDate: displayAir,
-      released: new Date(displayAir).getTime() <= now,
+      // Day-based, not clock-based: released from the (local) day it sits on.
+      released: dayOffset(displayAir) <= 0,
       watched: watchedSet.has(e.id as string),
     });
   }

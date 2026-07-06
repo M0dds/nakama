@@ -13,6 +13,7 @@ import {
   fetchMangaDexChapterCount,
   fetchMangaDexChapterTitles,
 } from "@/lib/mangadex";
+import { isoDay } from "@/lib/format";
 
 export interface AniListResult {
   sourceId: string; // AniList media id, stringified → items.source_id
@@ -443,7 +444,11 @@ export async function fetchAniListEpisodes(
         seasonNumber: 1,
         episodeNumber: n,
         title: titleByEpisode.get(n) ?? null,
-        airDate: at != null ? new Date(at * 1000).toISOString() : null,
+        // Store the local calendar DAY only, like TMDB's date-only air dates
+        // (app-wide rule: no release clock times — an episode counts as
+        // released from the day it airs). isoDay uses the viewer's local day,
+        // so a JST-evening airingAt lands on the German drop day.
+        airDate: at != null ? isoDay(new Date(at * 1000)) : null,
       };
     }),
     malId,
