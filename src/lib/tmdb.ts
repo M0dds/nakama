@@ -328,6 +328,9 @@ export interface TmdbEpisode {
 }
 
 interface RawTvDetail {
+  /** "Returning Series" / "Ended" / "Canceled" / … — TMDB ships it on the
+   *  detail payload without asking. */
+  status?: string | null;
   seasons?: Array<{
     season_number: number;
     episode_count: number;
@@ -362,17 +365,24 @@ function realTitle(name: string | null): string | null {
  */
 export async function fetchTmdbSeriesEpisodes(
   sourceId: string,
-): Promise<TmdbEpisode[]> {
+): Promise<{ episodes: TmdbEpisode[]; finished: boolean | null }> {
   const id = Number(sourceId);
-  if (!Number.isFinite(id)) return [];
+  if (!Number.isFinite(id)) return { episodes: [], finished: null };
 
   const detail = await tmdbGet<RawTvDetail>(`/tv/${id}`);
-  if (!detail) return [];
+  if (!detail) return { episodes: [], finished: null };
+
+  // "Will more episodes come?" — Ended/Canceled means no. null on a missing
+  // status (unknown ≠ false: don't clobber a stored metadata.finished).
+  const finished =
+    detail.status != null
+      ? detail.status === "Ended" || detail.status === "Canceled"
+      : null;
 
   const seasons = (detail.seasons ?? [])
     .filter((s) => s.season_number >= 1 && s.episode_count > 0)
     .slice(0, MAX_SEASONS);
-  if (seasons.length === 0) return [];
+  if (seasons.length === 0) return { episodes: [], finished };
 
   const perSeason = await Promise.all(
     seasons.map((s) =>
@@ -392,7 +402,7 @@ export async function fetchTmdbSeriesEpisodes(
       });
     }
   }
-  return episodes;
+  return { episodes, finished };
 }
 
 /** Extra catalogue facts for the detail page's Details column (F12): genres,

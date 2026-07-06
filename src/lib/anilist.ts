@@ -160,6 +160,11 @@ export interface AniListEpisode {
 export interface AniListEpisodesResult {
   episodes: AniListEpisode[];
   malId: number | null;
+  /** Source airing status collapsed to "will more episodes/chapters come?"
+   *  — true when FINISHED/CANCELLED, false while releasing/announced, null
+   *  when the lookup failed (unknown ≠ false: don't clobber a stored value).
+   *  Stamped into items.metadata.finished; feeds the Abschluss detection. */
+  finished: boolean | null;
 }
 
 // Defensive cap so a 1000+ episode work (One Piece…) can't insert a runaway
@@ -175,6 +180,7 @@ const MEDIA_QUERY = `
       id
       idMal
       type
+      status
       episodes
       chapters
       title { romaji english native }
@@ -320,12 +326,13 @@ export async function fetchAniListEpisodes(
   type: "anime" | "manga",
 ): Promise<AniListEpisodesResult> {
   const id = Number(sourceId);
-  if (!Number.isFinite(id)) return { episodes: [], malId: null };
+  if (!Number.isFinite(id)) return { episodes: [], malId: null, finished: null };
 
   const json = (await anilistRequest(MEDIA_QUERY, { id })) as {
     data?: {
       Media?: {
         idMal: number | null;
+        status: string | null;
         episodes: number | null;
         chapters: number | null;
         title: {
@@ -346,8 +353,12 @@ export async function fetchAniListEpisodes(
     };
   } | null;
   const m = json?.data?.Media;
-  if (!m) return { episodes: [], malId: null };
+  if (!m) return { episodes: [], malId: null, finished: null };
   const malId = m.idMal;
+  // CANCELLED counts as finished — no further episodes will ever come, which
+  // is all the Abschluss detection asks. HIATUS/RELEASING stay false.
+  const finished =
+    m.status === "FINISHED" || m.status === "CANCELLED";
 
   // ── Manga branch ─────────────────────────────────────────────────────
   if (type === "manga") {
@@ -357,7 +368,7 @@ export async function fetchAniListEpisodes(
     if (count < 1) {
       count = (await fetchMangaDexChapterCount(id, fallbackTitle)) ?? 0;
     }
-    if (count < 1) return { episodes: [], malId };
+    if (count < 1) return { episodes: [], malId, finished };
 
     // Best-effort chapter titles via MangaDex. Coverage varies wildly:
     // weeklys often carry no title, officially-licensed runs (One Piece)
@@ -377,6 +388,7 @@ export async function fetchAniListEpisodes(
         airDate: null,
       })),
       malId,
+      finished,
     };
   }
 
@@ -435,7 +447,7 @@ export async function fetchAniListEpisodes(
   }
 
   const count = Math.min(knownCount ?? maxSeen, MAX_EPISODES);
-  if (count < 1) return { episodes: [], malId };
+  if (count < 1) return { episodes: [], malId, finished };
 
   return {
     episodes: range(count).map((n) => {
@@ -452,6 +464,7 @@ export async function fetchAniListEpisodes(
       };
     }),
     malId,
+    finished,
   };
 }
 

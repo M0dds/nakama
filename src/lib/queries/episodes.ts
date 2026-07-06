@@ -111,12 +111,17 @@ function isFetchable(item: ItemForFetch): boolean {
  *  AniList (anime/manga) also resolves a MAL id for downstream Jikan title
  *  enrichment; TMDB ships episode names inline, so it carries no malId and
  *  skips the enrichment pass entirely (see storeEpisodes). */
-async function fetchEpisodesForSource(
-  item: ItemForFetch,
-): Promise<{ episodes: AniListEpisodeLike[]; malId: number | null }> {
+async function fetchEpisodesForSource(item: ItemForFetch): Promise<{
+  episodes: AniListEpisodeLike[];
+  malId: number | null;
+  /** Source says no more episodes will come (null = lookup failed). */
+  finished: boolean | null;
+}> {
   if (item.source === "tmdb") {
-    const episodes = await fetchTmdbSeriesEpisodes(item.sourceId);
-    return { episodes, malId: null };
+    const { episodes, finished } = await fetchTmdbSeriesEpisodes(
+      item.sourceId,
+    );
+    return { episodes, malId: null, finished };
   }
   return fetchAniListEpisodes(item.sourceId, item.type as "anime" | "manga");
 }
@@ -131,7 +136,7 @@ interface AniListEpisodeLike {
 }
 
 async function storeEpisodes(item: ItemForFetch): Promise<void> {
-  const { episodes, malId } = await fetchEpisodesForSource(item);
+  const { episodes, malId, finished } = await fetchEpisodesForSource(item);
 
   if (episodes.length > 0) {
     // Direct episodes writes are locked down (PRELAUNCH-1) — the bulk upsert
@@ -173,6 +178,7 @@ async function storeEpisodes(item: ItemForFetch): Promise<void> {
     bumpVersion: enrich.ok,
     malId: enrich.malId ?? malId,
     touchFetchedAt: true,
+    finished,
   });
 }
 
@@ -270,12 +276,22 @@ async function writeTitles(
  *  when there's nothing to persist (transient failure with no new malId). */
 async function stampEnrichment(
   item: ItemForFetch,
-  opts: { bumpVersion: boolean; malId?: number | null; touchFetchedAt?: boolean },
+  opts: {
+    bumpVersion: boolean;
+    malId?: number | null;
+    touchFetchedAt?: boolean;
+    /** Source airing status ("no more episodes will come") — stamped as
+     *  metadata.finished, refreshed on every episode re-store (12 h gate).
+     *  null = lookup failed → keep whatever is stored. Feeds the Abschluss
+     *  detection (item page stamp + list-row marker). */
+    finished?: boolean | null;
+  },
 ): Promise<void> {
   const extra: Record<string, unknown> = {};
   if (opts.malId != null) extra.malId = opts.malId;
   if (opts.bumpVersion) extra.titleEnrichmentVersion = TITLE_ENRICHMENT_VERSION;
   if (opts.touchFetchedAt) extra.episodesFetchedAt = new Date().toISOString();
+  if (opts.finished != null) extra.finished = opts.finished;
   if (Object.keys(extra).length === 0) return;
   // Locked-down catalog write (PRELAUNCH-1) → DEFINER `set_item_metadata` RPC
   // (replace-whole; we build the merged object here, as before).
