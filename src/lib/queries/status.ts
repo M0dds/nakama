@@ -43,6 +43,11 @@ export async function setItemSeen(input: {
   user: User;
   itemId: string;
   seen: boolean;
+  /** Completion timestamp override (ISO). Default now — the episodic
+   *  Abschluss reconcile passes the caller's LAST WATCH time instead, so a
+   *  retroactive heal lands at its true historical position in the Logbuch
+   *  window rather than faking a fresh event. */
+  at?: string;
 }): Promise<void> {
   if (input.seen) {
     const { error } = await supabase.from("item_history").upsert(
@@ -50,7 +55,7 @@ export async function setItemSeen(input: {
         user_id: input.user.id,
         item_id: input.itemId,
         status: "completed",
-        updated_at: new Date().toISOString(),
+        updated_at: input.at ?? new Date().toISOString(),
       },
       { onConflict: "user_id,item_id" },
     );
@@ -63,4 +68,42 @@ export async function setItemSeen(input: {
       .eq("item_id", input.itemId);
     if (error) throw error;
   }
+}
+
+/**
+ * Abschluss reconcile for EPISODIC items (anime/series/manga) — Review P3 #2.
+ * The item page derives "completed" (lane watched == total AND
+ * metadata.finished) and calls this to converge the item_history stamp:
+ *
+ *   complete + not stamped → upsert, timestamped with the caller's LATEST
+ *     WATCH. For a live completion that's ≈now (the tick just landed); for a
+ *     retroactive heal (show finished before this feature existed, or a
+ *     partner completed via sync fan-out) it's the true historical moment —
+ *     usually outside the Logbuch window, so healing never fakes fresh events.
+ *   not complete + stamped → delete (an un-tick broke completeness).
+ *
+ * The stamp is what the Logbuch 'status' kind and the list-row marker read —
+ * same pipeline the movie/game seen-toggle feeds.
+ */
+export async function reconcileEpisodicCompletion(input: {
+  user: User;
+  itemId: string;
+  complete: boolean;
+}): Promise<void> {
+  if (!input.complete) {
+    await setItemSeen({ user: input.user, itemId: input.itemId, seen: false });
+    return;
+  }
+  // Latest own watch across BOTH lanes (a synced instance completes the show
+  // just as much as the global lane does). RLS covers own rows.
+  const { data, error } = await supabase
+    .from("episode_watches")
+    .select("watched_at, episodes!inner(item_id)")
+    .eq("episodes.item_id", input.itemId)
+    .eq("user_id", input.user.id)
+    .order("watched_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const at = (data?.[0] as { watched_at: string } | undefined)?.watched_at;
+  await setItemSeen({ user: input.user, itemId: input.itemId, seen: true, at });
 }

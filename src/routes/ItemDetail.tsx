@@ -28,6 +28,7 @@ import {
 import {
   movieSeenKey,
   movieSeenOptions,
+  reconcileEpisodicCompletion,
   setItemSeen,
 } from "@/lib/queries/status";
 import { listsQueryKey } from "@/lib/queries/lists";
@@ -443,8 +444,68 @@ export default function ItemDetail() {
     },
   }));
 
-  const onTap = (ep: EpisodeRow) => toggleMut.mutate(ep);
-  const onCascade = (ep: EpisodeRow) => cascadeMut.mutate(ep);
+  const onTap = (ep: EpisodeRow) => {
+    completionInteracted = true;
+    toggleMut.mutate(ep);
+  };
+  const onCascade = (ep: EpisodeRow) => {
+    completionInteracted = true;
+    cascadeMut.mutate(ep);
+  };
+
+  // ── Abschluss-Moment (Review P3 #2) ──────────────────────────────────
+  // Completed = the current lane's watched count reaches the stored total
+  // AND the source says the show is done (metadata.finished, refreshed by
+  // the episode re-store). Converged into the caller's item_history
+  // 'completed' row — the same stamp the movie/game seen-toggle writes —
+  // which feeds the Logbuch 'status' event and the list-row marker.
+  //
+  // Stamping also runs PASSIVELY (visits heal: pre-feature completions,
+  // partner completions via sync fan-out) — safe because the stamp is
+  // backdated to the latest own watch, so an old finish lands outside the
+  // Logbuch window instead of faking a fresh event. RETRACTING only follows
+  // an explicit tick on this page: the global lane of an instance-completed
+  // item legitimately reads 0/N, and a passive delete there would wrongly
+  // tear down the instance completion.
+  const episodic = () =>
+    params.type === "anime" ||
+    params.type === "series" ||
+    params.type === "manga";
+  const seenQ = createQuery(() => ({
+    ...movieSeenOptions(auth.user()!, item.data?.id ?? ""),
+    enabled: !!auth.user() && !!item.data && episodic(),
+  }));
+  let completionInteracted = false;
+  let completionPending = false;
+  createEffect(() => {
+    const user = auth.user();
+    const itemData = item.data;
+    const ep = episodes.data;
+    const stamped = seenQ.data;
+    if (!user || !itemData || !ep || stamped === undefined) return;
+    if (!episodic() || !laneReady()) return;
+    const complete =
+      ep.total > 0 &&
+      ep.watched >= ep.total &&
+      itemData.metadata?.finished === true;
+    if (complete === stamped) return;
+    if (!complete && !completionInteracted) return;
+    if (completionPending) return;
+    completionPending = true;
+    reconcileEpisodicCompletion({ user, itemId: itemData.id, complete })
+      .catch((e) => console.error("abschluss reconcile failed", e))
+      .finally(() => {
+        completionPending = false;
+        void queryClient.invalidateQueries({
+          queryKey: movieSeenKey(itemData.id),
+        });
+        // The stamp is feed + list-row material (Logbuch 'status' event,
+        // "Abgeschlossen" marker).
+        void queryClient.invalidateQueries({ queryKey: ["home"] });
+        void queryClient.invalidateQueries({ queryKey: listsQueryKey });
+        void queryClient.invalidateQueries({ queryKey: ["list"] });
+      });
+  });
 
   // Films + games have no episodes: the left column becomes a binary
   // seen/played-toggle + rich metadata (MoviePanel via TMDB, GamePanel via

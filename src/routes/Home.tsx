@@ -1576,10 +1576,17 @@ function ListAddSentence(props: { ev: ListAddEvent }) {
   );
 }
 
-/** "Du hast Dune gesehen." / "@aki hat Elden Ring gespielt." — movie/game
- *  completion. Verb branches on type (movie → gesehen, game → gespielt),
- *  matching the detail-page "Gesehen"/"Gespielt" toggles. Read-only. */
+/** "Du hast Dune gesehen." / "@aki hat Elden Ring gespielt." / "Du hast
+ *  Frieren abgeschlossen." — completion. Verb branches on type (movie →
+ *  gesehen, game → gespielt, episodisch → abgeschlossen), matching the
+ *  detail-page vocabulary. Read-only. */
 function StatusSentence(props: { ev: StatusEvent }) {
+  const verb = () =>
+    props.ev.type === "game"
+      ? "gespielt"
+      : props.ev.type === "movie"
+        ? "gesehen"
+        : "abgeschlossen";
   return (
     <>
       <ActorName
@@ -1590,7 +1597,7 @@ function StatusSentence(props: { ev: StatusEvent }) {
       />{" "}
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span>{" "}
-      {props.ev.type === "game" ? "gespielt" : "gesehen"}.
+      {verb()}.
     </>
   );
 }

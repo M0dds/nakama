@@ -96,9 +96,10 @@ export interface UpcomingItem {
  *  - missed             : the latest released-but-unticked episode of a tracked item
  *                         (within MISSED_DAYS) — an actionable "you're behind" nudge
  *                         carrying a quick-tick (cascade-catch-up) target.
- *  - status             : a movie/game completion (item_history 'completed') — "Du
- *                         hast <Film> gesehen" / "@aki hat <Spiel> gespielt". Same
- *                         shared-vs-private visibility as list_add.
+ *  - status             : a completion (item_history 'completed') — "Du hast <Film>
+ *                         gesehen" / "@aki hat <Spiel> gespielt" / "Du hast <Serie>
+ *                         abgeschlossen" (episodic Abschluss stamp, Review P3 #2).
+ *                         Same shared-vs-private visibility as list_add.
  *  - ownership_transfer : a logged list ownership handover on a list you're in.
  *
  *  The display label for `actor` uses "@username" first, then display_name,
@@ -149,11 +150,13 @@ export interface WatchBundle extends ItemLogbookEvent {
   episodeCount: number;
 }
 
-/** completed — a movie marked "seen" / a game marked "played" (item_history
- *  status='completed'). Item-centric; the verb branches on type in the UI
- *  (movie → "gesehen", game → "gespielt"), matching the detail-page toggles.
- *  Co-member completions surface in shared lists via the item_history co-read
- *  (shares_item_in_list_with); private-list completions are own-only. */
+/** completed — a movie marked "seen", a game marked "played", or an episodic
+ *  work's derived Abschluss (item_history status='completed' in every case).
+ *  Item-centric; the verb branches on type in the UI (movie → "gesehen",
+ *  game → "gespielt", anime/series/manga → "abgeschlossen"), matching the
+ *  detail-page vocabulary. Co-member completions surface in shared lists via
+ *  the item_history co-read (shares_item_in_list_with); private-list
+ *  completions are own-only. */
 export interface StatusEvent extends ItemLogbookEvent {
   kind: "status";
 }
@@ -912,14 +915,16 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     });
   }
 
-  // ── Movie/game completions ──────────────────────────────────────────────
+  // ── Completions ─────────────────────────────────────────────────────────
   for (const s of statuses) {
     const m = meta.get(s.item_id);
     if (!m) continue;
-    // item_history can also hold episodic overlay rows ('watching'/'dropped'/
-    // 'completed' on anime/series/manga). Only the episode-less types use it as
-    // a genuine completion; everything else tracks via episode_watches.
-    if (m.type !== "movie" && m.type !== "game") continue;
+    // Every type is a genuine completion here: movie/game = the binary
+    // seen/played toggle; anime/series/manga = the derived Abschluss stamp
+    // (lane watched == total + source finished, written by the item page —
+    // "Du hast Frieren abgeschlossen"). The query filters status='completed',
+    // and legacy Logbook-era episodic overlay rows carry old updated_at
+    // values → outside the feed window.
     const isSelf = s.user_id === currentUserId;
     const actor = isSelf ? undefined : actors.get(s.user_id);
     events.push({
