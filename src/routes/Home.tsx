@@ -1023,80 +1023,142 @@ function EmptyContinue(props: {
   );
 }
 
+/** Dock magnification tiers — width of a cover by its distance to the active
+ *  tile (0 = active, 1 = direct neighbour, rest = base). The wave rides plain
+ *  CSS width transitions; siblings get pushed aside, which IS the dock read. */
+const NEXT_UP_W = ["7rem", "5rem", "4rem"] as const;
+
 /**
  * "Als Nächstes" — the answer to "Zeit für etwas Neues": unstarted entries
- * from the user's tracked lists as a cover shelf, pinned first (item pins
- * live on the shared list_items row — a couple that pins, plans). Each tile
- * links into the list-scoped item route, so sync toggle / notes / co-watchers
- * are right there to start the thing together.
+ * from the user's tracked lists as a macOS-dock-style cover shelf, pinned
+ * first (item pins live on the shared list_items row — a couple that pins,
+ * plans). Each tile links into the list-scoped item route, so sync toggle /
+ * notes / co-watchers are right there to start the thing together.
  *
- * Centered when the shelf fits (mx-auto + w-fit — matches the centered copy
- * above), scrolls horizontally once it overflows (max-w-full). Hovering a
- * tile zooms the cover inside its frame AND drives the page's ambient
- * CoverBackdrop through onActiveCover — the same "the atmosphere follows
- * your eye" read as the "Was kommt" cards; leaving the shelf hands the wash
- * back (null → WasKommt's active card wins again).
+ * One tile is always ACTIVE (magnified): the middle one at rest — the shelf
+ * always stands at full height, no gap jumps on first hover. Hover moves the
+ * magnification (direct neighbours get a mid tier — the dock wave); leaving
+ * snaps back to the middle. Covers are bottom-aligned like a dock shelf, and
+ * the caption below always describes the active tile (full width — no
+ * per-tile truncation), hard content swap per the motion language.
+ *
+ * Touch mirrors the "Was kommt" cards: first tap activates (preventing nav),
+ * a second tap on the active tile navigates. Hover-activate is gated to
+ * hover-capable devices (a tap fires a synthetic mouseenter first, which
+ * would otherwise let the first tap navigate blind).
+ *
+ * Hovering also drives the page's ambient CoverBackdrop through
+ * onActiveCover — the same "the atmosphere follows your eye" read as the
+ * "Was kommt" cards. Only while the pointer is inside the shelf: the resting
+ * middle-magnification deliberately does NOT claim the wash, so WasKommt's
+ * active card keeps it at rest; leaving the shelf hands it back (null).
  */
 function NextUpStrip(props: {
   items: NextUpItem[];
   onActiveCover: (url: string | null) => void;
 }) {
+  // Realtime can shrink the list mid-session — clamp so the shelf never ends
+  // up with no active (= full-size) tile.
+  const middle = () => Math.floor((props.items.length - 1) / 2);
+  const [active, setActive] = createSignal(middle());
+  const activeIdx = () => Math.min(active(), props.items.length - 1);
+  const activeItem = () => props.items[activeIdx()];
+  const hoverCapable = () => window.matchMedia("(hover: hover)").matches;
+
   // The strip can unmount mid-hover (a partner's tick fills Fortsetzen via
   // realtime) — release the wash so no stale cover lingers.
   onCleanup(() => props.onActiveCover(null));
+
   return (
     <div class="mt-6">
       <p class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
         Als Nächstes
       </p>
       <ul
-        class="scrollbar-none mx-auto mt-4 flex w-fit max-w-full gap-4 overflow-x-auto px-1 pb-1"
-        onMouseLeave={() => props.onActiveCover(null)}
+        class="scrollbar-none mx-auto mt-4 flex w-fit max-w-full items-end gap-3 overflow-x-auto px-1 pb-1"
+        onMouseLeave={() => {
+          props.onActiveCover(null);
+          if (hoverCapable()) setActive(middle());
+        }}
       >
         <For each={props.items}>
-          {(item) => (
-            <li class="w-24 shrink-0">
-              <A
-                href={`/lists/${item.listShortCode}/item/${item.type}/${item.slug}`}
-                class="group block"
-                onMouseEnter={() => props.onActiveCover(item.coverUrl)}
-                onFocus={() => props.onActiveCover(item.coverUrl)}
-              >
-                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xs border border-border bg-surface transition-colors group-hover:border-text-muted">
-                  <Show
-                    when={item.coverUrl}
-                    fallback={
-                      <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
-                        {typeInitial(item.type)}
-                      </div>
+          {(item, i) => {
+            const tier = () => Math.min(Math.abs(i() - activeIdx()), 2);
+            const isActive = () => i() === activeIdx();
+            return (
+              <li class="shrink-0">
+                <A
+                  href={`/lists/${item.listShortCode}/item/${item.type}/${item.slug}`}
+                  class="group block"
+                  aria-label={
+                    isActive() ? `${item.title} öffnen` : `${item.title} ansehen`
+                  }
+                  onClick={(e: MouseEvent) => {
+                    // First tap on an inactive tile activates instead of
+                    // navigating (touch path; on desktop hover already
+                    // activated it, so clicks always navigate there).
+                    if (!isActive()) {
+                      e.preventDefault();
+                      setActive(i());
                     }
-                  >
-                    <img
-                      ref={fadeOnLoad}
-                      src={coverFor(item.coverUrl)!}
-                      alt=""
-                      class="size-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.06] group-active:scale-[0.97]"
-                      loading="lazy"
-                    />
-                  </Show>
-                  <Show when={item.pinned}>
-                    <PinBadge />
-                  </Show>
-                </div>
-                <p
-                  class="mt-1.5 line-clamp-2 min-h-9 break-words text-label leading-[1.125rem] text-text transition-colors group-hover:text-accent"
-                  title={item.title}
+                  }}
+                  onMouseEnter={() => {
+                    props.onActiveCover(item.coverUrl);
+                    if (hoverCapable()) setActive(i());
+                  }}
+                  onFocus={() => {
+                    props.onActiveCover(item.coverUrl);
+                    setActive(i());
+                  }}
                 >
-                  {item.title}
-                </p>
-                <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
-                  {item.listName}
-                </p>
-              </A>
-            </li>
-          )}
+                  <div
+                    class="relative aspect-[2/3] overflow-hidden rounded-xs border bg-surface transition-[width,border-color] duration-300 [transition-timing-function:var(--ease-quart)] group-active:scale-[0.97]"
+                    classList={{
+                      "border-accent": isActive(),
+                      "border-border": !isActive(),
+                    }}
+                    style={{ width: NEXT_UP_W[tier()] }}
+                  >
+                    <Show
+                      when={item.coverUrl}
+                      fallback={
+                        <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+                          {typeInitial(item.type)}
+                        </div>
+                      }
+                    >
+                      <img
+                        ref={fadeOnLoad}
+                        src={coverFor(item.coverUrl)!}
+                        alt=""
+                        class="size-full object-cover"
+                        loading="lazy"
+                      />
+                    </Show>
+                    <Show when={item.pinned}>
+                      <PinBadge />
+                    </Show>
+                  </div>
+                </A>
+              </li>
+            );
+          }}
         </For>
       </ul>
+      {/* Caption — always the active tile's identity, full width so nothing
+          truncates. Hard swap (content), only the shelf itself is liquid. */}
+      <Show when={activeItem()}>
+        {(item) => (
+          <div class="mt-3 text-center">
+            <p class="truncate text-body text-text" title={item().title}>
+              {item().title}
+            </p>
+            <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+              {item().listName}
+            </p>
+          </div>
+        )}
+      </Show>
     </div>
   );
 }
