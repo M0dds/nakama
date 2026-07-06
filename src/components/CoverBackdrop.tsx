@@ -55,20 +55,34 @@ async function bakeAmbient(url: string): Promise<string> {
     img.decoding = "async";
     img.src = url;
     await img.decode();
-    const h = Math.max(
-      1,
-      Math.round((img.naturalHeight / Math.max(1, img.naturalWidth)) * BAKE_W),
-    );
+    const aspect = img.naturalHeight / Math.max(1, img.naturalWidth);
+    // Two-pass resample: crush to ~12px first (kills detail the way a huge
+    // blur would), then upscale to the bake size — the second smoothing
+    // pass turns the 12px blocks into soft gradients. A single 48px pass
+    // kept too much structure: fullscreen it read as "upscaled image", not
+    // as the old blur(80px) atmosphere.
+    const tinyW = Math.max(4, Math.round(BAKE_W / 4));
+    const tinyH = Math.max(4, Math.round(tinyW * aspect));
+    const tiny = document.createElement("canvas");
+    tiny.width = tinyW;
+    tiny.height = tinyH;
+    const tctx = tiny.getContext("2d");
     const canvas = document.createElement("canvas");
     canvas.width = BAKE_W;
-    canvas.height = h;
+    canvas.height = Math.max(1, Math.round(BAKE_W * aspect));
     const ctx = canvas.getContext("2d");
-    if (ctx) {
-      // Slight in-bake soften + the saturation lift the CSS filter used to
-      // apply. Safari versions without canvas filters just ignore this —
-      // the upscale still does the heavy lifting.
-      ctx.filter = "saturate(1.25) blur(1.5px)";
-      ctx.drawImage(img, 0, 0, BAKE_W, h);
+    if (tctx && ctx) {
+      tctx.imageSmoothingEnabled = true;
+      tctx.imageSmoothingQuality = "high";
+      tctx.drawImage(img, 0, 0, tinyW, tinyH);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      // In-bake blur + the saturation lift the CSS filter used to apply.
+      // blur(4px) at 48px bake width ≈ blur(~35px) at phone width, on top
+      // of the double-resample softening. Safari versions without canvas
+      // filters ignore this — the two-pass resample still carries it.
+      ctx.filter = "saturate(1.25) blur(4px)";
+      ctx.drawImage(tiny, 0, 0, canvas.width, canvas.height);
       baked = canvas.toDataURL("image/png"); // throws on tainted canvas
     }
   } catch {
