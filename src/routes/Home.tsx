@@ -29,12 +29,14 @@ import { useAuth } from "@/lib/auth";
 import {
   continueWatchingOptions,
   homeQueryKey,
+  nextUpOptions,
   recentlyTickedOptions,
   upcomingEpisodesOptions,
   type ContinueItem,
   type ListAddEvent,
   type LogbookEvent,
   type MissedEvent,
+  type NextUpItem,
   type StatusEvent,
   type TransferEvent,
   type UpcomingItem,
@@ -60,6 +62,7 @@ import {
 } from "@/lib/format";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
+import { PinBadge } from "@/components/GeneratedCover";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { BentoModule } from "@/components/BentoModule";
@@ -109,6 +112,14 @@ export default function Home() {
     !!listsQ.data &&
     listsQ.data.private.length === 0 &&
     listsQ.data.shared.length === 0;
+
+  // "Als Nächstes" — unstarted entries from tracked lists, pinned first. Only
+  // fetched once Fortsetzen has resolved EMPTY (the strip lives inside the
+  // caught-up empty state; an active watcher never pays for the query).
+  const nextUpQ = createQuery(() => ({
+    ...nextUpOptions(auth.user()!),
+    enabled: !!auth.user() && continueQ.data?.length === 0,
+  }));
 
   // Greeting name for the header. The AppLayout gate already preloads this same
   // query (onboarding check), so it's warm in cache → no flash. Display name is
@@ -193,7 +204,12 @@ export default function Home() {
               >
                 <Show
                   when={continueQ.data && continueQ.data.length > 0}
-                  fallback={<EmptyContinue firstRun={firstRun()} />}
+                  fallback={
+                    <EmptyContinue
+                      firstRun={firstRun()}
+                      nextUp={nextUpQ.data ?? []}
+                    />
+                  }
                 >
                   <Fortsetzen items={continueQ.data!} />
                 </Show>
@@ -964,31 +980,96 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
   );
 }
 
-function EmptyContinue(props: { firstRun: boolean }) {
+function EmptyContinue(props: { firstRun: boolean; nextUp: NextUpItem[] }) {
   return (
-    <div class="rounded-sm border border-border px-5 py-6 text-center">
+    <div class="rounded-sm border border-border px-5 py-6">
       <Show
         when={props.firstRun}
         fallback={
-          <>
+          <div class="text-center">
             <p class="text-body text-text">Alles aufgeholt.</p>
             <p class="mt-1 text-body text-text-muted">Zeit für etwas Neues.</p>
-          </>
+          </div>
         }
       >
-        <p class="text-body text-text">Noch nichts begonnen.</p>
-        <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
-          Was du gerade schaust oder spielst, taucht hier auf — mit dem Tipp,
-          wo du weitermachst. Fang mit deiner ersten Liste im{" "}
-          <A
-            href="/lists"
-            class="text-accent underline-offset-2 hover:underline"
-          >
-            Listen-Tab
-          </A>{" "}
-          an.
-        </p>
+        <div class="text-center">
+          <p class="text-body text-text">Noch nichts begonnen.</p>
+          <p class="mx-auto mt-1 max-w-md text-body text-text-muted">
+            Was du gerade schaust oder spielst, taucht hier auf — mit dem Tipp,
+            wo du weitermachst. Fang mit deiner ersten Liste im{" "}
+            <A
+              href="/lists"
+              class="text-accent underline-offset-2 hover:underline"
+            >
+              Listen-Tab
+            </A>{" "}
+            an.
+          </p>
+        </div>
       </Show>
+      <Show when={props.nextUp.length > 0}>
+        <NextUpStrip items={props.nextUp} />
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * "Als Nächstes" — the answer to "Zeit für etwas Neues": unstarted entries
+ * from the user's tracked lists as a quiet cover shelf, pinned first (item
+ * pins live on the shared list_items row — a couple that pins, plans).
+ * Each tile links into the list-scoped item route, so sync toggle / notes /
+ * co-watchers are right there to start the thing together.
+ */
+function NextUpStrip(props: { items: NextUpItem[] }) {
+  return (
+    <div class="mt-6">
+      <p class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
+        Als Nächstes
+      </p>
+      <ul class="scrollbar-none -mx-2 mt-3 flex gap-4 overflow-x-auto px-2 pb-1">
+        <For each={props.items}>
+          {(item) => (
+            <li class="w-20 shrink-0">
+              <A
+                href={`/lists/${item.listShortCode}/item/${item.type}/${item.slug}`}
+                class="group block"
+              >
+                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xs border border-border bg-surface">
+                  <Show
+                    when={item.coverUrl}
+                    fallback={
+                      <div class="flex size-full items-center justify-center font-mono text-mini text-text-muted">
+                        {typeInitial(item.type)}
+                      </div>
+                    }
+                  >
+                    <img
+                      ref={fadeOnLoad}
+                      src={coverFor(item.coverUrl)!}
+                      alt=""
+                      class="size-full object-cover"
+                      loading="lazy"
+                    />
+                  </Show>
+                  <Show when={item.pinned}>
+                    <PinBadge />
+                  </Show>
+                </div>
+                <p
+                  class="mt-1.5 truncate text-label text-text transition-colors group-hover:text-accent"
+                  title={item.title}
+                >
+                  {item.title}
+                </p>
+                <p class="truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                  {item.listName}
+                </p>
+              </A>
+            </li>
+          )}
+        </For>
+      </ul>
     </div>
   );
 }

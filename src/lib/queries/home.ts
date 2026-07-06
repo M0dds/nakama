@@ -30,6 +30,8 @@ export const upcomingEpisodesKey = (userId: string) =>
   ["home", "upcoming", userId] as const;
 export const recentlyTickedKey = (userId: string) =>
   ["home", "logbook", userId] as const;
+export const nextUpKey = (userId: string) =>
+  ["home", "next-up", userId] as const;
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -245,6 +247,19 @@ export function recentlyTickedOptions(user: User) {
   });
 }
 
+/** Als Nächstes — unstarted entries from tracked lists, pinned first. Fills
+ *  the caught-up empty state (the strip only mounts when Fortsetzen is empty).
+ *  Runs server-side (home_next_up RPC): the any-lane started-check can't be
+ *  done client-side without tripping the 1000-row cap on long finished shows.
+ *  Keyed under ["home"] so the realtime channel invalidates it for free. */
+export function nextUpOptions(user: User) {
+  return queryOptions({
+    queryKey: nextUpKey(user.id),
+    queryFn: () => fetchNextUp(),
+    staleTime: 60_000,
+  });
+}
+
 // ── Fetchers ────────────────────────────────────────────────────────────
 
 interface ContinueRow {
@@ -311,6 +326,50 @@ async function fetchContinueWatching(): Promise<ContinueItem[]> {
     listItemId: r.list_item_id,
     listShortCode: r.list_short_code,
     listName: r.list_name,
+  }));
+}
+
+/** Als Nächstes — one unstarted entry from the user's tracked lists. */
+export interface NextUpItem {
+  itemId: string;
+  title: string;
+  type: MediaType;
+  slug: string;
+  coverUrl: string | null;
+  /** Pin on the shared list_items row — the group's planning signal. */
+  pinned: boolean;
+  /** List context for the strip's link target (list-scoped item route). */
+  listName: string;
+  listShortCode: string;
+}
+
+interface NextUpRow {
+  item_id: string;
+  title: string;
+  item_type: MediaType;
+  slug: string;
+  cover_url: string | null;
+  pinned: boolean;
+  added_at: string;
+  list_name: string;
+  list_short_code: string;
+}
+
+async function fetchNextUp(): Promise<NextUpItem[]> {
+  const { data, error } = await supabase.rpc("home_next_up");
+  if (error) {
+    console.error("home_next_up RPC failed", error);
+    throw error;
+  }
+  return ((data ?? []) as NextUpRow[]).map((r) => ({
+    itemId: r.item_id,
+    title: r.title,
+    type: r.item_type,
+    slug: r.slug,
+    coverUrl: r.cover_url,
+    pinned: r.pinned,
+    listName: r.list_name,
+    listShortCode: r.list_short_code,
   }));
 }
 
