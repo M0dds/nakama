@@ -11,9 +11,11 @@
  * WHY a proxy (the whole point):
  *   - Hide the TMDB token: it lives in this Worker's env, never in the client
  *     bundle (closes SEC-TMDB).
- *   - One SHARED edge cache across all users: e.g. a "one piece" search runs
- *     against AniList once, then every other user is served from cache — fewer
- *     provider calls, and AniList/Jikan rate limits stay off each user's IP.
+ *   - One SHARED edge cache across all users: e.g. a One Piece episode-title
+ *     backfill hits Jikan once, then every other user is served from cache —
+ *     fewer provider calls, and provider rate limits stay off each user's IP.
+ *     (AniList is NOT proxied: it 403-blocks Worker egress IPs and needs no
+ *     token + allows CORS, so the browser calls it directly — see proxy.ts.)
  *   - Same-origin (usenakama.app/api/media/*): no CORS, lower latency (the SPA
  *     already comes from this same edge).
  *
@@ -46,11 +48,9 @@ interface Env {
 interface SourceConfig {
   /** Pinned upstream origin + base path (no trailing slash). */
   base: string;
-  /** Allowed HTTP method. AniList is the only POST (GraphQL). */
-  method: "GET" | "POST";
   /** Upstream paths permitted for this source (matched against the path AFTER
-   *  /api/media/<source>). Ignored for POST sources (single endpoint). */
-  paths?: RegExp[];
+   *  /api/media/<source>). All sources are GET-only. */
+  paths: RegExp[];
   /** Query-param keys forwarded upstream; everything else is dropped. */
   params?: Set<string>;
   /** Extra request headers (e.g. the TMDB bearer). Built per-request from env. */
@@ -74,7 +74,6 @@ const SOURCES: Record<string, SourceConfig> = {
   // keep one TTL per source for simplicity; detail data barely changes anyway.
   tmdb: {
     base: "https://api.themoviedb.org/3",
-    method: "GET",
     paths: [
       /^\/search\/(tv|movie)$/,
       /^\/movie\/\d+$/,
@@ -101,7 +100,6 @@ const SOURCES: Record<string, SourceConfig> = {
   // a trailing slash (Steam 301s without it), mirrored in the path regex.
   steam: {
     base: "https://store.steampowered.com/api",
-    method: "GET",
     paths: [/^\/(storesearch|appdetails)\/?$/],
     params: new Set(["term", "appids", "l", "cc"]),
     cacheTtl: HOUR,
@@ -112,7 +110,6 @@ const SOURCES: Record<string, SourceConfig> = {
   // 3 req/s; cached, it hits the provider once for everyone.
   jikan: {
     base: "https://api.jikan.moe/v4",
-    method: "GET",
     paths: [/^\/anime\/\d+\/episodes$/],
     params: new Set(["page"]),
     cacheTtl: DAY,
@@ -121,7 +118,6 @@ const SOURCES: Record<string, SourceConfig> = {
   // MangaDex — chapter counts + titles, matched on the AniList id.
   mangadex: {
     base: "https://api.mangadex.org",
-    method: "GET",
     paths: [
       /^\/manga$/,
       /^\/manga\/[0-9a-f-]+\/aggregate$/,
@@ -136,14 +132,6 @@ const SOURCES: Record<string, SourceConfig> = {
       "translatedLanguage[]",
     ]),
     cacheTtl: DAY,
-  },
-
-  // AniList — single GraphQL endpoint (POST). No path/param allow-list; the
-  // query lives in the body, which we hash into the cache key (see proxyPost).
-  anilist: {
-    base: "https://graphql.anilist.co",
-    method: "POST",
-    cacheTtl: HOUR,
   },
 };
 
@@ -211,16 +199,6 @@ async function cached(
   return res;
 }
 
-function sha256Hex(input: string): Promise<string> {
-  return crypto.subtle
-    .digest("SHA-256", new TextEncoder().encode(input))
-    .then((buf) =>
-      Array.from(new Uint8Array(buf))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(""),
-    );
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // Proxy handlers
 // ──────────────────────────────────────────────────────────────────────────
@@ -239,7 +217,7 @@ async function proxyGet(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  if (!cfg.paths?.some((re) => re.test(upstreamPath))) {
+  if (!cfg.paths.some((re) => re.test(upstreamPath))) {
     return bad(404, "path not allowed");
   }
 
@@ -266,33 +244,6 @@ async function proxyGet(
   );
 }
 
-async function proxyPost(
-  cfg: SourceConfig,
-  req: Request,
-  env: Env,
-  ctx: ExecutionContext,
-): Promise<Response> {
-  const body = await req.text();
-  // POSTs aren't cacheable by URL, so synthesize a GET cache key from a hash of
-  // the body (the GraphQL query + variables fully determine the response).
-  const hash = await sha256Hex(body);
-  const cacheKey = new Request(`https://cache.nakama.internal/anilist/${hash}`, {
-    method: "GET",
-  });
-  return cached(cacheKey, cfg.cacheTtl, ctx, () =>
-    fetch(cfg.base, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        "user-agent": USER_AGENT,
-        ...cfg.inject?.(env),
-      },
-      body,
-    }),
-  );
-}
-
 async function handleProxy(
   req: Request,
   env: Env,
@@ -309,11 +260,9 @@ async function handleProxy(
 
   const cfg = SOURCES[source];
   if (!cfg) return bad(404, "unknown source");
-  if (req.method !== cfg.method) return bad(405, "method not allowed");
+  if (req.method !== "GET") return bad(405, "method not allowed");
 
-  return cfg.method === "POST"
-    ? proxyPost(cfg, req, env, ctx)
-    : proxyGet(cfg, upstreamPath, url, env, ctx);
+  return proxyGet(cfg, upstreamPath, url, env, ctx);
 }
 
 export default {
