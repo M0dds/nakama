@@ -12,21 +12,18 @@
 
 ## Stufe 1 — Quick Wins (risikolos, sofort)
 
-- [ ] **🔴 `relTime`-Duplikat + Tagesgrenzen-Drift beheben** — `src/lib/queries/sharing.ts:147-161`
+- [x] **🔴 `relTime`-Duplikat + Tagesgrenzen-Drift beheben** — `src/lib/queries/sharing.ts:147-161` · ✓ `850a116`
   Privates `relTime` löschen, stattdessen `relTime` aus `@/lib/format` importieren (`sharing.ts:3` importiert dort bereits `unique` → kostenlos). **Das ist nicht nur Duplikation, sondern ein Bug:** `format.ts` rechnet gegen lokale Mitternachtsgrenzen (kalender-korrektes „gestern"), `sharing.ts` nutzt `Math.round(diffHrs/24)` (rollender 24-h-Bucket). Dasselbe ~20 h alte Ereignis liest in Home „gestern", im Mitseher-/Transfer-Stempel „vor 20 Std." Verwendet in `sharing.ts:371` + `:501`. → nach Umstellung beide Flächen visuell gegenchecken.
   *Commit:* `fix(format): unify relTime, fix yesterday-vs-20h drift in sharing surfaces`
 
-- [ ] **🟡 Totes Vite-Starter-Stylesheet löschen** — `src/App.css`
-  Nirgends importiert (`index.tsx` lädt nur `./index.css`), Selektoren (`.counter`, `.hero`, `.vite` …) werden nie angewendet, referenziert nicht-existente CSS-Vars (`--accent-bg`, `--shadow` …). Vollständig tot.
-  *Commit:* `chore: remove orphaned vite-starter App.css`
+- [x] **🟡 Totes Vite-Starter-Stylesheet löschen** — `src/App.css` · ✓ `62ef5d4`
+  War zwischenzeitlich per `.gitignore` neutralisiert (nie deployt); jetzt lokal gelöscht + gitignore-Sektion mit entfernt.
 
-- [ ] **🔵 Ungenutzte Starter-Assets löschen** — `src/assets/` (hero.png, solid.svg, vite.svg) + `public/icons.svg`
-  Starter-Artwork, unreferenziert (App nutzt `lucide-solid`). `src/assets/*` ist ohnehin nicht im Build; `public/icons.svg` wird aber verbatim mit ausgeliefert → raus.
-  *Commit:* `chore: drop unused starter assets (src/assets, public/icons.svg)`
+- [x] **🔵 Ungenutzte Starter-Assets löschen** — `src/assets/` + `public/icons.svg` · ✓ `62ef5d4`
+  Wie oben: waren gitignored, jetzt endgültig weg.
 
-- [ ] **⚪ Tote Motion-Tokens entfernen** — `src/index.css:304` (`--dur-fast`), `:306` (`--dur-slow`)
-  Nur `--dur-base` ist live (8 Refs in `.theme-transition`). `--dur-fast`/`--dur-slow` haben null `var()`-Refs, keine Utility, keinen JS-Read; Komponenten inlinen eigene ms-Werte (`SETTLE_MS`, `ANIM_MS`). **Alternative** (falls die dokumentierte 3-Stufen-Skala bewusst bleiben soll): stattdessen Komponenten-Dauern durch sie routen.
-  *Commit:* `chore(css): drop unused --dur-fast/--dur-slow tokens`
+- [x] **⚪ Tote Motion-Tokens entfernen** — `--dur-slow` entfernt · ✓ `6c5da31`
+  **`--dur-fast` bleibt und ist inzwischen LIVE:** treibt `--animate-reveal-row` (P1-Touch-Paket, Review-U1) — das Finding war insoweit stale.
 
 ---
 
@@ -35,6 +32,7 @@
 - [ ] **🔴 Profil-Batch-Lookup (3×) in einen geteilten Helfer ziehen** — `src/lib/queries/home.ts:894-919`, `sharing.ts:120-145`, `notes.ts:98-120`
   Drei Funktionen mit identischer Supabase-Query (`select user_id,username,display_name,avatar_url` + `.in('user_id', ids)`), identischer Namensregel (`display_name → @handle → Jemand`) und strukturgleichem Rückgabetyp `{name, handle, avatarUrl}`. `notes.ts` ist byte-identisch bis auf den Log-String. `profile.ts:8` verweist per Kommentar bereits auf die Parallelität. Die app-weite Namensregel soll laut `handshake.md` an *einer* Stelle leben.
   *Vorschlag:* `profilesById(ids): Map<string, {name, handle, avatarUrl}>` nach `format.ts` oder neu `lib/queries/profiles-shared.ts`; alle drei durchrouten. ⚠️ Auf die getrennte Durchreichung von `name` vs `@handle` achten (UserChip-Anti-Spoofing, siehe handshake).
+  *Stand 2026-07-06 (teil-erledigt):* `sharing.ts` exportiert `profilesById` inzwischen und `lists.ts` konsumiert es — aber `notes.ts:98` (private Kopie) + `home.ts:998` (`actorProfiles`) duplizieren weiter. Rest offen.
   *Commit:* `refactor(queries): extract shared profilesById lookup (home/sharing/notes)`
 
 - [ ] **🔵 `dateLabel` in Calendar importieren statt inline** — `src/routes/Calendar.tsx:681-682`
@@ -93,4 +91,4 @@
 
 *(Beim Landen je Bundle eine Zeile nachziehen: Stufe/IDs · SHA · Outcome.)*
 
-— noch nichts —
+- **Stufe 1 komplett** (2026-07-06, Review-P2-Session) — `relTime` war bereits mit `850a116` (v0.15-Ära) vereinheitlicht; Starter-Reste (`App.css`/`src/assets`/`public/icons.svg`) endgültig gelöscht + gitignore-Sektion entfernt `62ef5d4`; `--dur-slow` raus `6c5da31` (`--dur-fast` bleibt — seit dem P1-Touch-Paket live via `--animate-reveal-row`).
