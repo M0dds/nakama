@@ -1025,7 +1025,8 @@ function EmptyContinue(props: {
 
 /** Dock magnification tiers — width of a cover by its distance to the active
  *  tile (0 = active, 1 = direct neighbour, rest = base). The wave rides plain
- *  CSS width transitions; siblings get pushed aside, which IS the dock read. */
+ *  CSS width transitions with the WasKommt back-out bounce; siblings get
+ *  pushed aside, which IS the dock read. */
 const NEXT_UP_W = ["7rem", "5rem", "4rem"] as const;
 
 /**
@@ -1035,10 +1036,12 @@ const NEXT_UP_W = ["7rem", "5rem", "4rem"] as const;
  * plans). Each tile links into the list-scoped item route, so sync toggle /
  * notes / co-watchers are right there to start the thing together.
  *
- * One tile is always ACTIVE (magnified): the middle one at rest — the shelf
- * always stands at full height, no gap jumps on first hover. Hover moves the
- * magnification (direct neighbours get a mid tier — the dock wave); leaving
- * snaps back to the middle. Covers are bottom-aligned like a dock shelf, and
+ * One tile is always ACTIVE (magnified): the FIRST one at rest — the sort is
+ * pinned-first, so the resting magnification presents the group's top pick,
+ * and the shelf always stands at full height (no gap jumps on first hover).
+ * Hover moves the magnification (direct neighbours get a mid tier — the dock
+ * wave); leaving snaps back to the first. Covers are bottom-aligned like a
+ * dock shelf, and
  * the caption below always describes the active tile (full width — no
  * per-tile truncation), hard content swap per the motion language.
  *
@@ -1059,8 +1062,7 @@ function NextUpStrip(props: {
 }) {
   // Realtime can shrink the list mid-session — clamp so the shelf never ends
   // up with no active (= full-size) tile.
-  const middle = () => Math.floor((props.items.length - 1) / 2);
-  const [active, setActive] = createSignal(middle());
+  const [active, setActive] = createSignal(0);
   const activeIdx = () => Math.min(active(), props.items.length - 1);
   const activeItem = () => props.items[activeIdx()];
   const hoverCapable = () => window.matchMedia("(hover: hover)").matches;
@@ -1087,13 +1089,17 @@ function NextUpStrip(props: {
       <p class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
         Als Nächstes
       </p>
-      <div class="scrollbar-none -mx-1 mt-4 overflow-x-auto px-1">
+      {/* Shelf height = active tile (10.5rem) + 0.5rem headroom: the bounce
+          overshoots the width and (via aspect ratio) the height for a beat —
+          without the slack the overflow container clips the cover's top edge
+          mid-wave. mt-2 + the slack ≈ the old mt-4 visual gap. */}
+      <div class="scrollbar-none -mx-1 mt-2 overflow-x-auto px-1">
         <ul
-          class="mx-auto flex h-[10.5rem] items-end gap-3"
+          class="mx-auto flex h-[11rem] items-end gap-3"
           style={{ width: shelfWidth() }}
           onMouseLeave={() => {
             props.onActiveCover(null);
-            if (hoverCapable()) setActive(middle());
+            if (hoverCapable()) setActive(0);
           }}
         >
           <For each={props.items}>
@@ -1127,12 +1133,19 @@ function NextUpStrip(props: {
                   }}
                 >
                   <div
-                    class="relative aspect-[2/3] overflow-hidden rounded-xs border bg-surface transition-[width,border-color] duration-300 [transition-timing-function:var(--ease-quart)] group-active:scale-[0.97]"
+                    class="relative aspect-[2/3] overflow-hidden rounded-xs border bg-surface group-active:scale-[0.97]"
                     classList={{
                       "border-accent": isActive(),
                       "border-border": !isActive(),
                     }}
-                    style={{ width: NEXT_UP_W[tier()] }}
+                    style={{
+                      width: NEXT_UP_W[tier()],
+                      // Back-out bounce on the wave (same recipe as the
+                      // WasKommt pager swap); border-color stays ease-quart —
+                      // overshooting a color reads as a flash, not a bounce.
+                      transition:
+                        "width 300ms cubic-bezier(0.34, 1.5, 0.5, 1), border-color 300ms var(--ease-quart)",
+                    }}
                   >
                     <Show
                       when={item.coverUrl}
