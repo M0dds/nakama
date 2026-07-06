@@ -564,7 +564,10 @@ function newEpisodeLabel(entry: ListEntry): string | null {
 }
 
 /** Items als Rows in einer Liste. Pattern: -mx-5 ul, hover-bg blutet zu den
- *  Spaltenrändern, ::after-Hairline pro li (inkl. last). Cover + Titel sind
+ *  Spaltenrändern, ::after-Hairline pro li (last versteckt — wie auf der
+ *  Listen-Übersicht trennt der letzte Eintrag nichts mehr; die Hairline
+ *  zwischen Pinned- und Unpinned-Sektion bleibt, weil deren letzte Row kein
+ *  :last-child der ul ist). Cover + Titel sind
  *  in einem <A>-Link; rechts daneben sitzt RowActions als Sibling
  *  (NICHT im <a> verschachtelt — Buttons in einem Anchor sind ungültiges
  *  HTML + verhalten sich unzuverlässig beim Klick). Default ohne Chevron;
@@ -667,7 +670,7 @@ function SortableEntryRow(props: {
     <li
       ref={sortable}
       style={sortableRowStyle(sortable)}
-      class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border"
+      class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
       classList={{
         "z-10 opacity-90 shadow-floating bg-bg": sortable.isActiveDraggable,
       }}
