@@ -874,17 +874,44 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                     >
                       {typeLabel(item.type)}
                     </span>
+                    {/* One line-1 companion on mobile (the count), everything
+                        else folds into the meta line below — on a 390px
+                        viewport the badge + list marker + count side by side
+                        squeezed the title to nothing (REVIEW-2026-07 W1).
+                        Desktop keeps badge-beside-title + the right block. */}
                     <div class="flex items-start gap-3">
                       <h3 class="min-w-0 truncate text-body font-medium text-text">
                         {item.title}
                       </h3>
                       <Show when={item.hasNewEpisode}>
-                        <span class="shrink-0 font-mono text-mini uppercase text-accent">
+                        <span class="hidden shrink-0 font-mono text-mini uppercase text-accent md:inline">
                           {newReleaseLabel(item.type, item.newEpisodeCount)}
                         </span>
                       </Show>
                     </div>
+                    {/* Meta line. Mobile prefixes: NEUE FOLGE · ▤ LISTE ·
+                        then season/episode · episode title. Right-truncating,
+                        so the expendable episode-title tail clips first and
+                        the disambiguators up front survive (two rows of the
+                        same title = global + sync instance). */}
                     <p class="truncate font-mono text-mini text-text-muted">
+                      <Show when={item.hasNewEpisode}>
+                        <span class="uppercase text-accent md:hidden">
+                          {newReleaseLabel(item.type, item.newEpisodeCount)}
+                          {" · "}
+                        </span>
+                      </Show>
+                      <Show when={item.listName}>
+                        <span class="uppercase md:hidden">
+                          <List
+                            class="inline size-3 align-[-1.5px]"
+                            strokeWidth={2}
+                            aria-hidden
+                          />{" "}
+                          {item.listName}
+                          {" · "}
+                        </span>
+                      </Show>
                       <Show
                         when={item.nextEpisodeTitle}
                         fallback={seasonEpisodeLabel(
@@ -906,13 +933,20 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
                   <div class="flex shrink-0 items-center gap-1.5 font-mono text-mini text-text-muted">
                     {/* Sync-instance marker, left of the count and dot-joined:
                         "▤ Reisegruppe · 3/23" — a list icon (this entry belongs
-                        to that shared list). Absent for global entries. */}
+                        to that shared list). Absent for global entries; folded
+                        into the meta line on mobile (see above). */}
                     <Show when={item.listName}>
-                      <List class="size-3 shrink-0" strokeWidth={2} aria-hidden />
-                      <span class="max-w-[8rem] truncate uppercase">
-                        {item.listName}
+                      <span class="hidden items-center gap-1.5 md:flex">
+                        <List
+                          class="size-3 shrink-0"
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                        <span class="max-w-[8rem] truncate uppercase">
+                          {item.listName}
+                        </span>
+                        <span aria-hidden>·</span>
                       </span>
-                      <span aria-hidden>·</span>
                     </Show>
                     <span class="tabular-nums">
                       {item.watched}/{item.total}
