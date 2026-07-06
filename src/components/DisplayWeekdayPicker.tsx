@@ -28,7 +28,8 @@ const FULL_DAY: Record<number, string> = {
  * an item's *availability signal* — "Was kommt", calendar, and the new-episode
  * badge — to a chosen weekday: the first such weekday on/after the real release.
  * Fixes the regional drop ("From" airs US-Sun, here Mon) and a group's watch
- * night ("wir schauen freitags"). The episode list keeps the real air dates.
+ * night ("wir schauen freitags"). The episode list snaps too (same lane), so
+ * the detail page never contradicts the surfaces around it.
  *
  * Lane-aware, mirroring the sync model: on a synced instance the value is
  * GROUP-shared (instanceLI set → written via the member-scoped RPC, read from

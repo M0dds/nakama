@@ -52,9 +52,11 @@ import {
   dateLabelShortYear,
   dateLabelYear,
   dayOffset,
+  snapToWeekday,
   typeInitial,
   typeLabel,
 } from "@/lib/format";
+import { globalDisplayPrefsOptions } from "@/lib/queries/display-prefs";
 import { CoWatcherMark } from "@/components/CoWatcherMark";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { QueryErrorCard } from "@/components/QueryErrorCard";
@@ -153,6 +155,25 @@ export default function ItemDetail() {
   // notes board (section 03). Null on the global item page (Home/search/
   // calendar entry), where there's no single list to attach notes to.
   const notesListId = (): string | null => syncCtx.data?.listId ?? null;
+
+  // Display-weekday override of the CURRENT lane — the same value the
+  // DisplayWeekdayPicker edits: synced instance → group-shared (syncContext),
+  // else the viewer's per-user global override. The episode list snaps its
+  // displayed dates with it, so the page agrees with Was kommt / calendar /
+  // badge (which all snap already) instead of contradicting them with the
+  // raw origin dates. Snapping only moves forward, so a row shown as
+  // available is always really released (tickable server-side).
+  const displayPrefs = createQuery(() => ({
+    ...globalDisplayPrefsOptions(auth.user()!),
+    enabled:
+      !!auth.user() && (params.type === "anime" || params.type === "series"),
+  }));
+  const displayWeekday = (): number | null =>
+    instanceLI()
+      ? syncCtx.data?.displayWeekday ?? null
+      : item.data
+        ? displayPrefs.data?.get(item.data.id) ?? null
+        : null;
 
   // Header kicker: with list context the page reads as "inside that list"
   // (matching the back target), so the line above the title carries the LIST
@@ -553,6 +574,7 @@ export default function ItemDetail() {
                         rows={episodes.data!.episodes}
                         itemType={params.type}
                         coWatchers={coWatchers.data ?? {}}
+                        displayWeekday={displayWeekday()}
                         onTap={onTap}
                         onCascade={onCascade}
                       />
@@ -786,6 +808,8 @@ function EpisodeList(props: {
   rows: EpisodeRow[];
   itemType: string;
   coWatchers: Record<string, CoWatcher[]>;
+  /** Current lane's Anzeige-Tag override — rows snap their displayed dates. */
+  displayWeekday: number | null;
   onTap: (ep: EpisodeRow) => void;
   onCascade: (ep: EpisodeRow) => void;
 }) {
@@ -803,6 +827,7 @@ function EpisodeList(props: {
       ep={ep}
       itemType={props.itemType}
       watchers={props.coWatchers[ep.id] ?? []}
+      displayWeekday={props.displayWeekday}
       onTap={() => props.onTap(ep)}
       onCascade={() => props.onCascade(ep)}
     />
@@ -862,20 +887,34 @@ function EpisodeListRow(props: {
   ep: EpisodeRow;
   itemType: string;
   watchers: CoWatcher[];
+  displayWeekday: number | null;
   onTap: () => void;
   onCascade: () => void;
 }) {
+  // Displayed date = the real air date snapped to the lane's Anzeige-Tag —
+  // the same day this episode occupies in Was kommt / calendar / badge. The
+  // row shows ONE truth with the rest of the app; the raw origin date only
+  // lives on in the DB (and in the server's release gate, which the forward-
+  // only snap can never contradict).
+  const displayAir = () =>
+    props.ep.airDate
+      ? snapToWeekday(props.ep.airDate, props.displayWeekday)
+      : null;
+
   // Day-based, matching the app-wide date-only rule: an episode counts as
   // released from the day it airs — no clock gate (drives the text dimming;
   // ticking itself is day-gated server-side in mark_episodes_watched_upto).
-  const released = () =>
-    !props.ep.airDate || dayOffset(props.ep.airDate) <= 0;
+  const released = () => {
+    const air = displayAir();
+    return !air || dayOffset(air) <= 0;
+  };
 
   // Day-bucket tag: airDate today = "Heute" all day, tomorrow = "Morgen",
   // further out = "Demnächst". Past dates get no tag.
   const tagLabel = () => {
-    if (!props.ep.airDate) return null;
-    const offset = dayOffset(props.ep.airDate);
+    const air = displayAir();
+    if (!air) return null;
+    const offset = dayOffset(air);
     if (offset === 0) return "Heute";
     if (offset === 1) return "Morgen";
     if (offset > 1) return "Demnächst";
@@ -998,8 +1037,8 @@ function EpisodeListRow(props: {
               <span class="text-accent">{tagLabel()}</span>
             </Show>
             <span class="w-24 shrink-0 text-right text-text-muted">
-              <Show when={props.ep.airDate} fallback={<>—</>}>
-                {dateLabelShortYear(props.ep.airDate!)}
+              <Show when={displayAir()} fallback={<>—</>}>
+                {dateLabelShortYear(displayAir()!)}
               </Show>
             </span>
           </div>
