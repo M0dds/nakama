@@ -136,7 +136,11 @@ export default function Home() {
   // desktop, hovering a card activates it, so the wash drifts to whatever the
   // user is eyeing (crossfading via CoverBackdrop). WasKommt reports its active
   // cover up through onActiveCover; null (no upcoming items) → no backdrop.
+  // The "Als Nächstes" strip reports hovers through its own signal that WINS
+  // while set — leaving the strip falls back to WasKommt's active card, so the
+  // two sections never fight over the wash.
   const [washCover, setWashCover] = createSignal<string | null>(null);
+  const [nextUpCover, setNextUpCover] = createSignal<string | null>(null);
 
   useRealtimeInvalidation("home", [
     { table: "episode_watches", invalidates: [homeQueryKey] },
@@ -149,7 +153,7 @@ export default function Home() {
 
   return (
     <main class="w-full">
-      <CoverBackdrop coverUrl={washCover()} />
+      <CoverBackdrop coverUrl={nextUpCover() ?? washCover()} />
       <PageHeader
         title={
           <Show when={greetingName()} fallback={<>Willkommen.</>}>
@@ -208,6 +212,7 @@ export default function Home() {
                     <EmptyContinue
                       firstRun={firstRun()}
                       nextUp={nextUpQ.data ?? []}
+                      onActiveCover={setNextUpCover}
                     />
                   }
                 >
@@ -980,7 +985,11 @@ function Fortsetzen(props: { items: ContinueItem[] }) {
   );
 }
 
-function EmptyContinue(props: { firstRun: boolean; nextUp: NextUpItem[] }) {
+function EmptyContinue(props: {
+  firstRun: boolean;
+  nextUp: NextUpItem[];
+  onActiveCover: (url: string | null) => void;
+}) {
   return (
     <div class="rounded-sm border border-border px-5 py-6">
       <Show
@@ -1008,7 +1017,7 @@ function EmptyContinue(props: { firstRun: boolean; nextUp: NextUpItem[] }) {
         </div>
       </Show>
       <Show when={props.nextUp.length > 0}>
-        <NextUpStrip items={props.nextUp} />
+        <NextUpStrip items={props.nextUp} onActiveCover={props.onActiveCover} />
       </Show>
     </div>
   );
@@ -1016,26 +1025,44 @@ function EmptyContinue(props: { firstRun: boolean; nextUp: NextUpItem[] }) {
 
 /**
  * "Als Nächstes" — the answer to "Zeit für etwas Neues": unstarted entries
- * from the user's tracked lists as a quiet cover shelf, pinned first (item
- * pins live on the shared list_items row — a couple that pins, plans).
- * Each tile links into the list-scoped item route, so sync toggle / notes /
- * co-watchers are right there to start the thing together.
+ * from the user's tracked lists as a cover shelf, pinned first (item pins
+ * live on the shared list_items row — a couple that pins, plans). Each tile
+ * links into the list-scoped item route, so sync toggle / notes / co-watchers
+ * are right there to start the thing together.
+ *
+ * Centered when the shelf fits (mx-auto + w-fit — matches the centered copy
+ * above), scrolls horizontally once it overflows (max-w-full). Hovering a
+ * tile zooms the cover inside its frame AND drives the page's ambient
+ * CoverBackdrop through onActiveCover — the same "the atmosphere follows
+ * your eye" read as the "Was kommt" cards; leaving the shelf hands the wash
+ * back (null → WasKommt's active card wins again).
  */
-function NextUpStrip(props: { items: NextUpItem[] }) {
+function NextUpStrip(props: {
+  items: NextUpItem[];
+  onActiveCover: (url: string | null) => void;
+}) {
+  // The strip can unmount mid-hover (a partner's tick fills Fortsetzen via
+  // realtime) — release the wash so no stale cover lingers.
+  onCleanup(() => props.onActiveCover(null));
   return (
     <div class="mt-6">
       <p class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
         Als Nächstes
       </p>
-      <ul class="scrollbar-none -mx-2 mt-3 flex gap-4 overflow-x-auto px-2 pb-1">
+      <ul
+        class="scrollbar-none mx-auto mt-4 flex w-fit max-w-full gap-4 overflow-x-auto px-1 pb-1"
+        onMouseLeave={() => props.onActiveCover(null)}
+      >
         <For each={props.items}>
           {(item) => (
-            <li class="w-20 shrink-0">
+            <li class="w-24 shrink-0">
               <A
                 href={`/lists/${item.listShortCode}/item/${item.type}/${item.slug}`}
                 class="group block"
+                onMouseEnter={() => props.onActiveCover(item.coverUrl)}
+                onFocus={() => props.onActiveCover(item.coverUrl)}
               >
-                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xs border border-border bg-surface">
+                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-xs border border-border bg-surface transition-colors group-hover:border-text-muted">
                   <Show
                     when={item.coverUrl}
                     fallback={
@@ -1048,7 +1075,7 @@ function NextUpStrip(props: { items: NextUpItem[] }) {
                       ref={fadeOnLoad}
                       src={coverFor(item.coverUrl)!}
                       alt=""
-                      class="size-full object-cover"
+                      class="size-full object-cover transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.06] group-active:scale-[0.97]"
                       loading="lazy"
                     />
                   </Show>
@@ -1057,12 +1084,12 @@ function NextUpStrip(props: { items: NextUpItem[] }) {
                   </Show>
                 </div>
                 <p
-                  class="mt-1.5 truncate text-label text-text transition-colors group-hover:text-accent"
+                  class="mt-1.5 line-clamp-2 min-h-9 break-words text-label leading-[1.125rem] text-text transition-colors group-hover:text-accent"
                   title={item.title}
                 >
                   {item.title}
                 </p>
-                <p class="truncate font-mono text-mini uppercase tracking-wider text-text-muted">
+                <p class="mt-0.5 truncate font-mono text-mini uppercase tracking-wider text-text-muted">
                   {item.listName}
                 </p>
               </A>
