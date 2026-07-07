@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import {
   createMutation,
   createQuery,
@@ -94,6 +95,7 @@ export function MoveItemDialog(props: Props) {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
 
   // Two-signal mount/visible pattern (same as AppShell ↔ AddSheet):
   //   `mounted` controls whether the dialog is in the DOM. Flips on first,
@@ -195,10 +197,17 @@ export function MoveItemDialog(props: Props) {
       // Success toast — especially for the item page's header move, where the
       // follow-navigation alone doesn't read as "something happened". snap()
       // holds the title through the close cycle (the parent may null its
-      // moving-entry signal on onClose).
+      // moving-entry signal on onClose). The action carries you to the target
+      // list — the row-move path stays where it is, so this is its way over.
       toast(
         `„${snap()?.itemTitle ?? props.itemTitle}“ nach „${target.name}“ verschoben.`,
-        { icon: ArrowRightLeft },
+        {
+          icon: ArrowRightLeft,
+          action: {
+            label: "Zur Liste",
+            onClick: () => navigate(`/lists/${target.shortCode}`),
+          },
+        },
       );
       // dulden + warnen (F9): the move goes through even when the item doesn't
       // match the target list's category — but never silently, mirroring the
