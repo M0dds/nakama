@@ -461,12 +461,16 @@ export default function ItemDetail() {
   // which feeds the Logbuch 'status' event and the list-row marker.
   //
   // Stamping also runs PASSIVELY (visits heal: pre-feature completions,
-  // partner completions via sync fan-out) — safe because the stamp is
+  // partner completions via sync fan-out) — safe because a PASSIVE stamp is
   // backdated to the latest own watch, so an old finish lands outside the
-  // Logbuch window instead of faking a fresh event. RETRACTING only follows
-  // an explicit tick on this page: the global lane of an instance-completed
-  // item legitimately reads 0/N, and a passive delete there would wrongly
-  // tear down the instance completion.
+  // Logbuch window instead of faking a fresh event. A LIVE completion (an
+  // explicit tick here) stamps NOW instead — the effect fires off the
+  // optimistic cache while the completing tick's RPC is still in flight, so
+  // deriving the timestamp from episode_watches would find only the old
+  // watches and silently backdate a genuinely fresh Abschluss (= no feed
+  // event). RETRACTING only follows an explicit tick on this page: the
+  // global lane of an instance-completed item legitimately reads 0/N, and a
+  // passive delete there would wrongly tear down the instance completion.
   const episodic = () =>
     params.type === "anime" ||
     params.type === "series" ||
@@ -492,7 +496,12 @@ export default function ItemDetail() {
     if (!complete && !completionInteracted) return;
     if (completionPending) return;
     completionPending = true;
-    reconcileEpisodicCompletion({ user, itemId: itemData.id, complete })
+    reconcileEpisodicCompletion({
+      user,
+      itemId: itemData.id,
+      complete,
+      live: completionInteracted,
+    })
       .catch((e) => console.error("abschluss reconcile failed", e))
       .finally(() => {
         completionPending = false;

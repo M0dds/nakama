@@ -75,12 +75,17 @@ export async function setItemSeen(input: {
  * The item page derives "completed" (lane watched == total AND
  * metadata.finished) and calls this to converge the item_history stamp:
  *
- *   complete + not stamped → upsert, timestamped with the caller's LATEST
- *     WATCH. For a live completion that's ≈now (the tick just landed); for a
- *     retroactive heal (show finished before this feature existed, or a
- *     partner completed via sync fan-out) it's the true historical moment —
+ *   complete + not stamped → upsert. `live` (an explicit tick on the page
+ *     just produced the completion) stamps NOW; a passive heal (show finished
+ *     before this feature existed, or a partner completed via sync fan-out)
+ *     is backdated to the caller's LATEST WATCH — the true historical moment,
  *     usually outside the Logbuch window, so healing never fakes fresh events.
  *   not complete + stamped → delete (an un-tick broke completeness).
+ *
+ * The live path must NOT read episode_watches for its timestamp: the effect
+ * fires off the OPTIMISTIC cache while the completing tick's RPC is still in
+ * flight, so the lookup would return a months-old watch and a genuinely fresh
+ * Abschluss would land outside the Logbuch window (= no feed event).
  *
  * The stamp is what the Logbuch 'status' kind and the list-row marker read —
  * same pipeline the movie/game seen-toggle feeds.
@@ -89,13 +94,20 @@ export async function reconcileEpisodicCompletion(input: {
   user: User;
   itemId: string;
   complete: boolean;
+  /** True when an explicit tick on this page produced the completion. */
+  live: boolean;
 }): Promise<void> {
   if (!input.complete) {
     await setItemSeen({ user: input.user, itemId: input.itemId, seen: false });
     return;
   }
-  // Latest own watch across BOTH lanes (a synced instance completes the show
-  // just as much as the global lane does). RLS covers own rows.
+  if (input.live) {
+    await setItemSeen({ user: input.user, itemId: input.itemId, seen: true });
+    return;
+  }
+  // Passive heal: latest own watch across BOTH lanes (a synced instance
+  // completes the show just as much as the global lane does). RLS covers
+  // own rows.
   const { data, error } = await supabase
     .from("episode_watches")
     .select("watched_at, episodes!inner(item_id)")
