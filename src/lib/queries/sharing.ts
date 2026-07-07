@@ -330,14 +330,20 @@ export function syncContextOptions(listItemId: string) {
 }
 
 /** One synced instance of an item, as seen from the caller's lists. Carries
- *  the list's cover so the item page's "Gesynct in" section can render the
- *  lists in the overview's row idiom. */
+ *  the list's cover, the instance progress and the member faces so the item
+ *  page's "Gesynct in" section can render the lists in the overview's row
+ *  idiom. */
 export interface SyncedListRef {
   listItemId: string;
   shortCode: string;
   name: string;
   coverUrl: string | null;
   coverSeed: number;
+  /** Instance-lane progress (list_item_progress RPC — the caller's rows in
+   *  the shared lane, which the sync fan-out keeps identical for members). */
+  watched: number;
+  total: number;
+  members: ProfileBits[];
 }
 
 /** Synced instances of an item across the caller's (member-)lists — powers the
@@ -352,14 +358,16 @@ export function syncedListsForItemOptions(itemId: string) {
     queryFn: async (): Promise<SyncedListRef[]> => {
       const { data, error } = await supabase
         .from("list_items")
-        .select("id, lists!inner(short_code, name, cover_url, cover_seed)")
+        .select(
+          "id, list_id, lists!inner(short_code, name, cover_url, cover_seed)",
+        )
         .eq("item_id", itemId)
         .eq("sync_enabled", true);
       if (error) {
         console.error("synced-lists lookup failed", error);
         return [];
       }
-      return (data ?? []).flatMap((r) => {
+      const rows = (data ?? []).flatMap((r) => {
         const l = r.lists as unknown as {
           short_code: string;
           name: string;
@@ -370,6 +378,7 @@ export function syncedListsForItemOptions(itemId: string) {
           ? [
               {
                 listItemId: r.id as string,
+                listId: r.list_id as string,
                 shortCode: l.short_code,
                 name: l.name,
                 coverUrl: l.cover_url ?? null,
@@ -378,6 +387,56 @@ export function syncedListsForItemOptions(itemId: string) {
             ]
           : [];
       });
+      if (rows.length === 0) return [];
+
+      // Instance progress (lane-aware RPC, head-count-style — cap-immune) +
+      // the member roster of each list, batched.
+      const [progressRes, membersRes] = await Promise.all([
+        supabase.rpc("list_item_progress", {
+          _list_item_ids: rows.map((r) => r.listItemId),
+        }),
+        supabase
+          .from("list_members")
+          .select("list_id, user_id")
+          .in(
+            "list_id",
+            unique(rows.map((r) => r.listId)),
+          ),
+      ]);
+      const progress = new Map<string, { watched: number; total: number }>();
+      for (const p of (progressRes.data ?? []) as {
+        list_item_id: string;
+        total: number;
+        watched: number;
+      }[]) {
+        progress.set(p.list_item_id, { watched: p.watched, total: p.total });
+      }
+      const memberRows = (membersRes.data ?? []) as {
+        list_id: string;
+        user_id: string;
+      }[];
+      const profs = await profilesById(
+        unique(memberRows.map((m) => m.user_id)),
+      );
+      const membersByList = new Map<string, ProfileBits[]>();
+      for (const m of memberRows) {
+        const p = profs.get(m.user_id);
+        if (!p) continue;
+        const arr = membersByList.get(m.list_id) ?? [];
+        arr.push(p);
+        membersByList.set(m.list_id, arr);
+      }
+
+      return rows.map((r) => ({
+        listItemId: r.listItemId,
+        shortCode: r.shortCode,
+        name: r.name,
+        coverUrl: r.coverUrl,
+        coverSeed: r.coverSeed,
+        watched: progress.get(r.listItemId)?.watched ?? 0,
+        total: progress.get(r.listItemId)?.total ?? 0,
+        members: membersByList.get(r.listId) ?? [],
+      }));
     },
   };
 }

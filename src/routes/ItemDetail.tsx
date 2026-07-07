@@ -65,6 +65,7 @@ import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
 import { ListCover } from "@/components/GeneratedCover";
+import { AvatarStack } from "@/components/AvatarStack";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
@@ -311,6 +312,8 @@ export default function ItemDetail() {
         ["list"],
         // A co-member ticking this item updates the Mitseher overlay.
         ["co-watchers"],
+        // …and the "Gesynct in" section's instance progress (global page).
+        ["synced-lists"],
         // Keep Home (Fortsetzen) + Kalender fresh too — they unmount here.
         ["home"],
         ["calendar"],
@@ -787,9 +790,14 @@ export default function ItemDetail() {
                           <h3 class="truncate text-body font-medium text-text">
                             {l.name}
                           </h3>
-                          <span class="mt-0.5 block font-mono text-mini uppercase tracking-wider text-text-muted">
-                            Gemeinsamer Fortschritt
-                          </span>
+                          {/* Faces + the instance's actual progress — the same
+                              meta idiom as the lists overview rows. */}
+                          <div class="mt-0.5 flex items-center gap-2">
+                            <AvatarStack members={l.members} size={18} />
+                            <span class="font-mono text-mini tabular-nums text-text-muted">
+                              {l.watched} / {l.total}
+                            </span>
+                          </div>
                         </div>
                       </A>
                     </li>
