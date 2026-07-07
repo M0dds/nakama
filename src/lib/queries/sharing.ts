@@ -329,19 +329,22 @@ export function syncContextOptions(listItemId: string) {
   };
 }
 
-/** One synced instance of an item, as seen from the caller's lists. */
+/** One synced instance of an item, as seen from the caller's lists. Carries
+ *  the list's cover so the item page's "Gesynct in" section can render the
+ *  lists in the overview's row idiom. */
 export interface SyncedListRef {
   listItemId: string;
   shortCode: string;
   name: string;
+  coverUrl: string | null;
+  coverSeed: number;
 }
 
 /** Synced instances of an item across the caller's (member-)lists — powers the
- *  GLOBAL item page's quiet lane hint ("Wird gesynct geschaut in <Liste>"):
- *  the context-free route shows the global lane, so if the item is actually
- *  watched as a synced instance, the page says so and links over. RLS scopes
- *  list_items to lists the caller belongs to, so this never reveals foreign
- *  lists. */
+ *  GLOBAL item page's "Gesynct in" section: the context-free route reads the
+ *  global lane, so if the item is actually watched as a synced instance, the
+ *  page says so and links over. RLS scopes list_items to lists the caller
+ *  belongs to, so this never reveals foreign lists. */
 export function syncedListsForItemOptions(itemId: string) {
   return {
     queryKey: syncedListsForItemKey(itemId),
@@ -349,7 +352,7 @@ export function syncedListsForItemOptions(itemId: string) {
     queryFn: async (): Promise<SyncedListRef[]> => {
       const { data, error } = await supabase
         .from("list_items")
-        .select("id, lists!inner(short_code, name)")
+        .select("id, lists!inner(short_code, name, cover_url, cover_seed)")
         .eq("item_id", itemId)
         .eq("sync_enabled", true);
       if (error) {
@@ -360,6 +363,8 @@ export function syncedListsForItemOptions(itemId: string) {
         const l = r.lists as unknown as {
           short_code: string;
           name: string;
+          cover_url: string | null;
+          cover_seed: number;
         } | null;
         return l
           ? [
@@ -367,6 +372,8 @@ export function syncedListsForItemOptions(itemId: string) {
                 listItemId: r.id as string,
                 shortCode: l.short_code,
                 name: l.name,
+                coverUrl: l.cover_url ?? null,
+                coverSeed: l.cover_seed,
               },
             ]
           : [];

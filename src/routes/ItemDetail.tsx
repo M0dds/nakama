@@ -64,6 +64,7 @@ import { CoverBackdrop } from "@/components/CoverBackdrop";
 import { QueryErrorCard } from "@/components/QueryErrorCard";
 import { PageHeader } from "@/components/PageHeader";
 import { BentoModule } from "@/components/BentoModule";
+import { ListCover } from "@/components/GeneratedCover";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
@@ -193,15 +194,19 @@ export default function ItemDetail() {
     enabled: !!auth.user() && !!params.type && !!params.slug,
   }));
 
-  // Lane hint (global page only): synced instances of this item across the
-  // caller's lists. The context-free route shows the GLOBAL lane — if the item
-  // is actually watched as a synced instance, the Details module says so and
+  // "Gesynct in" section (global page only): synced instances of this item
+  // across the caller's lists. The context-free route shows the GLOBAL lane —
+  // if the item is actually watched as a synced instance, the page says so and
   // links over (mirrors Was kommt / Fortsetzen linking sole instances
   // list-scoped). Skipped with list context (you're already in a lane).
   const syncedLists = createQuery(() => ({
     ...syncedListsForItemOptions(item.data?.id ?? ""),
     enabled: !!auth.user() && !!item.data?.id && !listItemId(),
   }));
+  // The section shares the 03 slot with Notizen — they're mutually exclusive
+  // (Notizen needs a list context, this section needs its absence).
+  const showSyncedSection = () =>
+    !isBinary() && !listItemId() && (syncedLists.data?.length ?? 0) > 0;
 
   // Pagination — the numbered Pager swaps a fixed EPISODE_PAGE_SIZE window
   // instead of growing one long list (the One-Piece case). Each page is its
@@ -589,7 +594,7 @@ export default function ItemDetail() {
           <BentoModule
             label={isGame() ? "Spiel" : isMovie() ? "Film" : "Episoden"}
             number="01"
-            mobileNumber={notesListId() ? "03" : "02"}
+            mobileNumber={notesListId() || showSyncedSection() ? "03" : "02"}
           >
             <Show
               when={item.data}
@@ -733,43 +738,6 @@ export default function ItemDetail() {
                     )}
                   </Show>
 
-                  {/* Lane hint — the SyncToggle's counterpart for the GLOBAL
-                      (context-free) page: this page reads your own lane, so if
-                      the item is actually watched as a synced instance, say so
-                      and link over (mirrors Was kommt / Fortsetzen linking
-                      sole instances list-scoped). */}
-                  <Show
-                    when={
-                      !isBinary() &&
-                      !listItemId() &&
-                      (syncedLists.data?.length ?? 0) > 0
-                    }
-                  >
-                    <div class="mt-5 border-t border-border pt-5">
-                      <p class="mb-1 font-mono text-mini uppercase tracking-wider text-text-muted">
-                        Gesynct geschaut in
-                      </p>
-                      <For each={syncedLists.data!}>
-                        {(l) => (
-                          <A
-                            href={`/lists/${l.shortCode}/item/${params.type}/${params.slug}`}
-                            state={{
-                              listItemId: l.listItemId,
-                              syncEnabled: true,
-                            }}
-                            class="block truncate text-body text-accent underline-offset-2 hover:underline"
-                          >
-                            {l.name}
-                          </A>
-                        )}
-                      </For>
-                      <p class="mt-2 text-mini text-text-muted">
-                        Diese Seite zeigt deinen eigenen, ungeteilten Stand —
-                        der gemeinsame Fortschritt lebt in der Liste.
-                      </p>
-                    </div>
-                  </Show>
-
                   {/* Anzeige-Tag — DEACTIVATED (2026-07-07). The manual
                       release-day override confused more than it helped: lanes
                       could diverge, and the Was-kommt click-through landed in a
@@ -783,6 +751,57 @@ export default function ItemDetail() {
               )}
             </Show>
           </BentoModule>
+
+          {/* Section 03 — "Gesynct in": the GLOBAL page's counterpart to the
+              list-scoped SyncToggle. This page reads your own, unshared lane;
+              if the item is actually watched as a synced instance, list those
+              lists (overview row idiom: cover + name) and link over into the
+              lane. Shares the 03 slot with Notizen — mutually exclusive
+              (Notizen needs a list context, this needs its absence). */}
+          <Show when={showSyncedSection()}>
+            <BentoModule
+              label="Gesynct in"
+              number="03"
+              mobileNumber="02"
+              class="border-t border-border"
+            >
+              <ul class="-mx-5">
+                <For each={syncedLists.data!}>
+                  {(l) => (
+                    <li class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden">
+                      <A
+                        href={`/lists/${l.shortCode}/item/${params.type}/${params.slug}`}
+                        state={{
+                          listItemId: l.listItemId,
+                          syncEnabled: true,
+                        }}
+                        class="flex min-w-0 items-center gap-3 px-5 py-3 transition-colors hover:bg-surface"
+                      >
+                        <ListCover
+                          coverUrl={l.coverUrl}
+                          seed={l.coverSeed}
+                          alt=""
+                          class="size-11 shrink-0 overflow-hidden"
+                        />
+                        <div class="min-w-0 flex-1">
+                          <h3 class="truncate text-body font-medium text-text">
+                            {l.name}
+                          </h3>
+                          <span class="mt-0.5 block font-mono text-mini uppercase tracking-wider text-text-muted">
+                            Gemeinsamer Fortschritt
+                          </span>
+                        </div>
+                      </A>
+                    </li>
+                  )}
+                </For>
+              </ul>
+              <p class="mt-3 text-mini text-text-muted">
+                Diese Seite zeigt deinen eigenen, ungeteilten Stand — der
+                gemeinsame Fortschritt lebt in der Liste.
+              </p>
+            </BentoModule>
+          </Show>
 
           {/* Section 03 — shared notes (text + link blocks). Only with a list
               context: notes attach to (list, item), so the global item page
