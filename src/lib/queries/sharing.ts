@@ -110,6 +110,8 @@ export const syncContextKey = (listItemId: string) =>
   ["sync-context", listItemId] as const;
 export const coWatchersKey = (itemId: string) =>
   ["co-watchers", itemId] as const;
+export const syncedListsForItemKey = (itemId: string) =>
+  ["synced-lists", itemId] as const;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Profile resolution — handle + avatar in one batched lookup. Mirrors home.ts
@@ -323,6 +325,52 @@ export function syncContextOptions(listItemId: string) {
         isShared: list.is_shared as boolean,
         memberCount: count ?? 1,
       };
+    },
+  };
+}
+
+/** One synced instance of an item, as seen from the caller's lists. */
+export interface SyncedListRef {
+  listItemId: string;
+  shortCode: string;
+  name: string;
+}
+
+/** Synced instances of an item across the caller's (member-)lists — powers the
+ *  GLOBAL item page's quiet lane hint ("Wird gesynct geschaut in <Liste>"):
+ *  the context-free route shows the global lane, so if the item is actually
+ *  watched as a synced instance, the page says so and links over. RLS scopes
+ *  list_items to lists the caller belongs to, so this never reveals foreign
+ *  lists. */
+export function syncedListsForItemOptions(itemId: string) {
+  return {
+    queryKey: syncedListsForItemKey(itemId),
+    staleTime: 60_000,
+    queryFn: async (): Promise<SyncedListRef[]> => {
+      const { data, error } = await supabase
+        .from("list_items")
+        .select("id, lists!inner(short_code, name)")
+        .eq("item_id", itemId)
+        .eq("sync_enabled", true);
+      if (error) {
+        console.error("synced-lists lookup failed", error);
+        return [];
+      }
+      return (data ?? []).flatMap((r) => {
+        const l = r.lists as unknown as {
+          short_code: string;
+          name: string;
+        } | null;
+        return l
+          ? [
+              {
+                listItemId: r.id as string,
+                shortCode: l.short_code,
+                name: l.name,
+              },
+            ]
+          : [];
+      });
     },
   };
 }

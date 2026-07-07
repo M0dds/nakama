@@ -7,6 +7,7 @@ import {
   setItemSync,
   syncContextKey,
   syncContextOptions,
+  syncedListsForItemKey,
   type SyncContext,
 } from "@/lib/queries/sharing";
 import { Segmented } from "@/components/Segmented";
@@ -84,6 +85,10 @@ export function SyncToggle(props: {
         queryKey: episodesQueryKey(props.type, props.slug),
       });
       void qc.invalidateQueries({ queryKey: coWatchersKey(props.itemId) });
+      // The global item page's lane hint lists this item's synced instances.
+      void qc.invalidateQueries({
+        queryKey: syncedListsForItemKey(props.itemId),
+      });
       void qc.invalidateQueries({ queryKey: listsQueryKey });
       void qc.invalidateQueries({ queryKey: ["list"] });
     },

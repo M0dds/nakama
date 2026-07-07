@@ -394,6 +394,18 @@ function WasKommt(props: {
     "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1), " +
     "background-color 260ms cubic-bezier(0.16, 1, 0.3, 1)";
 
+  // Sole-instance entries link list-scoped (+ link-state for the instant
+  // lane), like Fortsetzen's instance rows — the context-free global page
+  // would show a lane that doesn't track how the item is actually watched.
+  const hrefFor = (item: UpcomingItem) =>
+    item.listShortCode
+      ? `/lists/${item.listShortCode}/item/${item.type}/${item.slug}`
+      : `/item/${item.type}/${item.slug}`;
+  const stateFor = (item: UpcomingItem) =>
+    item.listItemId
+      ? { listItemId: item.listItemId, syncEnabled: true }
+      : undefined;
+
   // Shared tap/keyboard/hover semantics for every card. First tap on an
   // inactive card activates it (preventing nav); a second tap (now active)
   // navigates. Hover-activate is gated to pointer devices — on touch a tap
@@ -409,7 +421,7 @@ function WasKommt(props: {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       if (entryKey(item) === activeId()) {
-        navigate(`/item/${item.type}/${item.slug}`);
+        navigate(hrefFor(item), { state: stateFor(item) });
       } else {
         setActiveId(entryKey(item));
       }
@@ -442,7 +454,8 @@ function WasKommt(props: {
             const active = () => entryKey(item) === activeId();
             return (
               <A
-                href={`/item/${item.type}/${item.slug}`}
+                href={hrefFor(item)}
+                state={stateFor(item)}
                 aria-expanded={active()}
                 aria-label={
                   active() ? `${item.title} öffnen` : `${item.title} ansehen`
@@ -518,7 +531,8 @@ function WasKommt(props: {
                   const active = () => entryKey(item) === activeId();
                   return (
                     <A
-                      href={`/item/${item.type}/${item.slug}`}
+                      href={hrefFor(item)}
+                      state={stateFor(item)}
                       aria-expanded={active()}
                       aria-label={
                         active()

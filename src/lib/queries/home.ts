@@ -84,6 +84,13 @@ export interface UpcomingItem {
    *  (global vs a synced instance) snap to different display dates — the list
    *  name distinguishes the synced entry. null = single/collapsed entry. */
   laneLabel?: string | null;
+  /** Instance-lane routing, set when this entry's lane is unambiguously ONE
+   *  synced instance (the item's only tracked lane, or a lone split entry) —
+   *  the card then links list-scoped like Fortsetzen's instance rows. Landing
+   *  on the context-free global page would show a lane that has nothing to do
+   *  with how this item is actually watched. null → global item route. */
+  listItemId?: string | null;
+  listShortCode?: string | null;
 }
 
 /** Logbuch — a discriminated union of factual events. Five kinds:
@@ -380,11 +387,15 @@ async function fetchNextUp(): Promise<NextUpItem[]> {
 }
 
 /** One display "lane" for an item in the user's home: a weekday override (the
- *  Anzeige-Tag, null = none) + a label. Global lane → label null; synced
- *  instance → the list name (shown only when lanes diverge). */
+ *  Anzeige-Tag, null = none; dormant since 2026-07-07) + a label. Global lane →
+ *  label null; synced instance → the list name (shown only when lanes diverge)
+ *  plus routing refs (list_item + short code) so Was kommt can link a
+ *  sole-instance entry list-scoped, like Fortsetzen's instance rows. */
 interface DisplayLane {
   weekday: number | null;
   label: string | null;
+  listItemId: string | null;
+  shortCode: string | null;
 }
 
 /** Lanes per tracked item. Every tracked item gets at most ONE global lane (it
@@ -412,10 +423,10 @@ async function trackedLanesByItem(
   if (listIds.length === 0) return result;
 
   const [listsRes, lisRes, prefsRes] = await Promise.all([
-    supabase.from("lists").select("id, name").in("id", listIds),
+    supabase.from("lists").select("id, name, short_code").in("id", listIds),
     supabase
       .from("list_items")
-      .select("item_id, sync_enabled, display_weekday, list_id")
+      .select("id, item_id, sync_enabled, display_weekday, list_id")
       .in("list_id", listIds),
     supabase
       .from("item_display_prefs")
@@ -428,8 +439,11 @@ async function trackedLanesByItem(
   }
 
   const listName = new Map<string, string>();
-  for (const l of listsRes.data ?? [])
+  const listCode = new Map<string, string>();
+  for (const l of listsRes.data ?? []) {
     listName.set(l.id as string, l.name as string);
+    listCode.set(l.id as string, l.short_code as string);
+  }
   const globalWeekday = new Map<string, number>();
   for (const p of prefsRes.data ?? [])
     globalWeekday.set(p.item_id as string, p.weekday as number);
@@ -442,12 +456,16 @@ async function trackedLanesByItem(
       result.get(itemId)!.push({
         weekday: (li.display_weekday as number | null) ?? null,
         label: listName.get(li.list_id as string) ?? null,
+        listItemId: li.id as string,
+        shortCode: listCode.get(li.list_id as string) ?? null,
       });
     } else if (!hasGlobal.has(itemId)) {
       hasGlobal.add(itemId);
       result.get(itemId)!.push({
         weekday: globalWeekday.get(itemId) ?? null,
         label: null,
+        listItemId: null,
+        shortCode: null,
       });
     }
   }
@@ -541,10 +559,12 @@ async function fetchUpcomingEpisodes(
   for (const f of firsts) {
     const m = meta.get(f.item_id);
     if (!m) continue;
-    const lanes = lanesByItem.get(f.item_id) ?? [{ weekday: null, label: null }];
+    const lanes = lanesByItem.get(f.item_id) ?? [
+      { weekday: null, label: null, listItemId: null, shortCode: null },
+    ];
     const perLane = lanes.map((l) => ({
       date: snapToWeekday(f.air_date, l.weekday),
-      label: l.label,
+      lane: l,
     }));
     const distinct = unique(perLane.map((r) => r.date));
     const base = {
@@ -555,17 +575,36 @@ async function fetchUpcomingEpisodes(
       coverUrl: m.coverUrl,
       episodeNumber: f.episode_number,
     };
+    // An entry links list-scoped only when its lane set is exactly ONE synced
+    // instance — with a global lane (or several instances) in the mix the
+    // destination is ambiguous and stays the global item route (which shows a
+    // quiet lane hint instead).
+    const soleInstance = (rows: typeof perLane) =>
+      rows.length === 1 && rows[0].lane.listItemId ? rows[0].lane : null;
     if (distinct.length <= 1) {
-      out.push({ ...base, airDate: distinct[0] ?? f.air_date, laneLabel: null });
+      const only = soleInstance(perLane);
+      out.push({
+        ...base,
+        airDate: distinct[0] ?? f.air_date,
+        laneLabel: null,
+        listItemId: only?.listItemId ?? null,
+        listShortCode: only?.shortCode ?? null,
+      });
     } else {
       // Diverging lanes → one entry per distinct day. Prefer an instance label
       // (non-null) so the synced entry reads "· <list>"; the global day stays
       // unlabeled (your own plan).
       for (const d of distinct) {
-        const label =
-          perLane.filter((r) => r.date === d).find((r) => r.label)?.label ??
-          null;
-        out.push({ ...base, airDate: d, laneLabel: label });
+        const rows = perLane.filter((r) => r.date === d);
+        const label = rows.find((r) => r.lane.label)?.lane.label ?? null;
+        const only = soleInstance(rows);
+        out.push({
+          ...base,
+          airDate: d,
+          laneLabel: label,
+          listItemId: only?.listItemId ?? null,
+          listShortCode: only?.shortCode ?? null,
+        });
       }
     }
   }

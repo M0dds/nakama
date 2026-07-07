@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, Index, onCleanup, Show } from "solid-js";
-import { useLocation, useParams } from "@solidjs/router";
+import { A, useLocation, useParams } from "@solidjs/router";
 import {
   createMutation,
   createQuery,
@@ -46,6 +46,7 @@ import {
   listItemByContextOptions,
   movieCoWatchersOptions,
   syncContextOptions,
+  syncedListsForItemOptions,
   type CoWatcher,
 } from "@/lib/queries/sharing";
 import { useRealtimeInvalidation } from "@/lib/realtime";
@@ -190,6 +191,16 @@ export default function ItemDetail() {
   const item = createQuery(() => ({
     ...itemQueryOptions(params.type, params.slug),
     enabled: !!auth.user() && !!params.type && !!params.slug,
+  }));
+
+  // Lane hint (global page only): synced instances of this item across the
+  // caller's lists. The context-free route shows the GLOBAL lane — if the item
+  // is actually watched as a synced instance, the Details module says so and
+  // links over (mirrors Was kommt / Fortsetzen linking sole instances
+  // list-scoped). Skipped with list context (you're already in a lane).
+  const syncedLists = createQuery(() => ({
+    ...syncedListsForItemOptions(item.data?.id ?? ""),
+    enabled: !!auth.user() && !!item.data?.id && !listItemId(),
   }));
 
   // Pagination — the numbered Pager swaps a fixed EPISODE_PAGE_SIZE window
@@ -720,6 +731,43 @@ export default function ItemDetail() {
                         slug={params.slug}
                       />
                     )}
+                  </Show>
+
+                  {/* Lane hint — the SyncToggle's counterpart for the GLOBAL
+                      (context-free) page: this page reads your own lane, so if
+                      the item is actually watched as a synced instance, say so
+                      and link over (mirrors Was kommt / Fortsetzen linking
+                      sole instances list-scoped). */}
+                  <Show
+                    when={
+                      !isBinary() &&
+                      !listItemId() &&
+                      (syncedLists.data?.length ?? 0) > 0
+                    }
+                  >
+                    <div class="mt-5 border-t border-border pt-5">
+                      <p class="mb-1 font-mono text-mini uppercase tracking-wider text-text-muted">
+                        Gesynct geschaut in
+                      </p>
+                      <For each={syncedLists.data!}>
+                        {(l) => (
+                          <A
+                            href={`/lists/${l.shortCode}/item/${params.type}/${params.slug}`}
+                            state={{
+                              listItemId: l.listItemId,
+                              syncEnabled: true,
+                            }}
+                            class="block truncate text-body text-accent underline-offset-2 hover:underline"
+                          >
+                            {l.name}
+                          </A>
+                        )}
+                      </For>
+                      <p class="mt-2 text-mini text-text-muted">
+                        Diese Seite zeigt deinen eigenen, ungeteilten Stand —
+                        der gemeinsame Fortschritt lebt in der Liste.
+                      </p>
+                    </div>
                   </Show>
 
                   {/* Anzeige-Tag — DEACTIVATED (2026-07-07). The manual

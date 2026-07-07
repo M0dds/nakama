@@ -15,7 +15,11 @@ import {
   moveListItem,
   type ListSummary,
 } from "@/lib/queries/lists";
-import { coWatchersKey, syncContextKey } from "@/lib/queries/sharing";
+import {
+  coWatchersKey,
+  syncContextKey,
+  syncedListsForItemKey,
+} from "@/lib/queries/sharing";
 import { episodesQueryKey } from "@/lib/queries/episodes";
 import { homeQueryKey } from "@/lib/queries/home";
 import { calendarQueryKey } from "@/lib/queries/calendar";
@@ -209,6 +213,10 @@ export function MoveItemDialog(props: Props) {
       });
       void queryClient.invalidateQueries({
         queryKey: coWatchersKey(props.itemId),
+      });
+      // …and the global page's lane hint (the move ended the synced instance).
+      void queryClient.invalidateQueries({
+        queryKey: syncedListsForItemKey(props.itemId),
       });
       void queryClient.invalidateQueries({
         queryKey: episodesQueryKey(props.itemType, props.itemSlug),
