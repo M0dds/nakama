@@ -192,6 +192,14 @@ export function MoveItemDialog(props: Props) {
     mutationFn: (target: MoveTarget) =>
       moveListItem({ listItemId: props.listItemId, targetListId: target.id }),
     onSuccess: (_d, target) => {
+      // Success toast — especially for the item page's header move, where the
+      // follow-navigation alone doesn't read as "something happened". snap()
+      // holds the title through the close cycle (the parent may null its
+      // moving-entry signal on onClose).
+      toast(
+        `„${snap()?.itemTitle ?? props.itemTitle}“ nach „${target.name}“ verschoben.`,
+        { icon: ArrowRightLeft },
+      );
       // dulden + warnen (F9): the move goes through even when the item doesn't
       // match the target list's category — but never silently, mirroring the
       // re-categorize toast on the detail page.
