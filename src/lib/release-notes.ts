@@ -24,6 +24,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.20.0",
+    date: "2026-07-07",
+    title: "Serien-Pausen im Blick & Aktionen am Titel",
+    changes: [
+      "Neu: Titel in Staffelpause verschwinden nicht mehr aus „Was kommt“ — steht die nächste Folge erst in ein paar Wochen an, erscheint sie jetzt als ruhiger Eintrag am Ende („in 5 Wochen“). Weit entfernte Film- und Spiel-Termine zeigen ebenso die Distanz statt eines Datums ohne Jahr.",
+      "Neu: Zurücksetzen, Verschieben und Aus-der-Liste-Entfernen gibt es jetzt auch direkt auf der Titelseite, oben rechts. Nach dem Verschieben folgst du dem Titel automatisch in die neue Liste.",
+      "Neu: „Gesynct in“ — öffnest du einen Titel ohne Listen-Kontext (z. B. über die Suche oder „Was kommt“), zeigt seine Seite jetzt, in welchen Listen ihr ihn gemeinsam schaut: mit Cover, Mitgliedern und eurem Stand. Ein Tipp wechselt hinüber.",
+      "Verfolgt ihr einen Titel nur gemeinsam (synchronisiert), öffnet ihn „Was kommt“ jetzt direkt in seiner Liste — vorher landete man auf dem eigenen, ungeteilten Stand.",
+      "Verschieben bestätigt jetzt mit einer Meldung; ein Tipp darauf bringt dich in die Ziel-Liste. Meldungen mit Aktion sind generell komplett antippbar, die Aktion steht unter dem Text.",
+      "Der Anzeige-Tag (selbst gewählter Wochentag für neue Folgen) ist wieder raus — er hat mehr verwirrt als geholfen. Alle Termine zeigen wieder das echte Release-Datum.",
+    ],
+  },
+  {
     version: "0.19.0",
     date: "2026-07-07",
     title: "Was jetzt? — Als Nächstes & Abschluss-Momente",
