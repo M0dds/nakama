@@ -501,6 +501,7 @@ export default function ItemDetail() {
       itemId: itemData.id,
       complete,
       live: completionInteracted,
+      instanceListItemId: instanceLI(),
     })
       .catch((e) => console.error("abschluss reconcile failed", e))
       .finally(() => {

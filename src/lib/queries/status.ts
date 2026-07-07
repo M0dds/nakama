@@ -96,7 +96,23 @@ export async function reconcileEpisodicCompletion(input: {
   complete: boolean;
   /** True when an explicit tick on this page produced the completion. */
   live: boolean;
+  /** The synced instance the page is ticking in, or null (global lane /
+   *  not synced). A LIVE reconcile in a synced instance fans the stamp out
+   *  to every member server-side (set_completion_synced) — mirroring the
+   *  watch fan-out, so the partner's "hat X abgeschlossen" appears in the
+   *  Logbuch without them having to visit the page. The passive heal stays
+   *  own-row (backdated stamps are per-member facts). */
+  instanceListItemId: string | null;
 }): Promise<void> {
+  if (input.live && input.instanceListItemId) {
+    const { error } = await supabase.rpc("set_completion_synced", {
+      _item_id: input.itemId,
+      _list_item_id: input.instanceListItemId,
+      _complete: input.complete,
+    });
+    if (error) throw error;
+    return;
+  }
   if (!input.complete) {
     await setItemSeen({ user: input.user, itemId: input.itemId, seen: false });
     return;
@@ -107,7 +123,10 @@ export async function reconcileEpisodicCompletion(input: {
   }
   // Passive heal: latest own watch across BOTH lanes (a synced instance
   // completes the show just as much as the global lane does). RLS covers
-  // own rows.
+  // own rows. Backdating relies on the INSERT path — item_history's
+  // BEFORE-UPDATE trigger (set_updated_at) would clobber `at` with now()
+  // on an update — which holds because the heal only fires while no stamp
+  // exists (`complete !== stamped` gate on the item page).
   const { data, error } = await supabase
     .from("episode_watches")
     .select("watched_at, episodes!inner(item_id)")
