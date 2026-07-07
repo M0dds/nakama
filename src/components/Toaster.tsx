@@ -60,6 +60,10 @@ function ToastCard(props: {
   const [dragging, setDragging] = createSignal(false);
   let startX = 0;
   let pointerId: number | null = null;
+  // Whether the last pointer interaction moved past the click threshold —
+  // read by the card's click handler (which fires AFTER pointerup, when dragX
+  // has already snapped back to 0) to tell a genuine tap from a swipe.
+  let wasDrag = false;
 
   onMount(() => {
     // Double-rAF so the browser paints the initial (offset + transparent, bar
@@ -97,6 +101,7 @@ function ToastCard(props: {
     if ((e.target as HTMLElement).closest("button")) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
     setDragging(true);
+    wasDrag = false;
     startX = e.clientX;
     pointerId = e.pointerId;
     e.currentTarget instanceof HTMLElement &&
@@ -104,7 +109,9 @@ function ToastCard(props: {
   };
   const onPointerMove = (e: PointerEvent) => {
     if (!dragging()) return;
-    setDragX(e.clientX - startX);
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 5) wasDrag = true;
+    setDragX(dx);
   };
   const onPointerEnd = (e: PointerEvent) => {
     if (!dragging()) return;
@@ -124,6 +131,17 @@ function ToastCard(props: {
     }
   };
 
+  // With an action the WHOLE card is tappable (the mono label below the text
+  // stays as the visible affordance + keyboard path). Fires only for genuine
+  // taps: not after a swipe (wasDrag) and not for the buttons themselves
+  // (their own handlers run; this would double-fire via bubbling).
+  const onCardClick = (e: MouseEvent) => {
+    if (!props.toast.action || wasDrag) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    props.toast.action.onClick();
+    props.onDismiss();
+  };
+
   return (
     <div
       role="status"
@@ -132,7 +150,9 @@ function ToastCard(props: {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
+      onClick={onCardClick}
       class="pointer-events-auto relative flex w-full touch-pan-y items-center gap-3 overflow-hidden rounded-sm border border-border bg-surface px-4 py-3 shadow-floating"
+      classList={{ "cursor-pointer": !!props.toast.action }}
     >
       <Show when={props.toast.icon}>
         <Dynamic
@@ -142,23 +162,23 @@ function ToastCard(props: {
           aria-hidden="true"
         />
       </Show>
-      <p class="min-w-0 flex-1 select-none text-body text-text">
-        {props.toast.message}
-      </p>
-      {/* Both controls follow the project's icon-button idiom — square-ish,
-          rounded-xs, muted at rest with a hover bg-fill + colour shift. */}
-      <Show when={props.toast.action}>
-        <button
-          type="button"
-          onClick={() => {
-            props.toast.action!.onClick();
-            props.onDismiss();
-          }}
-          class="inline-flex shrink-0 items-center rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-border hover:text-accent"
-        >
-          {props.toast.action!.label}
-        </button>
-      </Show>
+      <div class="min-w-0 flex-1">
+        <p class="select-none text-body text-text">{props.toast.message}</p>
+        {/* Action label as a subline under the message — the row layout
+            cramped next to long messages. Follows the mono action idiom. */}
+        <Show when={props.toast.action}>
+          <button
+            type="button"
+            onClick={() => {
+              props.toast.action!.onClick();
+              props.onDismiss();
+            }}
+            class="-ml-2 mt-0.5 inline-flex items-center rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-border hover:text-accent"
+          >
+            {props.toast.action!.label}
+          </button>
+        </Show>
+      </div>
       <button
         type="button"
         onClick={props.onDismiss}
