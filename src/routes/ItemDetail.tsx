@@ -67,7 +67,6 @@ import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
 import { ResetItemButton } from "@/components/ResetItemButton";
 import { SyncToggle } from "@/components/SyncToggle";
-import { DisplayWeekdayPicker } from "@/components/DisplayWeekdayPicker";
 import { Pager } from "@/components/Pager";
 import { ItemNotes } from "@/components/ItemNotes";
 
@@ -723,21 +722,15 @@ export default function ItemDetail() {
                     )}
                   </Show>
 
-                  {/* Anzeige-Tag — series/anime only (episodic + dated). Snaps
-                      the availability signal (Was kommt / Kalender / Badge) to a
-                      weekday. Lane-aware: synced instance → group-shared value,
-                      otherwise the viewer's per-user global override. */}
-                  <Show
-                    when={
-                      params.type === "series" || params.type === "anime"
-                    }
-                  >
-                    <DisplayWeekdayPicker
-                      itemId={data().id}
-                      instanceLI={instanceLI()}
-                      instanceWeekday={syncCtx.data?.displayWeekday ?? null}
-                    />
-                  </Show>
+                  {/* Anzeige-Tag — DEACTIVATED (2026-07-07). The manual
+                      release-day override confused more than it helped: lanes
+                      could diverge, and the Was-kommt click-through landed in a
+                      different lane than the entry it came from showed. The
+                      picker is unmounted; migration 20260707120000 reset all
+                      stored overrides. The lane plumbing (snapToWeekday,
+                      DisplayLane, displayWeekday reads) stays dormant — with
+                      every weekday null all snaps are no-ops. To bring it back,
+                      remount <DisplayWeekdayPicker/> here (git history). */}
                 </>
               )}
             </Show>
