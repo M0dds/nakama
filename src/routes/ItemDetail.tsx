@@ -794,8 +794,14 @@ export default function ItemDetail() {
                               meta idiom as the lists overview rows. */}
                           <div class="mt-0.5 flex items-center gap-2">
                             <AvatarStack members={l.members} size={18} />
+                            <span
+                              aria-hidden
+                              class="font-mono text-mini text-text-muted"
+                            >
+                              ·
+                            </span>
                             <span class="font-mono text-mini tabular-nums text-text-muted">
-                              {l.watched} / {l.total}
+                              {l.watched}/{l.total}
                             </span>
                           </div>
                         </div>
