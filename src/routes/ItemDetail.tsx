@@ -68,7 +68,7 @@ import { ListCover } from "@/components/GeneratedCover";
 import { AvatarStack } from "@/components/AvatarStack";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { NotFound } from "@/components/NotFound";
-import { ResetItemButton } from "@/components/ResetItemButton";
+import { ItemHeaderActions } from "@/components/ItemHeaderActions";
 import { SyncToggle } from "@/components/SyncToggle";
 import { Pager } from "@/components/Pager";
 import { ItemNotes } from "@/components/ItemNotes";
@@ -90,8 +90,9 @@ import { ItemNotes } from "@/components/ItemNotes";
  *     ──────────────
  *     Typ / Format / Quelle
  *
- * PageHeader aside carries the "Zurücksetzen" button (confirms via the
- * app-wide ConfirmDialog) when the caller has at least one watched episode.
+ * PageHeader aside carries the ItemHeaderActions cluster (reset / move /
+ * remove in the RowActions icon idiom): reset when the caller has at least
+ * one watched episode, move + remove only with a list context.
  * Single-tap toggles an
  * episode, long-press / right-click cascades up to it; both go through
  * optimistic updates and invalidate on settle to reconcile the true
@@ -572,14 +573,17 @@ export default function ItemDetail() {
         }
         backHref={params.shortCode ? `/lists/${params.shortCode}` : "/"}
         aside={
-          <Show when={item.data && (episodes.data?.watched ?? 0) > 0}>
-            <ResetItemButton
+          <Show when={item.data}>
+            <ItemHeaderActions
               itemId={item.data!.id}
-              title={item.data!.title}
-              type={params.type}
-              slug={params.slug}
+              itemTitle={item.data!.title}
+              itemType={params.type}
+              itemSlug={params.slug}
+              canReset={(episodes.data?.watched ?? 0) > 0}
               listItemId={listItemId()}
+              listShortCode={params.shortCode ?? null}
               synced={syncEnabled() === true}
+              listIsShared={!!syncCtx.data?.isShared}
             />
           </Show>
         }

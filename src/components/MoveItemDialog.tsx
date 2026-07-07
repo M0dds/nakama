@@ -68,6 +68,9 @@ interface Props {
   currentListShortCode: string;
   open: boolean;
   onClose: () => void;
+  /** Fires ONLY after a successful move (not on cancel/backdrop) — the item
+   *  page uses it to leave the now-stale list-scoped route. */
+  onMoved?: () => void;
 }
 
 /** A chosen target list, captured at click time. `name` rides along for the
@@ -223,6 +226,7 @@ export function MoveItemDialog(props: Props) {
       });
       void queryClient.invalidateQueries({ queryKey: homeQueryKey });
       void queryClient.invalidateQueries({ queryKey: calendarQueryKey });
+      props.onMoved?.();
       props.onClose();
     },
   }));

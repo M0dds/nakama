@@ -76,7 +76,7 @@ export function RowActions(props: Props) {
   // invoked from inside the destructive cluster's <Show>, where the
   // bundle is guaranteed present — hence the non-null assertions.
   const resetMut = createMutation(() => ({
-    // Lane-matched like ResetItemButton: a synced row's visible progress lives
+    // Lane-matched like ItemHeaderActions: a synced row's visible progress lives
     // in the INSTANCE lane — resetting without the listItemId would wipe the
     // caller's unrelated GLOBAL progress while the row appears unchanged.
     mutationFn: () => {
