@@ -69,8 +69,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   /** Fires ONLY after a successful move (not on cancel/backdrop) — the item
-   *  page uses it to leave the now-stale list-scoped route. */
-  onMoved?: () => void;
+   *  page uses it to FOLLOW the item into the target list's scoped route. */
+  onMoved?: (target: { shortCode: string; name: string }) => void;
 }
 
 /** A chosen target list, captured at click time. `name` rides along for the
@@ -80,6 +80,9 @@ interface MoveTarget {
   category: ListSummary["category"];
   itemType: string;
   name: string;
+  /** Rides along for onMoved — the item page follows the item into the
+   *  target list's list-scoped route. */
+  shortCode: string;
 }
 
 /** Open/close transition duration. Mirrors AddSheet's 500 ms fade — the
@@ -226,7 +229,7 @@ export function MoveItemDialog(props: Props) {
       });
       void queryClient.invalidateQueries({ queryKey: homeQueryKey });
       void queryClient.invalidateQueries({ queryKey: calendarQueryKey });
-      props.onMoved?.();
+      props.onMoved?.(target);
       props.onClose();
     },
   }));
@@ -243,6 +246,7 @@ export function MoveItemDialog(props: Props) {
       category: l.category,
       itemType: props.itemType,
       name: l.name,
+      shortCode: l.shortCode,
     };
     if (needsConfirm()) setPendingTarget(target);
     else moveMut.mutate(target);

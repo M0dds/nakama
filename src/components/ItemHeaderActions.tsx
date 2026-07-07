@@ -29,9 +29,10 @@ type Confirming = "reset" | "remove" | null;
  *
  * Reset shows only with progress to reset (episodic, lane-aware: the RPC
  * branches global vs instance server-side). Move + remove need the LIST
- * context (list-scoped route): both act on the list_items row, and both
- * navigate back to the source list on success — the list-scoped page they
- * leave behind no longer contains the item.
+ * context (list-scoped route): both act on the list_items row. On success,
+ * remove navigates BACK to the source list (the page just lost its item),
+ * while move FOLLOWS the item into the target list's scoped route (the row
+ * keeps its id across the move; sync is always off afterwards).
  */
 export function ItemHeaderActions(props: {
   itemId: string;
@@ -195,7 +196,14 @@ export function ItemHeaderActions(props: {
           currentListShortCode={props.listShortCode!}
           open={moveOpen()}
           onClose={() => setMoveOpen(false)}
-          onMoved={backToList}
+          onMoved={(target) =>
+            navigate(
+              `/lists/${target.shortCode}/item/${props.itemType}/${props.itemSlug}`,
+              // The list_items row keeps its id across the move and the move
+              // always ends a sync — the state hint keeps the lane instant.
+              { state: { listItemId: props.listItemId, syncEnabled: false } },
+            )
+          }
         />
       </Show>
     </>
