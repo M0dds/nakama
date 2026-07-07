@@ -24,6 +24,19 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.19.0",
+    date: "2026-07-07",
+    title: "Was jetzt? — Als Nächstes & Abschluss-Momente",
+    changes: [
+      "Neu: „Als Nächstes“ — bist du überall aufgeholt, zeigt die Startseite jetzt ein Cover-Regal mit noch nicht begonnenen Titeln aus deinen Listen, angepinnte zuerst. Ein Tipp aufs Cover zeigt den Titel, ein zweiter öffnet ihn direkt in seiner Liste.",
+      "Neu: Abschluss-Momente — hakst du die letzte Folge einer beendeten Serie ab (auch Anime & Manga), steht im Logbuch jetzt „Du hast … abgeschlossen“; in synchronisierten Listen gilt der Abschluss für alle Mitglieder. Bereits früher beendete Titel holen sich den Status still nach, sobald du ihre Detailseite öffnest.",
+      "Abgeschlossenes ist in Listen jetzt dezent markiert — „Abgeschlossen“ bei Serien, Anime & Manga, „Gesehen“ bei Filmen, „Gespielt“ bei Spielen.",
+      "Release-Uhrzeiten sind raus: Eine Folge gilt ab ihrem Erscheinungs-Tag als verfügbar und lässt sich ab dann abhaken — kein „Heute · 17:00“ mehr, das dem Abhaken im Weg stand.",
+      "Hast du für eine Serie einen Anzeige-Tag gewählt, zeigt jetzt auch die Episodenliste diese Termine — vorher stand dort das Original-Datum, im Widerspruch zu „Was kommt“ und Kalender.",
+      "Öffnest du einen Titel aus einer Liste, steht in der Kopfzeile jetzt der Listenname über dem Titel statt der Medienart.",
+    ],
+  },
+  {
     version: "0.18.0",
     date: "2026-07-06",
     title: "Nakama am Handy — rundum besser",
