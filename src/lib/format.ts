@@ -210,6 +210,20 @@ export function relTime(iso: string): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
 }
 
+/** Coarse German future distance — "in 6 Wochen", "in 3 Monaten", "in 2
+ *  Jahren". For dates beyond the Was-kommt window, where an exact weekday
+ *  label ("MO · 12. Aug") suggests false precision; callers gate on their own
+ *  threshold. Rounded, so a >14-day gate never yields "in 1 Wochen" (15 days
+ *  already rounds to 2). */
+export function relFuture(iso: string): string {
+  const days = dayOffset(iso);
+  if (days < 49) return `in ${Math.round(days / 7)} Wochen`;
+  const months = Math.round(days / 30.44);
+  if (months < 12) return `in ${months} Monaten`;
+  const years = Math.round(days / 365.25);
+  return years === 1 ? "in 1 Jahr" : `in ${years} Jahren`;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Calendar grid math
 // ──────────────────────────────────────────────────────────────────────

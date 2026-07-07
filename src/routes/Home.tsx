@@ -31,6 +31,7 @@ import {
   homeQueryKey,
   nextUpOptions,
   recentlyTickedOptions,
+  UPCOMING_DAYS,
   upcomingEpisodesOptions,
   type ContinueItem,
   type ListAddEvent,
@@ -46,11 +47,13 @@ import { listsQueryOptions } from "@/lib/queries/lists";
 import { myProfileOptions } from "@/lib/queries/profile";
 import {
   dateLabel,
+  dateLabelYear,
   dayOffset,
   episodeCode,
   formatDate,
   newReleaseLabel,
   nextLabel,
+  relFuture,
   relTime,
   seasonEpisodeLabel,
   seasonRangeLabel,
@@ -598,12 +601,26 @@ function WasKommtCardFace(props: {
 }) {
   const cover = () =>
     props.item.coverUrl ? coverFor(props.item.coverUrl) ?? null : null;
+  // Tail entries beyond the window (seasonal break / far-off releases) rest
+  // slightly dimmed + desaturated — literally further away — and come back to
+  // full color on activation. Applied to the wrapper, not the <img>, so it
+  // doesn't fight fadeOnLoad's decode animation.
+  const distant = () => dayOffset(props.item.airDate) > UPCOMING_DAYS;
+  const dampened = () => distant() && !props.active;
 
   return (
     <>
       {/* Cover area — the cover fills the whole card width (object-cover), no
           side gaps. It crops to fit; the solid footer below carries the caption. */}
-      <div class="relative min-h-0 flex-1 overflow-hidden">
+      <div
+        class="relative min-h-0 flex-1 overflow-hidden"
+        style={{
+          opacity: dampened() ? 0.75 : 1,
+          filter: dampened() ? "saturate(0.55)" : "saturate(1)",
+          transition:
+            "opacity 260ms var(--ease-quart), filter 260ms var(--ease-quart)",
+        }}
+      >
         <Show
           when={cover()}
           fallback={
@@ -682,18 +699,29 @@ function DayTag(props: {
   active: boolean;
 }) {
   const offset = () => dayOffset(props.airDate);
+  // Beyond the Was-kommt window (seasonal-break tail entries, far-off
+  // movie/game releases) a precise weekday reads as false precision — the
+  // resting label becomes coarse distance ("IN 6 WOCHEN") instead.
+  const distant = () => offset() > UPCOMING_DAYS;
   const weekdayDate = () => formatDate(new Date(props.airDate)); // "SA · 30. Mai"
   const keyword = () => {
     if (offset() === 0) return props.isHero ? "HEUTE" : "AUCH HEUTE";
     if (offset() === 1) return "MORGEN";
+    if (distant()) return relFuture(props.airDate); // CSS uppercases
     return null;
   };
 
   // Hover/active detail after the keyword. Today/tomorrow drop the weekday —
   // "HEUTE" already says the day — and read "30. Mai"; other days keep the
-  // weekday ("MO · 01. Jun"). Air dates are date-only app-wide, no clock.
+  // weekday ("MO · 01. Jun"). Distant dates carry the year ("12. Aug 2027") —
+  // a bare "12. Aug" silently reads as the current year. Air dates are
+  // date-only app-wide, no clock.
   const detail = () =>
-    keyword() ? dateLabel(props.airDate) : weekdayDate();
+    distant()
+      ? dateLabelYear(props.airDate)
+      : keyword()
+        ? dateLabel(props.airDate)
+        : weekdayDate();
 
   return (
     <Show
@@ -727,9 +755,9 @@ function EmptyUpcoming(props: { firstRun: boolean }) {
         when={props.firstRun}
         fallback={
           <>
-            <p class="text-body text-text">Diese Woche ruhig.</p>
+            <p class="text-body text-text">Gerade ruhig.</p>
             <p class="mt-1 text-body text-text-muted">
-              In den nächsten 14 Tagen steht nichts an.
+              Bei deinen verfolgten Titeln steht kein Termin an.
             </p>
           </>
         }

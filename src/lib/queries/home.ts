@@ -195,8 +195,10 @@ export interface TransferEvent extends BaseLogbookEvent {
 // ── Tunables ────────────────────────────────────────────────────────────
 
 const CONTINUE_LIMIT = 50;
-/** Window for the Was-kommt section — includes today, 14 calendar days out. */
-const UPCOMING_DAYS = 14;
+/** Window for the Was-kommt section — includes today, 14 calendar days out.
+ *  Exported: the DayTag renders dates beyond it as coarse relative distance
+ *  ("in 6 Wochen") instead of a precise weekday. */
+export const UPCOMING_DAYS = 14;
 /** How far back the Logbuch reaches. */
 const LOGBOOK_DAYS = 30;
 /** Tighter window for the "you're behind" missed nudge — an episode that aired
@@ -228,7 +230,8 @@ export function upcomingEpisodesOptions(user: User) {
       const lanes = await trackedLanesByItem(user.id);
       const itemIds = [...lanes.keys()];
       if (itemIds.length === 0) return [];
-      // Episodes (next 14 days) + unreleased movies & games (any future date),
+      // Episodes (next 14 days, plus the soonest-future episode of on-break
+      // shows beyond it) + unreleased movies & games (any future date),
       // merged and sorted soonest-first into one "Was kommt" stream.
       const [eps, dated] = await Promise.all([
         fetchUpcomingEpisodes(itemIds, lanes),
@@ -451,8 +454,9 @@ async function trackedLanesByItem(
   return result;
 }
 
-/** Was kommt — first upcoming release inside the 14-day window per tracked
- *  item, ascending air_date. Lane-aware: each item's soonest episode is snapped
+/** Was kommt — first upcoming release per tracked item, ascending air_date:
+ *  inside the 14-day window, with a seasonal-break fallback to the soonest
+ *  future episode beyond it. Lane-aware: each item's soonest episode is snapped
  *  to every lane's Anzeige-Tag; lanes that land on the SAME day collapse to one
  *  entry (the common no-override case = today's behavior), lanes that diverge
  *  split into separate labeled entries (e.g. a synced group on Fr vs your own
@@ -479,7 +483,6 @@ async function fetchUpcomingEpisodes(
     console.error("episodes upcoming query failed", error);
     return [];
   }
-  if (!eps || eps.length === 0) return [];
 
   // First episode per item, preserving ascending air_date order.
   const seen = new Set<string>();
@@ -488,7 +491,7 @@ async function fetchUpcomingEpisodes(
     episode_number: number;
     air_date: string;
   }[] = [];
-  for (const e of eps) {
+  for (const e of eps ?? []) {
     if (!e.air_date || seen.has(e.item_id)) continue;
     seen.add(e.item_id);
     firsts.push({
@@ -497,6 +500,40 @@ async function fetchUpcomingEpisodes(
       air_date: e.air_date,
     });
   }
+
+  // Seasonal-break fallback: a caught-up show whose next episode lies BEYOND
+  // the window would otherwise vanish from Home entirely — while a 2027 movie
+  // stays visible via fetchUpcomingDated. Fetch the soonest future episode for
+  // the items the window query didn't cover; sorted by date they land at the
+  // tail of the stream, and the DayTag renders them as coarse distance
+  // ("in 6 Wochen"). `remaining` mostly holds items with NO future episodes
+  // (finished shows, movies/games) which contribute zero rows; the row volume
+  // is future-dated episodes of on-break shows only — a TMDB show with a fully
+  // dated next season is ~20 rows, so friend-scale stays far under the
+  // 1000-row cap (CAP-1).
+  const remaining = itemIds.filter((id) => !seen.has(id));
+  if (remaining.length > 0) {
+    const { data: far, error: farErr } = await supabase
+      .from("episodes")
+      .select("item_id, episode_number, air_date")
+      .in("item_id", remaining)
+      .gte("air_date", end.toISOString())
+      .order("air_date", { ascending: true });
+    if (farErr) {
+      // Non-fatal: the window entries above still render.
+      console.error("episodes far-upcoming query failed", farErr);
+    }
+    for (const e of far ?? []) {
+      if (!e.air_date || seen.has(e.item_id)) continue;
+      seen.add(e.item_id);
+      firsts.push({
+        item_id: e.item_id,
+        episode_number: e.episode_number,
+        air_date: e.air_date,
+      });
+    }
+  }
+  if (firsts.length === 0) return [];
 
   const meta = await itemMeta(firsts.map((f) => f.item_id));
 
