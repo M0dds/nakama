@@ -439,6 +439,163 @@ body {
   }
 }
 
+/* ── Landing motion (marketing page `/` for signed-out visitors ONLY) ──────
+   One small vocabulary, repeated — see src/lib/landing-motion.ts. The global
+   reduced-motion dampener above already neutralises these; the JS additionally
+   never ARMS a reveal under reduced-motion / no-JS, so content stays visible
+   by default (the `.armed` class is what hides a block until its cue fires). */
+
+/* FALL — content blocks drop in top-to-bottom with a squash-and-stretch
+   landing (the micro-bounce is what reads as "physical"), staggered by --i. */
+@keyframes nakama-fall {
+  0% {
+    transform: translateY(-48px) scaleY(1);
+    opacity: 0;
+  }
+  55% {
+    transform: translateY(0) scaleY(1);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0) scaleY(0.93); /* squash on landing */
+    opacity: 1;
+  }
+  85% {
+    transform: translateY(0) scaleY(1.03); /* rebound */
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scaleY(1); /* settle */
+    opacity: 1;
+  }
+}
+.fall-block {
+  will-change: transform, opacity;
+}
+.armed .fall-block {
+  opacity: 0;
+}
+.armed.in-view .fall-block {
+  animation: nakama-fall 0.5s ease-in both;
+  animation-delay: calc(var(--i, 0) * 0.06s);
+}
+
+/* POP — chat bubbles inflate in like a messenger, origin at their tail corner
+   (set per side via .pop-left/.pop-right), staggered generously by --i so the
+   exchange reads as a CONVERSATION unfolding, not a list appearing. */
+@keyframes nakama-pop {
+  0% {
+    transform: scale(0.55) translateY(10px);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.04) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+.pop-block {
+  will-change: transform, opacity;
+}
+.pop-left {
+  transform-origin: left bottom;
+}
+.pop-right {
+  transform-origin: right bottom;
+}
+.armed .pop-block {
+  opacity: 0;
+}
+.armed.in-view .pop-block {
+  animation: nakama-pop 0.42s var(--ease-quart) both;
+  animation-delay: calc(var(--i, 0) * 0.55s);
+}
+
+/* SHAKE — the one escalation bubble rattles briefly after it lands. Composed
+   with pop via a wrapper (outer pops, inner shakes) so the transforms don't
+   fight. Delay = its pop delay + pop duration. */
+@keyframes nakama-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  20% {
+    transform: translateX(-3px) rotate(-0.6deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(0.6deg);
+  }
+  60% {
+    transform: translateX(-2px) rotate(-0.4deg);
+  }
+  80% {
+    transform: translateX(2px) rotate(0.4deg);
+  }
+}
+.armed.in-view .shake-block {
+  animation: nakama-shake 0.5s ease-in-out both;
+  animation-delay: var(--shake-delay, 2.4s);
+}
+
+/* TYPING — three dots pulsing while "the other side is typing", staggered. */
+@keyframes nakama-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: nakama-typing 1.1s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 0.15s);
+}
+
+/* GROW — an app-window scales a touch as you scroll into it, driven by the
+   scrubbed --p var (0 entering → 1 resting). Defaults to 1 so it sits at rest
+   before JS / under reduced-motion. transform-origin:left so it grows outward
+   toward the bleeding edge rather than recentring. */
+.grow-window {
+  transform: translateY(calc((1 - var(--p, 1)) * 32px))
+    scale(calc(0.955 + 0.045 * var(--p, 1)));
+  transform-origin: left center;
+  will-change: transform;
+}
+/* Flipped sections bleed their window off the LEFT page edge (md+ only —
+   mobile stacks and always bleeds right) — the grow must originate from the
+   visible (right) side there. */
+@media (min-width: 768px) {
+  .grow-window.grow-from-right {
+    transform-origin: right center;
+  }
+}
+
+/* Lenis smooth-scroll — added to <html> while the landing is mounted, torn
+   down on route-away (setupLenis disposer). */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
 /* Grain overlay — subtle fractal-noise texture for "physical material" feel.
    Applied as a fixed layer in AppShell; opacity tuned per mode there. */
 .grain-layer {
