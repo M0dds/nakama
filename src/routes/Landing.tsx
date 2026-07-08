@@ -11,8 +11,10 @@ import {
   Bell,
   CalendarDays,
   ChevronDown,
+  History,
   Layers,
   Palette,
+  Play,
   Smartphone,
   Users,
 } from "lucide-solid";
@@ -455,6 +457,11 @@ const FEATURES: { icon: typeof Layers; label: string; body: string }[] = [
     body: "Lade deine Leute per @handle ein. Gleiche Rechte, synchroner Fortschritt, Mitseher-Auge.",
   },
   {
+    icon: Play,
+    label: "Fortsetzen",
+    body: "Nakama weiß, wo ihr wart — ein Tipp und ihr seid wieder drin. Staffel-genau.",
+  },
+  {
     icon: CalendarDays,
     label: "Kalender",
     body: "Alle Termine im Wochen- und Monatsblick — abhaken direkt im Tag.",
@@ -463,6 +470,11 @@ const FEATURES: { icon: typeof Layers; label: string; body: string }[] = [
     icon: Bell,
     label: "Push",
     body: "Neue Folge erschienen? Nakama meldet sich — und sonst nie.",
+  },
+  {
+    icon: History,
+    label: "Logbuch",
+    body: "Wer hat was geschaut, was kam dazu, was habt ihr abgeschlossen — der Feed für euch.",
   },
   {
     icon: Palette,
@@ -809,7 +821,7 @@ export default function Landing() {
             <Hanko />
           </span>
         </h2>
-        <div class="mt-12 grid max-w-5xl grid-cols-1 gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-12 grid grid-cols-1 gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
           <For each={FEATURES}>
             {(f, i) => (
               <div
