@@ -1,17 +1,20 @@
 import { A } from "@solidjs/router";
+import { Show } from "solid-js";
 import { Button } from "@/components/Button";
+import { useAuth } from "@/lib/auth";
 
 /**
- * Shared chrome for the public standalone pages — Features, Datenschutz
- * (LegalLayout) and Styleguide — so they read as one site instead of three
- * different layouts. Mirrors the in-app frosted HeadBar.
+ * Shared chrome for the public standalone pages — Landing (/), Features,
+ * Datenschutz (LegalLayout) and Styleguide — so they read as one site instead
+ * of separate layouts. Mirrors the in-app frosted HeadBar.
  *
- * The single CTA is "Zur App" (→ "/"): for signed-in users it drops them into
- * the app, for new users the app's auth guard routes them to login. One verb
- * that makes sense in both states — clearer than "Anmelden", which reads wrong
- * for someone who's already signed in.
+ * The CTA is auth-aware: a signed-in visitor continues into the app ("Zur App"
+ * → /), a signed-out one gets the login entry ("Anmelden" → /login). This MUST
+ * branch now that / serves the landing to signed-out users — a bare "Zur App"
+ * → / would just loop them back to the page they're already on.
  */
 export function StandaloneHeader() {
+  const auth = useAuth();
   return (
     <header class="sticky top-0 z-20 flex items-center justify-between bg-bg/55 px-5 py-4 backdrop-blur-md">
       <A href="/features" class="flex items-center gap-2">
@@ -20,9 +23,18 @@ export function StandaloneHeader() {
           Nakama
         </span>
       </A>
-      <A href="/">
-        <Button variant="secondary">Zur App</Button>
-      </A>
+      <Show
+        when={auth.user()}
+        fallback={
+          <A href="/login">
+            <Button variant="secondary">Anmelden</Button>
+          </A>
+        }
+      >
+        <A href="/">
+          <Button variant="secondary">Zur App</Button>
+        </A>
+      </Show>
     </header>
   );
 }

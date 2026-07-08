@@ -1,6 +1,7 @@
 import { lazy, Show, type ParentProps } from "solid-js";
 import {
   Navigate,
+  useLocation,
   type RouteDefinition,
   type RouteSectionProps,
 } from "@solidjs/router";
@@ -11,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { myProfileOptions } from "@/lib/queries/profile";
 
 const SetupRoute = lazy(() => import("./Setup"));
+const Landing = lazy(() => import("./Landing"));
 
 /**
  * Programmatic route map. Solid Router doesn't ship file-based routing
@@ -54,17 +56,37 @@ function OnboardingGate(props: ParentProps) {
   );
 }
 
-/** Long-lived layout for the authed app. ProtectedRoute gates entry; the
- *  OnboardingGate sends first-login users to /setup; AppShell provides the
- *  BottomNav + bottom spacing. `props.children` is the matched child route —
- *  only THAT subtree re-mounts on navigation. */
+/** Long-lived layout for the authed app + the public landing at `/`.
+ *
+ *  Auth branches here instead of via ProtectedRoute so the root URL can serve
+ *  BOTH faces without a separate /home or /app path:
+ *    - signed in  → OnboardingGate + AppShell + the matched child (app)
+ *    - signed out at `/` → the marketing Landing (standalone, no AppShell)
+ *    - signed out elsewhere (deep link to /lists etc.) → /login
+ *  The inner Show keys on location.pathname so it stays correct if a signed-out
+ *  visitor deep-links a protected child. AppShell still mounts ONCE and persists
+ *  across navigation for signed-in users. */
 function AppLayout(props: RouteSectionProps) {
+  const auth = useAuth();
+  const location = useLocation();
   return (
-    <ProtectedRoute>
-      <OnboardingGate>
-        <AppShell>{props.children}</AppShell>
-      </OnboardingGate>
-    </ProtectedRoute>
+    <Show when={!auth.loading()} fallback={null}>
+      <Show
+        when={auth.user()}
+        fallback={
+          <Show
+            when={location.pathname === "/"}
+            fallback={<Navigate href="/login" />}
+          >
+            <Landing />
+          </Show>
+        }
+      >
+        <OnboardingGate>
+          <AppShell>{props.children}</AppShell>
+        </OnboardingGate>
+      </Show>
+    </Show>
   );
 }
 
