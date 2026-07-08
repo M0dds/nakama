@@ -24,6 +24,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.21.0",
+    date: "2026-07-08",
+    title: "Nakama stellt sich vor",
+    changes: [
+      "Neu: usenakama.app hat eine richtige Startseite — wer nicht eingeloggt ist, bekommt jetzt eine Tour statt des Login-Formulars: Sie fragt nach deinem Namen, lässt dich ein Theme wählen (das bis in die App mitkommt) und erzählt, was Nakama kann — inklusive einer Folge, die man probeweise abhaken darf.",
+      "Für dich ändert sich nichts: Eingeloggt landest du auf usenakama.app wie immer direkt in der App. Aber wenn du jemanden einladen willst — der Link reicht jetzt als Erklärung.",
+    ],
+  },
+  {
     version: "0.20.0",
     date: "2026-07-07",
     title: "Serien-Pausen im Blick & Aktionen am Titel",
