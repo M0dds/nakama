@@ -415,12 +415,14 @@ function ChatCard() {
 
 /* ── Scene 3: push mock ────────────────────────────────────────────────────── */
 
-/** A lock-screen-style notification hovering over the "Was kommt" window —
- *  the radar reaching you without the app open. */
+/** A lock-screen-style notification floating just off the "Was kommt"
+ *  window's top edge — the radar reaching you without the app open. Desktop
+ *  overlaps the frame only by a sliver (the window content stays readable);
+ *  mobile renders it statically above the window, no overlap at all. */
 function PushMock() {
   return (
     <div
-      class="fall-block absolute -top-6 right-4 z-10 flex w-72 items-center gap-3 border border-rule bg-bg/70 px-4 py-3 shadow-floating backdrop-blur-md sm:right-12"
+      class="fall-block relative z-10 mb-4 ml-auto flex w-72 items-center gap-3 border border-rule bg-bg/70 px-4 py-3 shadow-floating backdrop-blur-md md:absolute md:-top-12 md:right-12 md:mb-0"
       style={{ "--i": "3" }}
     >
       <span class="grid size-8 shrink-0 place-items-center bg-nav-bg">
