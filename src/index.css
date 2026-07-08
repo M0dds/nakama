@@ -568,6 +568,14 @@ body {
   transform-origin: left center;
   will-change: transform;
 }
+/* Flipped sections bleed their window off the LEFT page edge (md+ only —
+   mobile stacks and always bleeds right) — the grow must originate from the
+   visible (right) side there. */
+@media (min-width: 768px) {
+  .grow-window.grow-from-right {
+    transform-origin: right center;
+  }
+}
 
 /* Lenis smooth-scroll — added to <html> while the landing is mounted, torn
    down on route-away (setupLenis disposer). */

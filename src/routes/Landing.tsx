@@ -150,9 +150,13 @@ function LeftRuler(props: { active: () => number; hidden: () => boolean }) {
   );
 }
 
-/** A story section on the spine: left rail (kicker · keyword · copy) + right
- *  stage. The rail blocks FALL in top-to-bottom (--i 0/1/2); `extraLeft`
- *  continues the cascade from --i 3. */
+/** A story section on the spine: rail (kicker · keyword · copy) + stage.
+ *  `flip` mirrors the composition — stage LEFT (windows bleed off the left
+ *  page edge), rail RIGHT — so consecutive sections alternate sides instead
+ *  of repeating one pose. DOM order stays rail-first (mobile stacks rail
+ *  above stage either way); md:order swaps the columns visually. The rail
+ *  blocks FALL in top-to-bottom (--i 0/1/2); `extraLeft` continues the
+ *  cascade from --i 3. */
 function Section(props: {
   setRef: (el: HTMLElement) => void;
   kicker: string;
@@ -160,13 +164,17 @@ function Section(props: {
   copy: JSX.Element;
   stage: JSX.Element;
   extraLeft?: JSX.Element;
+  flip?: boolean;
 }) {
   return (
     <section
       ref={props.setRef}
       class="relative flex min-h-screen flex-col justify-center border-t border-rule px-5 py-24 sm:px-8 md:grid md:grid-cols-12 md:items-center md:gap-8 md:pl-20"
     >
-      <div class="md:col-span-5">
+      <div
+        class="md:col-span-5"
+        classList={{ "md:order-2 md:pl-4": props.flip }}
+      >
         <p
           class="fall-block font-mono text-mini uppercase tracking-[0.25em] text-text-muted"
           style={{ "--i": "0" }}
@@ -187,7 +195,15 @@ function Section(props: {
         </p>
         <Show when={props.extraLeft}>{props.extraLeft}</Show>
       </div>
-      <div class="relative mt-10 min-w-0 md:col-span-7 md:mt-0 md:pl-4">
+      <div
+        class="relative mt-10 min-w-0 md:col-span-7 md:mt-0"
+        classList={{
+          "md:pl-4": !props.flip,
+          // justify-end makes the oversized window overflow toward the LEFT
+          // page edge (flex spills overflow at the start side).
+          "md:order-1 md:flex md:justify-end md:pr-4": props.flip,
+        }}
+      >
         {props.stage}
       </div>
     </section>
@@ -290,12 +306,41 @@ const CHAT: Bubble[] = [
   { from: "mika", text: "MOMENT. hast du ohne mich weitergeschaut??", shake: true },
 ];
 
+/** The "current system" — the chaos the chat is embedded in, scattered as
+ *  mono artifact chips around the card so the stage reads as a desk full of
+ *  half-solutions instead of a lone phone in empty space. Desktop only. */
+const ARTIFACTS: { label: string; pos: string; i: number }[] = [
+  { label: "3 Streaming-Apps", pos: "left-0 top-6", i: 3 },
+  { label: "Notizen-App", pos: "right-2 top-16", i: 4 },
+  { label: "serien_v3.xlsx", pos: "left-0 bottom-28", i: 5 },
+  { label: "Browser-Tabs (14)", pos: "right-6 bottom-8", i: 6 },
+  { label: "Gedächtnis (lückenhaft)", pos: "left-1/2 -top-8", i: 7 },
+];
+
+function ChatChaos() {
+  return (
+    <div class="relative">
+      <For each={ARTIFACTS}>
+        {(a) => (
+          <span
+            class={`fall-block absolute hidden border border-border bg-bg px-3 py-1.5 font-mono text-mini uppercase tracking-[0.2em] text-text-muted md:block ${a.pos}`}
+            style={{ "--i": `${a.i}` }}
+          >
+            {a.label}
+          </span>
+        )}
+      </For>
+      <ChatCard />
+    </div>
+  );
+}
+
 /** The problem, staged as the chat everyone has — bubbles POP in one by one
  *  (0.55s apart, a conversation unfolding), the escalation bubble rattles,
  *  and Mika just keeps typing forever. */
 function ChatCard() {
   return (
-    <div class="mx-auto w-full max-w-sm rounded-sm border border-rule bg-bg shadow-floating md:mx-0">
+    <div class="mx-auto w-full max-w-sm rounded-sm border border-rule bg-bg shadow-floating md:max-w-md">
       <div class="flex items-center justify-between border-b border-rule px-5 py-3">
         <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
           Mika
@@ -542,8 +587,11 @@ export default function Landing() {
                 class="fall-block mt-6 text-[clamp(2.75rem,9vw,6.5rem)] font-medium leading-[0.95] tracking-[-0.03em] text-text"
                 style={{ "--i": "1" }}
               >
-                Erstmal Hallo
-                <Hanko />
+                Erstmal{" "}
+                <span class="whitespace-nowrap">
+                  Hallo
+                  <Hanko />
+                </span>
               </h1>
               <p
                 class="fall-block mt-6 max-w-md text-body-lg text-text-muted"
@@ -599,9 +647,31 @@ export default function Landing() {
               class="fall-block mt-6 text-[clamp(2.75rem,9vw,6.5rem)] font-medium leading-[0.95] tracking-[-0.03em] text-text"
               style={{ "--i": "1" }}
             >
-              {returning ? "Willkommen zurück" : "Hallo"}
-              {name() ? `, ${name()}` : ""}
-              <Hanko />
+              <Show
+                when={name()}
+                fallback={
+                  returning ? (
+                    <>
+                      Willkommen{" "}
+                      <span class="whitespace-nowrap">
+                        zurück
+                        <Hanko />
+                      </span>
+                    </>
+                  ) : (
+                    <span class="whitespace-nowrap">
+                      Hallo
+                      <Hanko />
+                    </span>
+                  )
+                }
+              >
+                {returning ? "Willkommen zurück, " : "Hallo, "}
+                <span class="whitespace-nowrap">
+                  {name()}
+                  <Hanko />
+                </span>
+              </Show>
             </h1>
             <p
               class="fall-block mt-6 max-w-md text-body-lg text-text-muted"
@@ -655,23 +725,25 @@ export default function Landing() {
         }}
         kicker="01 — Kennst du das?"
         keyword={
-          <>
+          <span class="whitespace-nowrap">
             „Folge 8?“<Hanko />
-          </>
+          </span>
         }
         copy="Drei Serien parallel, zwei Apps, ein Chat. Und niemand weiß mehr, wo ihr wart. Der Stand eurer gemeinsamen Sachen lebt — nirgends."
-        stage={<ChatCard />}
+        stage={<ChatChaos />}
       />
 
-      {/* ── 02 · Die Wende — the interactive sync proof ──────────────────── */}
+      {/* ── 02 · Die Wende — the interactive sync proof (flipped: window
+             bleeds LEFT, rail right — the page changes stance mid-story) ──── */}
       <Section
         setRef={(el) => (secEls[1] = el)}
+        flip
         kicker="02 — Die Wende"
         keyword={
-          <>
+          <span class="whitespace-nowrap">
             Synchron
             <Hanko />
-          </>
+          </span>
         }
         copy={
           <>
@@ -681,8 +753,13 @@ export default function Landing() {
           </>
         }
         stage={
-          <AppWindow class={WINDOW_W} chromeKicker="Anime" chromeTitle="Frieren">
-            <EpisodesSurface />
+          <AppWindow
+            class={`${WINDOW_W} grow-from-right`}
+            chromeKicker="Anime"
+            chromeTitle="Frieren"
+            mirror
+          >
+            <EpisodesSurface mirror />
           </AppWindow>
         }
       />
@@ -693,8 +770,11 @@ export default function Landing() {
         kicker="03 — Der Blick nach vorn"
         keyword={
           <>
-            Was kommt
-            <Hanko />
+            Was{" "}
+            <span class="whitespace-nowrap">
+              kommt
+              <Hanko />
+            </span>
           </>
         }
         copy="Nakama ist kein Tagebuch für gestern, sondern ein Radar für morgen: heute, morgen, demnächst — über alles hinweg, was ihr verfolgt. Und wenn eine neue Folge da ist, meldet sich dein Handy von selbst."
@@ -723,8 +803,11 @@ export default function Landing() {
           class="fall-block mt-4 text-[clamp(2.75rem,9vw,6.5rem)] font-medium leading-[0.95] tracking-[-0.03em] text-text"
           style={{ "--i": "1" }}
         >
-          Alles drin
-          <Hanko />
+          Alles{" "}
+          <span class="whitespace-nowrap">
+            drin
+            <Hanko />
+          </span>
         </h2>
         <div class="mt-12 grid max-w-5xl grid-cols-1 gap-px border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
           <For each={FEATURES}>
@@ -750,7 +833,9 @@ export default function Landing() {
         class="border-t border-rule pb-24 pt-16"
       >
         <CoverPan />
-        <div class="px-5 pt-20 sm:px-8 md:pl-20">
+        {/* Right-aligned close — the mirror of the left-opening prolog, and
+            the last stance change on the page. */}
+        <div class="flex flex-col items-start px-5 pt-20 text-left sm:px-8 md:items-end md:pr-12 md:text-right">
           <p
             class="fall-block font-mono text-mini uppercase tracking-[0.25em] text-text-muted"
             style={{ "--i": "0" }}
@@ -761,7 +846,20 @@ export default function Landing() {
             class="fall-block mt-4 max-w-[14ch] text-[clamp(3rem,11vw,8rem)] font-medium leading-[0.92] tracking-[-0.03em] text-text"
             style={{ "--i": "1" }}
           >
-            Bereit{name() ? `, ${name()}` : ""}?<Hanko />
+            <Show
+              when={name()}
+              fallback={
+                <span class="whitespace-nowrap">
+                  Bereit?
+                  <Hanko />
+                </span>
+              }
+            >
+              Bereit,{" "}
+              <span class="whitespace-nowrap">
+                {name()}?<Hanko />
+              </span>
+            </Show>
           </h2>
           <p
             class="fall-block mt-6 max-w-md text-body-lg text-text-muted"
@@ -770,11 +868,11 @@ export default function Landing() {
             Hol deine Leute dazu und seht zusammen, was kommt. Kostenlos.
           </p>
           <div class="fall-block mt-8 flex flex-wrap gap-3" style={{ "--i": "3" }}>
-            <A href="/login">
-              <Button variant="primary">Loslegen</Button>
-            </A>
             <A href="/features">
               <Button variant="secondary">Alle Features</Button>
+            </A>
+            <A href="/login">
+              <Button variant="primary">Loslegen</Button>
             </A>
           </div>
         </div>
