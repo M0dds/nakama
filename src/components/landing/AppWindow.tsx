@@ -163,6 +163,10 @@ export function AppWindow(props: {
   class?: string;
   /** Disable the scroll-linked grow (e.g. if pinned elsewhere). Default on. */
   noGrow?: boolean;
+  /** Mirrored composition for flipped sections (window bleeds off the LEFT
+   *  page edge): chrome right-aligns so kicker + title live on the visible
+   *  side. Surfaces mirror their columns via their own `mirror` prop. */
+  mirror?: boolean;
 }) {
   let root!: HTMLDivElement;
   onMount(() => {
@@ -175,8 +179,14 @@ export function AppWindow(props: {
     >
       {/* Real PageHeader optic (minus position:sticky). */}
       <div class="bg-bg/55 px-5 pb-3 pt-5 backdrop-blur-md">
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2">
+        <div
+          class="flex items-center justify-between gap-2"
+          classList={{ "md:flex-row-reverse": props.mirror }}
+        >
+          <div
+            class="flex items-center gap-2"
+            classList={{ "md:flex-row-reverse": props.mirror }}
+          >
             <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
             <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
               {props.chromeKicker ?? "Nakama"}
@@ -186,7 +196,7 @@ export function AppWindow(props: {
             <div class="inline-flex h-6 items-center">{props.chromeAside}</div>
           </Show>
         </div>
-        <div class="mt-0.5">
+        <div class="mt-0.5" classList={{ "md:text-right": props.mirror }}>
           <h3 class="text-heading font-medium tracking-tight text-text">
             {props.chromeTitle}
           </h3>
@@ -556,7 +566,7 @@ const FRIEREN_EPS = [
  * toast optic) slides into the window. The sync feature demonstrated ON the
  * visitor instead of described to them. Unticking retracts it.
  */
-export function EpisodesSurface() {
+export function EpisodesSurface(props: { mirror?: boolean }) {
   const total = 28;
   // `watchedFrom` = index in FRIEREN_EPS from which (inclusive) episodes are
   // watched. Episodes descend (12 at index 0), so a lower index = newer. Ep 12
@@ -630,7 +640,10 @@ export function EpisodesSurface() {
   });
 
   return (
-    <div ref={root!} class="flex">
+    // Mirrored (flipped section, md+ only — mobile always bleeds right):
+    // episodes stay on the VISIBLE right side, the details column bleeds off
+    // the left page edge instead.
+    <div ref={root!} class="flex" classList={{ "md:flex-row-reverse": props.mirror }}>
       {/* Episoden column — relative so Mika's toast anchors to ITS top-right
           (the window frame bleeds off the page edge; anchoring the toast to
           the frame would put it off-screen). */}
@@ -744,7 +757,10 @@ export function EpisodesSurface() {
       </div>
 
       {/* Details column (cover + facts) — the part that bleeds off the edge */}
-      <div class="w-1/3 shrink-0 border-l border-rule">
+      <div
+        class="w-1/3 shrink-0 border-l border-rule"
+        classList={{ "md:border-l-0 md:border-r": props.mirror }}
+      >
         <Module label="Details" number="02">
           <Poster
             media={MEDIA.frieren}
@@ -776,22 +792,47 @@ export function EpisodesSurface() {
   );
 }
 
-// ── Surface: Was kommt close-up (the ONE accent fill + day-flip) ────────────
+// ── Surface: Was kommt close-up (v0.16 card face + spring accordion) ────────
 /**
- * §02's surface — a focused "Was kommt" grid. The Frieren hero card is the page's
- * single fully-filled `bg-accent` block; on scroll-in its day chip flips
- * Demnächst → Morgen → Heute (sequential handoff) to dramatise the future-focus
- * idea. No tick here (ticking lives in §03, where it's truthful).
+ * §03's surface — a faithful rebuild of the CURRENT home "Was kommt": four
+ * poster cards in the 2fr-1fr-1fr-1fr spring accordion, cover filling the
+ * whole card, a solid footer panel below (accent-filled on the active card —
+ * the page's ONE full accent fill). Hovering a card springs it wide exactly
+ * like the app. On scroll-in the hero's day label flips Demnächst → Morgen →
+ * Heute (sequential handoff) to dramatise the future-focus idea. The fourth
+ * card is a beyond-the-window tail entry: dimmed + desaturated at rest with a
+ * coarse "IN 6 WOCHEN" instead of a falsely precise weekday — like the app.
  */
+const SPRING = "grid-template-columns 420ms cubic-bezier(0.22, 1.2, 0.36, 1)";
+
+type UpCard = {
+  media: Media;
+  rest: string; // resting day label
+  detail: string; // active detail after the keyword ("HEUTE · 30. Mai")
+  code: string; // "Folge 12" — active appends the type label
+  type: string;
+  soon?: boolean; // today/tomorrow → accent day label at rest
+  distant?: boolean; // beyond the window → dimmed + coarse distance
+};
+
+const UPCOMING: UpCard[] = [
+  { media: MEDIA.frieren, rest: "HEUTE", detail: "30. Mai", code: "Folge 12", type: "Anime", soon: true },
+  { media: MEDIA.severance, rest: "MORGEN", detail: "31. Mai", code: "S2 · E04", type: "Serie", soon: true },
+  { media: MEDIA.onepiece, rest: "SO · 01. Jun", detail: "SO · 01. Jun", code: "Kap. 1124", type: "Manga" },
+  { media: MEDIA.skyrim, rest: "IN 6 WOCHEN", detail: "11. Jul 2026", code: "Release", type: "Spiel", distant: true },
+];
+
 export function WasKommtSurface() {
-  const [day, setDay] = createSignal("HEUTE · 17:00");
+  const [active, setActive] = createSignal(0);
+  // Hero day-flip: Demnächst → Morgen → Heute on scroll-in.
+  const [heroDay, setHeroDay] = createSignal("HEUTE");
   const [shown, setShown] = createSignal(true);
   let root!: HTMLDivElement;
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   onMount(() => {
     if (reduceMotion()) return;
-    setDay("DEMNÄCHST");
+    setHeroDay("DEMNÄCHST");
     onCleanup(
       revealOnce(root, () => {
         const flip = (label: string, at: number) => {
@@ -800,59 +841,126 @@ export function WasKommtSurface() {
               setShown(false);
               timers.push(
                 setTimeout(() => {
-                  setDay(label);
+                  setHeroDay(label);
                   setShown(true);
                 }, 130),
               );
             }, at),
           );
         };
-        flip("MORGEN", 450);
-        flip("HEUTE · 17:00", 950);
+        flip("MORGEN", 500);
+        flip("HEUTE", 1050);
       }),
     );
   });
   onCleanup(() => timers.forEach(clearTimeout));
 
+  const cols = () =>
+    UPCOMING.map((_, i) => (i === active() ? "2fr" : "1fr")).join(" ");
+
   return (
     <div ref={root!} class="p-5">
-      <div class="grid gap-3" style={{ "grid-template-columns": "2fr 1fr 1fr" }}>
-        {/* Hero card — the ONE accent fill on the whole page */}
-        <div class="group relative flex h-72 min-w-0 flex-col overflow-hidden rounded-sm border border-accent bg-accent">
-          <div class="relative min-h-0 flex-1 overflow-hidden">
-            <Poster media={MEDIA.frieren} class="h-full w-full" />
-          </div>
-          <div class="shrink-0 p-3">
-            <span
-              class="block truncate font-mono text-mini uppercase tracking-wider text-accent-on"
-              style={{
-                opacity: shown() ? "1" : "0",
-                transition: reduceMotion() ? "none" : "opacity 130ms ease",
-              }}
-            >
-              {day()}
-            </span>
-            <h3 class="mt-0.5 truncate text-body font-medium text-accent-on">
-              Frieren
-            </h3>
-            <span class="block truncate font-mono text-mini text-accent-on/85">
-              Folge 12 · Anime
-            </span>
-          </div>
-        </div>
-        <WasKommtCard
-          media={MEDIA.severance}
-          day="MORGEN"
-          code="S2 · E04"
-          soon
-          i={1}
-        />
-        <WasKommtCard
-          media={MEDIA.onepiece}
-          day="MI · 28. Mai"
-          code="Kap. 1124"
-          i={2}
-        />
+      <div
+        class="grid gap-3"
+        style={{ "grid-template-columns": cols(), transition: SPRING }}
+        onMouseLeave={() => setActive(0)}
+      >
+        <Index each={UPCOMING}>
+          {(card, i) => {
+            const isActive = () => active() === i;
+            const dampened = () => !!card().distant && !isActive();
+            const dayRest = () => (i === 0 ? heroDay() : card().rest);
+            return (
+              <div
+                onMouseEnter={() => setActive(i)}
+                class="group relative flex h-80 min-w-0 flex-col overflow-hidden rounded-sm border bg-bg"
+                classList={{
+                  "border-accent": isActive(),
+                  "border-border": !isActive(),
+                }}
+                style={{
+                  transition:
+                    "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1)",
+                }}
+              >
+                {/* Cover fills the whole card; tail entries rest dimmed. */}
+                <div
+                  class="relative min-h-0 flex-1 overflow-hidden"
+                  style={{
+                    opacity: dampened() ? 0.75 : 1,
+                    filter: dampened() ? "saturate(0.55)" : "saturate(1)",
+                    transition:
+                      "opacity 260ms var(--ease-quart), filter 260ms var(--ease-quart)",
+                  }}
+                >
+                  <Poster
+                    media={card().media}
+                    class="absolute inset-0 h-full w-full transition-transform duration-300 [transition-timing-function:var(--ease-quart)] group-hover:scale-[1.03]"
+                    eager={i === 0}
+                  />
+                </div>
+                {/* Solid footer — accent when active, like the shipped app. */}
+                <div
+                  class="shrink-0 border-t p-3"
+                  classList={{
+                    "border-accent bg-accent": isActive(),
+                    "border-border bg-bg": !isActive(),
+                  }}
+                  style={{
+                    transition:
+                      "border-color 260ms cubic-bezier(0.16, 1, 0.3, 1), background-color 260ms cubic-bezier(0.16, 1, 0.3, 1)",
+                  }}
+                >
+                  <span
+                    class="block truncate font-mono text-mini uppercase tracking-wider"
+                    classList={{
+                      "text-accent-on": isActive(),
+                      "text-accent": !isActive() && !!card().soon,
+                      "text-text-muted": !isActive() && !card().soon,
+                    }}
+                    style={
+                      i === 0
+                        ? {
+                            opacity: shown() ? "1" : "0",
+                            transition: reduceMotion()
+                              ? "none"
+                              : "opacity 130ms ease",
+                          }
+                        : undefined
+                    }
+                  >
+                    {dayRest()}
+                    {/* Detail suffix only when it adds something — a plain
+                        weekday card would otherwise read "SO · 01. Jun · SO
+                        · 01. Jun" on activation. */}
+                    <Show when={isActive() && card().detail !== card().rest}>
+                      <span class="opacity-75"> · {card().detail}</span>
+                    </Show>
+                  </span>
+                  <h3
+                    class="mt-0.5 truncate text-body font-medium"
+                    classList={{
+                      "text-accent-on": isActive(),
+                      "text-text": !isActive(),
+                    }}
+                  >
+                    {card().media.title}
+                  </h3>
+                  <span
+                    class="block truncate font-mono text-mini"
+                    classList={{
+                      "text-accent-on/85": isActive(),
+                      "text-text-muted": !isActive(),
+                    }}
+                  >
+                    {card().code}
+                    <Show when={isActive()}>{` · ${card().type}`}</Show>
+                  </span>
+                </div>
+              </div>
+            );
+          }}
+        </Index>
       </div>
     </div>
   );
