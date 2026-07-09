@@ -304,20 +304,45 @@ function Controls(props: {
         <button
           type="button"
           onClick={props.onToday}
-          class="ml-1 rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+          class="ml-1 rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text max-md:hidden"
         >
           heute
         </button>
       </div>
-      <Segmented
-        value={props.view}
-        onChange={props.onView}
-        ariaLabel="Ansicht"
-        options={[
-          { value: "week", label: "Woche" },
-          { value: "month", label: "Monat" },
-        ]}
-      />
+      {/* View switch + mobile actions. Desktop: "heute" rides the stepper
+          group (above), the Segmented sits right. Mobile: the Segmented was
+          the heaviest of three competing control families (bordered steppers
+          · ghost text · segmented chrome) and wrapped onto its own line —
+          instead ONE quiet mono-ghost pair on the right: "heute · monat"
+          (user call, 2026-07-09). The view toggle names the TARGET view. */}
+      <div class="flex items-center gap-1 md:hidden">
+        <button
+          type="button"
+          onClick={props.onToday}
+          class="rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+        >
+          heute
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onView(props.view === "week" ? "month" : "week")}
+          aria-label="Ansicht wechseln"
+          class="rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+        >
+          {props.view === "week" ? "monat" : "woche"}
+        </button>
+      </div>
+      <div class="max-md:hidden">
+        <Segmented
+          value={props.view}
+          onChange={props.onView}
+          ariaLabel="Ansicht"
+          options={[
+            { value: "week", label: "Woche" },
+            { value: "month", label: "Monat" },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -556,7 +581,7 @@ function WeekGrid(props: {
                       "text-text": !isToday(),
                     }}
                   >
-                    {String(d.getDate()).padStart(2, "0")}
+                    {String(d.getDate()).padStart(2, "0")}.
                   </div>
                 </div>
 
@@ -668,7 +693,7 @@ function WeekAgenda(props: {
                     "text-text": !isToday(),
                   }}
                 >
-                  {String(d.getDate()).padStart(2, "0")}
+                  {String(d.getDate()).padStart(2, "0")}.
                 </span>
                 <Show when={isToday()}>
                   <span class="font-mono text-mini uppercase tracking-wider text-accent">

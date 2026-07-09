@@ -297,6 +297,10 @@ export function formatWeekRange(d: Date): string {
   const sun = addDays(mon, 6);
   const fmt = (x: Date) =>
     x.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  // Same month → German compact form ("06. – 12.07."): the month appears
+  // once. Keeps the calendar's control row one line on 390px screens.
+  const day = (x: Date) => x.toLocaleDateString("de-DE", { day: "2-digit" });
+  if (mon.getMonth() === sun.getMonth()) return `${day(mon)}. – ${fmt(sun)}`;
   return `${fmt(mon)} – ${fmt(sun)}`;
 }
 
