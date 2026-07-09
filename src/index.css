@@ -391,30 +391,6 @@ body {
     color 200ms ease;
 }
 
-/* CoverHero-Bild-Pin (mobil) — scroll-getriebene Animation statt JS: die
-   Clip-Stage scrollt im Fluss mit dem Dokument (Kante compositor-exakt an
-   der Content-Kante); dieses Gegen-Translate hält das BILD darin am
-   Viewport fest. animation-range 0→Stage-Höhe auf translateY 0→Stage-Höhe
-   (linear) ⇒ translateY == scrollY, solange die Stage sichtbar ist —
-   läuft auf dem Compositor (Safari 26.4 threaded), kann also weder zittern
-   noch nachhinken (die JS-Vorgänger taten beides, siehe CoverHero.tsx).
-   --hero-pin = gemessene Stage-Höhe, gesetzt von CoverHero. Browser ohne
-   scroll-timeline: Bild scrollt einfach im Fluss mit — ruhig, nur nicht
-   gepinnt. Reihenfolge im Block wichtig: die animation-Shorthand würde
-   timeline/range zurücksetzen, deshalb stehen sie danach. */
-@supports (animation-timeline: scroll()) {
-  .hero-pin {
-    animation: hero-pin linear both;
-    animation-timeline: scroll(root block);
-    animation-range: 0px var(--hero-pin, 0px);
-  }
-}
-@keyframes hero-pin {
-  to {
-    transform: translateY(var(--hero-pin, 0px));
-  }
-}
-
 /* Hero-Header-Kontrast (mobil): über dem CoverHero sitzt der Glas-Header
    direkt auf beliebiger Cover-Art — die Theme-Grautöne sind dort nicht
    verlässlich lesbar. CoverHero misst die Helligkeit des oberen Cover-Bands

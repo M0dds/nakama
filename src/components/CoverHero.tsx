@@ -14,19 +14,21 @@ import { onScrollFrame } from "@/lib/scroll";
  * CoverBackdrop wash (boosted below md via `boostBelowMd`) — i.e. the same
  * cover "behind frosted glass". The sheet edge IS the sharp→blur line.
  *
- * ARCHITECTURE (v3 — fully compositor-synced): the clip stage is an IN-FLOW
- * absolute element that scrolls with the document, so its bottom edge is
- * compositor-locked to the content edge — pixel-exact at any scroll speed.
- * The image inside is counter-translated to stay viewport-pinned via a CSS
- * SCROLL-DRIVEN ANIMATION (`.hero-pin`, index.css: animation-timeline
- * scroll(), range 0→stage height, translateY 0→stage height) — that runs on
- * the compositor thread too (threaded in Safari 26.4), so neither edge nor
- * image can ever lag the scroll. History: v1 chased the content edge with
- * JS transforms on a fixed layer (wash gap at speed — iOS scrolls on the
- * compositor, JS runs on main); v2 moved the clip in-flow but still pinned
- * the image per-frame from scroll events (edge solid, image jittered).
- * Browsers without scroll-timeline support keep the static in-flow image
- * (cover scrolls with the page — smooth, just not pinned).
+ * ARCHITECTURE (v4 — plain sticky, zero moving parts): the clip stage is an
+ * IN-FLOW absolute element that scrolls with the document, so its bottom
+ * edge is compositor-locked to the content edge — pixel-exact at any scroll
+ * speed. Inside it, a 200%-tall TRACK gives a `position: sticky; top: 0`
+ * image (50% of the track = one stage height) exactly one stage-height of
+ * headroom — so the browser itself pins the picture to the viewport top for
+ * precisely the scroll range in which the stage is visible, natively on the
+ * compositor. `overflow: clip` (NOT hidden — hidden would make the stage a
+ * scroll container and break sticky) crops the track's lower half.
+ * History of this edge: v1 chased the content edge with JS transforms on a
+ * fixed layer (wash gap at speed — iOS scrolls on the compositor, JS on
+ * main); v2 clipped in flow but counter-translated the image per scroll
+ * event (edge solid, image jittered); v3 tried a CSS scroll-driven
+ * animation (image slid down — animation-range + var() misbehaved). Sticky
+ * needs none of it: no JS, no animation, no measured variables.
  *
  * Renders the stage PLUS the in-flow spacer that pushes the content start
  * to the hero's bottom edge — mount it in flow, right before the content
@@ -107,14 +109,12 @@ export function CoverHero(props: {
     // The stage must end EXACTLY where content starts (= the spacer's bottom,
     // in document space) — measured, not derived from the HEADER_OFFSET
     // estimate, so the sheet edge carries no sliver of mis-estimate. Static
-    // between resizes (the header is single-line by construction). The same
-    // value feeds --hero-pin: the scroll-driven .hero-pin animation (index
-    // .css) maps scroll 0→stageH onto translateY 0→stageH, i.e. the image
-    // is viewport-pinned exactly while the stage is on screen.
+    // between resizes (the header is single-line by construction). Track
+    // (200%) and image (50% of track) follow via percentages.
     const size = () => {
-      const h = spacerEl.getBoundingClientRect().bottom + window.scrollY;
-      stageEl.style.height = `${h}px`;
-      stageEl.style.setProperty("--hero-pin", `${h}px`);
+      stageEl.style.height = `${
+        spacerEl.getBoundingClientRect().bottom + window.scrollY
+      }px`;
     };
 
     const apply = () => {
@@ -170,22 +170,25 @@ export function CoverHero(props: {
       <div
         ref={stageEl}
         aria-hidden
-        class="pointer-events-none absolute inset-x-0 top-0 -z-[8] overflow-hidden md:hidden"
-        // --hero-pin seeds the scroll-driven pin with the same calc as the
-        // height; size() refines both to the measured px value.
-        style={{ height: heroH(), "--hero-pin": heroH() }}
+        class="pointer-events-none absolute inset-x-0 top-0 -z-[8] overflow-clip md:hidden"
+        style={{ height: heroH() }}
       >
-        {/* coverFor sharpens per source (AniList medium→large, Steam
-            header→capsule); it's the mobile LCP, so fetch it eagerly.
-            .hero-pin (index.css) keeps it viewport-pinned via a scroll-
-            driven animation — compositor-synced, no JS per frame. */}
-        <img
-          ref={fadeOnLoad}
-          src={coverFor(props.coverUrl)!}
-          alt=""
-          class="hero-pin absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[50%_25%]"
-          fetchpriority="high"
-        />
+        {/* Track: twice the stage → exactly one stage-height of sticky
+            headroom for the image below. Its lower half is cropped by the
+            stage's overflow: clip. */}
+        <div class="h-[200%]">
+          {/* coverFor sharpens per source (AniList medium→large, Steam
+              header→capsule); it's the mobile LCP, so fetch it eagerly.
+              sticky top-0: the browser pins the picture to the viewport top
+              natively (compositor-synced) for the stage's visible range. */}
+          <img
+            ref={fadeOnLoad}
+            src={coverFor(props.coverUrl)!}
+            alt=""
+            class="sticky top-0 block h-1/2 w-full object-cover object-[50%_25%]"
+            fetchpriority="high"
+          />
+        </div>
       </div>
       {/* Top scrim — legibility for the glass PageHeader. Its OWN fixed
           layer (z -7, above the hero) so it stays pinned to the viewport top
