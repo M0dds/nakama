@@ -333,13 +333,14 @@ export default function Lists() {
                       // first / loses its last list — reference churn in
                       // sections() never remounts the module.
                       <Show when={sectionOf(s.cat)}>
-                        {/* Category shelves fold on mobile — default OPEN,
-                            persisted per category: with up to six shelves the
-                            rarely-used ones stay tucked away across visits. */}
+                        {/* Category shelves fold at EVERY width (the one
+                            sanctioned desktop fold) — default OPEN, persisted
+                            per category: with up to six shelves the rarely-
+                            used ones stay tucked away across visits. */}
                         <BentoModule
                           label={s.label}
                           number={numberOf(s.cat)}
-                          collapsibleBelowMd
+                          collapsible
                           persistKey={`lists:${s.cat}`}
                           class={
                             s.cat !== lastCat() ? "border-b border-rule" : undefined

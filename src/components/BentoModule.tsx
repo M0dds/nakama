@@ -19,7 +19,9 @@ import { useMediaQuery } from "@/lib/media";
  * on the right, so the instrument read is untouched) and the body collapses
  * via the grid-rows 0fr↔1fr idiom (ReleaseNotesDialog). From `md` up the
  * section is forced open and renders the plain header — no phantom button in
- * the desktop DOM.
+ * the desktop DOM. `collapsible` folds at EVERY width instead (the /lists
+ * category shelves — the one sanctioned desktop fold; everything else stays
+ * mobile-only by design).
  *
  * Fold-state lifetime: per mount by default (secondary sections like Details/
  * Notizen re-collapse on every visit — that's their point). `persistKey`
@@ -33,14 +35,16 @@ export function BentoModule(
     number: string;
     class?: string;
     collapsibleBelowMd?: boolean;
+    /** Foldable at every width (not just below md). */
+    collapsible?: boolean;
     defaultOpen?: boolean;
     /** Persist the fold state as `nakama:fold:<persistKey>`. */
     persistKey?: string;
   }>,
 ) {
-  // The prop is static at every call site — branch once (components run
+  // The props are static at every call site — branch once (components run
   // once in Solid); the plain path stays byte-identical to before.
-  if (!props.collapsibleBelowMd) {
+  if (!props.collapsibleBelowMd && !props.collapsible) {
     return (
       <section class={cn("p-5", props.class)}>
         <header class="mb-4 flex items-baseline justify-between">
@@ -65,7 +69,10 @@ export function BentoModule(
     setOpen(next);
     if (storageKey) localStorage.setItem(storageKey, next ? "1" : "0");
   };
-  const expanded = () => mdUp() || open();
+  // collapsible folds everywhere; collapsibleBelowMd only below md (forced
+  // open + plain header from md up).
+  const foldableNow = () => props.collapsible || !mdUp();
+  const expanded = () => !foldableNow() || open();
   const bodyId = createUniqueId();
 
   return (
@@ -74,7 +81,7 @@ export function BentoModule(
           as header mb-4 — a collapsed section then reads as a compact label
           strip without dead margin above the section padding. */}
       <Show
-        when={!mdUp()}
+        when={foldableNow()}
         fallback={
           <header class="flex items-baseline justify-between">
             <SectionLabel label={props.label} />
