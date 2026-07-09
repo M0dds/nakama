@@ -14,15 +14,19 @@ import { onScrollFrame } from "@/lib/scroll";
  * CoverBackdrop wash (boosted below md via `boostBelowMd`) — i.e. the same
  * cover "behind frosted glass". The sheet edge IS the sharp→blur line.
  *
- * ARCHITECTURE (v2 — the lag fix): the clip stage is an IN-FLOW absolute
- * element that scrolls with the document, so its bottom edge is COMPOSITOR-
- * locked to the content edge — pixel-exact at any scroll speed. (v1 was a
- * fixed layer whose clip edge chased the content via JS transforms; iOS
- * scrolls on the compositor thread while JS runs on main, so fast scrolling
- * opened a visible gap of wash between content edge and image.) Only the
- * IMAGE inside is counter-translated by scrollY to stay viewport-pinned —
- * a lagged frame there shows as a tiny shift inside the picture, never as
- * a hole at the edge.
+ * ARCHITECTURE (v3 — fully compositor-synced): the clip stage is an IN-FLOW
+ * absolute element that scrolls with the document, so its bottom edge is
+ * compositor-locked to the content edge — pixel-exact at any scroll speed.
+ * The image inside is counter-translated to stay viewport-pinned via a CSS
+ * SCROLL-DRIVEN ANIMATION (`.hero-pin`, index.css: animation-timeline
+ * scroll(), range 0→stage height, translateY 0→stage height) — that runs on
+ * the compositor thread too (threaded in Safari 26.4), so neither edge nor
+ * image can ever lag the scroll. History: v1 chased the content edge with
+ * JS transforms on a fixed layer (wash gap at speed — iOS scrolls on the
+ * compositor, JS runs on main); v2 moved the clip in-flow but still pinned
+ * the image per-frame from scroll events (edge solid, image jittered).
+ * Browsers without scroll-timeline support keep the static in-flow image
+ * (cover scrolls with the page — smooth, just not pinned).
  *
  * Renders the stage PLUS the in-flow spacer that pushes the content start
  * to the hero's bottom edge — mount it in flow, right before the content
@@ -33,11 +37,6 @@ import { onScrollFrame } from "@/lib/scroll";
  */
 
 // ── Tuning knobs ────────────────────────────────────────────────────────
-/** How hard the image is pinned to the viewport. 1 = fully fixed (user
- *  call, 2026-07-09 — no parallax), 0 = scrolls with the page like a plain
- *  hero, in between = parallax. Lower values also shrink the worst-case
- *  in-image jitter when iOS momentum outruns main-thread scroll events. */
-const PIN = 1;
 /** ≈ single-line sticky PageHeader height (pt-6 + kicker + h1 + pb-3 ≈
  *  82px; titles truncate, so it no longer wraps taller). Only seeds the
  *  resting layout — the stage height is MEASURED off the spacer, so the
@@ -59,7 +58,6 @@ export function CoverHero(props: {
   aspect?: keyof typeof HERO_HEIGHTS;
 }) {
   let stageEl!: HTMLDivElement;
-  let imgEl!: HTMLImageElement;
   let spacerEl!: HTMLDivElement;
 
   const heroH = () => HERO_HEIGHTS[props.aspect ?? "portrait"];
@@ -109,22 +107,21 @@ export function CoverHero(props: {
     // The stage must end EXACTLY where content starts (= the spacer's bottom,
     // in document space) — measured, not derived from the HEADER_OFFSET
     // estimate, so the sheet edge carries no sliver of mis-estimate. Static
-    // between resizes (the header is single-line by construction).
+    // between resizes (the header is single-line by construction). The same
+    // value feeds --hero-pin: the scroll-driven .hero-pin animation (index
+    // .css) maps scroll 0→stageH onto translateY 0→stageH, i.e. the image
+    // is viewport-pinned exactly while the stage is on screen.
     const size = () => {
-      stageEl.style.height = `${
-        spacerEl.getBoundingClientRect().bottom + window.scrollY
-      }px`;
+      const h = spacerEl.getBoundingClientRect().bottom + window.scrollY;
+      stageEl.style.height = `${h}px`;
+      stageEl.style.setProperty("--hero-pin", `${h}px`);
     };
 
     const apply = () => {
-      // Counter-translate: the stage scrolls up with the page; pushing the
-      // image down by PIN·scrollY keeps the picture viewport-pinned. The
-      // 115%-tall image leaves slack so no edge ever runs dry. Clamp: iOS
-      // rubber-banding at the top must not pull the image off its ceiling.
-      const s = Math.max(0, window.scrollY);
-      imgEl.style.transform = `translateY(${(PIN * s).toFixed(1)}px)`;
       // Header-contrast gate: the hero counts as "under the header" until
       // the content edge (spacer bottom) has slid beneath the header band.
+      // (The image pin itself is pure CSS — nothing per-frame here but this
+      // cheap gate.)
       heroUnderHeader =
         spacerEl.getBoundingClientRect().bottom >
         HEADER_OFFSET + safeAreaInset("top");
@@ -133,19 +130,18 @@ export function CoverHero(props: {
 
     // Listener + measurement only live below md (the layer is md:hidden, but
     // an orphaned per-frame writer would keep working invisibly). Re-arms on
-    // breakpoint crossings and clears stranded inline styles.
+    // breakpoint crossings.
     const arm = () => {
       if (md.matches) {
         dispose?.();
         dispose = null;
-        imgEl.style.transform = "";
         heroUnderHeader = false;
         syncTone();
       } else if (!dispose) {
         size();
         // onScrollFrame also fires on resize — re-measure the stage there
-        // (cheap: one gBCR per resize-frame, constant during pure scrolls
-        // is fine to re-read since the layout doesn't shift).
+        // (cheap: one gBCR per frame; constant during pure scrolls, so the
+        // re-read is a no-op write).
         dispose = onScrollFrame(() => {
           size();
           apply();
@@ -175,18 +171,19 @@ export function CoverHero(props: {
         ref={stageEl}
         aria-hidden
         class="pointer-events-none absolute inset-x-0 top-0 -z-[8] overflow-hidden md:hidden"
-        style={{ height: heroH() }}
+        // --hero-pin seeds the scroll-driven pin with the same calc as the
+        // height; size() refines both to the measured px value.
+        style={{ height: heroH(), "--hero-pin": heroH() }}
       >
         {/* coverFor sharpens per source (AniList medium→large, Steam
-            header→capsule); it's the mobile LCP, so fetch it eagerly. */}
+            header→capsule); it's the mobile LCP, so fetch it eagerly.
+            .hero-pin (index.css) keeps it viewport-pinned via a scroll-
+            driven animation — compositor-synced, no JS per frame. */}
         <img
-          ref={(el) => {
-            imgEl = el;
-            fadeOnLoad(el);
-          }}
+          ref={fadeOnLoad}
           src={coverFor(props.coverUrl)!}
           alt=""
-          class="absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[50%_25%]"
+          class="hero-pin absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[50%_25%]"
           fetchpriority="high"
         />
       </div>
