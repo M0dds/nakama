@@ -72,6 +72,7 @@ import { ItemHeaderActions } from "@/components/ItemHeaderActions";
 import { SyncToggle } from "@/components/SyncToggle";
 import { Pager } from "@/components/Pager";
 import { ItemNotes } from "@/components/ItemNotes";
+import { CoverHero } from "@/components/CoverHero";
 
 /**
  * /item/:type/:slug — Item-Detail. Layout:
@@ -85,10 +86,17 @@ import { ItemNotes } from "@/components/ItemNotes";
  *
  *   Section 02 (right 1/3, "Details"):
  *     ┌────────┐
- *     │ cover  │   (no accent plate — sits flat in hairline border)
- *     └────────┘
+ *     │ cover  │   (no accent plate — sits flat in hairline border;
+ *     └────────┘    max-md:hidden — mobile shows the CoverHero instead)
  *     ──────────────
  *     Typ / Format / Quelle
+ *
+ * Mobile (< md): same section ORDER (Episoden 01 → Details 02 → Notizen/
+ * Gesynct 03), but the cover becomes a full-width FIXED hero behind the page
+ * (CoverHero.tsx) — content starts at its bottom edge and slides over it on
+ * scroll, fading the sharp cover into the CoverBackdrop wash. Details +
+ * Notizen/Gesynct start collapsed (BentoModule collapsibleBelowMd) so the
+ * tick surface leads.
  *
  * PageHeader aside carries the ItemHeaderActions cluster (reset / move /
  * remove in the RowActions icon idiom): reset when the caller has at least
@@ -591,6 +599,15 @@ export default function ItemDetail() {
 
       <ColumnGuide />
 
+      {/* Mobile cover hero (< md): full-width cover fixed BEHIND the page +
+          in-flow spacer so content starts at its bottom edge and slides over
+          it on scroll, fading the sharp cover into the CoverBackdrop wash
+          underneath (mechanics in CoverHero.tsx). No cover → no hero, the
+          Details letter-fallback carries the identity instead. */}
+      <Show when={item.data?.coverUrl}>
+        {(url) => <CoverHero coverUrl={url()} wide={isGame()} />}
+      </Show>
+
       <div class="flex flex-col md:flex-row md:items-start">
         {/* Section 01 — Episode-Listing. First at every width: on mobile the
             work surface (ticking episodes) leads right under the cover hero;
@@ -883,12 +900,17 @@ function Cover(props: {
       }
     >
       {/* coverFor sharpens the poster per source (AniList medium→large for a
-          crisp poster, Steam header→capsule); TMDB URLs pass through. */}
+          crisp poster, Steam header→capsule); TMDB URLs pass through.
+          max-md:hidden — this branch renders exactly when a coverUrl exists,
+          which is exactly when the mobile CoverHero is active; showing the
+          cover twice would be redundant. loading=lazy + display:none means
+          mobile never fetches this copy. The letter fallback above stays on
+          every breakpoint (no cover ⇒ no hero). */}
       <img
         ref={fadeOnLoad}
         src={coverFor(props.coverUrl)!}
         alt=""
-        class={`mb-5 block h-auto border border-border bg-bg ${
+        class={`mb-5 block h-auto border border-border bg-bg max-md:hidden ${
           props.wide ? "w-full" : "max-h-[460px] w-auto max-w-full"
         }`}
         loading="lazy"
