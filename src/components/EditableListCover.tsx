@@ -16,31 +16,43 @@ import { ListCover } from "@/components/GeneratedCover";
 import { AvatarCropDialog } from "@/components/AvatarCropDialog";
 
 /**
- * Square list cover with click-to-change upload. Mirrors EditableAvatar but
- * square + cover-scoped: a pick crops to a square JPEG, uploads to the
- * `list-covers` bucket, and writes lists.cover_url (owner only — the parent
- * gates rendering on isOwner; storage + the lists update are both owner-scoped
- * server-side as defense in depth). Optimistic object-URL preview swaps in on
- * pick, replaced by the real URL on success or rolled back on error. Patches
- * both the detail (listQueryKey) and overview (listsQueryKey) caches so the
- * cover updates everywhere without a refetch.
+ * Owner-side list-cover editing, in two surfaces sharing one logic core
+ * (`createListCoverActions`):
+ *
+ *   `EditableListCover`  — the square cover with hover/chip-revealed overlay
+ *                          zones (upload / reset / reroll). DESKTOP surface:
+ *                          on mobile the cover lives in the fixed CoverHero
+ *                          behind the page, where in-cover interaction is
+ *                          impossible (pointer-events-none, behind content).
+ *   `ListCoverActions`   — a compact control row (mono label + bordered
+ *                          instrument buttons) for the Details section on
+ *                          MOBILE. Same mutations, same crop dialog.
+ *
+ * A pick crops to a square JPEG, uploads to the `list-covers` bucket, and
+ * writes lists.cover_url (owner only — parents gate rendering on isOwner;
+ * storage + the lists update are both owner-scoped server-side as defense in
+ * depth). Optimistic object-URL preview swaps in on pick, replaced by the
+ * real URL on success or rolled back on error. Patches both the detail
+ * (listQueryKey) and overview (listsQueryKey) caches so the cover updates
+ * everywhere without a refetch.
  */
-export function EditableListCover(props: {
+
+type CoverProps = {
   listId: string;
   shortCode: string;
   coverUrl: string | null;
   coverSeed: number;
-}) {
+};
+
+/** Shared logic core: upload/reset/reroll mutations + pick→crop wiring.
+ *  Each consuming component creates its own instance (fine — the optimistic
+ *  cache patches go through the shared queryClient either way). */
+function createListCoverActions(props: CoverProps) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [uploading, setUploading] = createSignal(false);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
   const [cropOpen, setCropOpen] = createSignal(false);
-  // Coarse-pointer reveal: hover can't show the overlay on touch — worse, its
-  // zones used to be invisible-but-tappable (a blind tap could reroll a shared
-  // list's cover, the old seed gone for good). A visible pencil chip toggles
-  // the overlay open instead; the zones only accept input while visible.
-  const [touchOpen, setTouchOpen] = createSignal(false);
 
   const detailKey = () => listQueryKey(props.shortCode);
 
@@ -76,7 +88,7 @@ export function EditableListCover(props: {
     );
   };
 
-  const mutation = createMutation(() => ({
+  const uploadMutation = createMutation(() => ({
     mutationFn: async (file: File) => {
       const url = await uploadListCover({ listId: props.listId, file });
       const res = await setListCover({ listId: props.listId, coverUrl: url });
@@ -154,14 +166,6 @@ export function EditableListCover(props: {
   const busy = () =>
     uploading() || resetMutation.isPending || rerollMutation.isPending;
 
-  /** Zone interactivity follows zone visibility. Exclusive branches: when
-   *  revealed (touch-open or op pending) plain auto; otherwise none at rest,
-   *  hover-restored on fine pointers only. */
-  const zoneEvents = () =>
-    touchOpen() || busy()
-      ? { "pointer-events-auto": true }
-      : { "pointer-events-none group-hover:pointer-events-auto": true };
-
   const onPick = (e: Event & { currentTarget: HTMLInputElement }) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = ""; // allow re-picking the same file
@@ -181,8 +185,47 @@ export function EditableListCover(props: {
   const onCropped = (cropped: File) => {
     setCropOpen(false);
     setUploading(true);
-    mutation.mutate(cropped);
+    uploadMutation.mutate(cropped);
   };
+
+  return {
+    uploading,
+    busy,
+    resetMutation,
+    rerollMutation,
+    doReroll,
+    onPick,
+    onCropped,
+    pendingFile,
+    cropOpen,
+    setCropOpen,
+  };
+}
+
+export function EditableListCover(props: CoverProps) {
+  const actions = createListCoverActions(props);
+  const {
+    uploading,
+    busy,
+    resetMutation,
+    rerollMutation,
+    doReroll,
+    onPick,
+    onCropped,
+  } = actions;
+  // Coarse-pointer reveal: hover can't show the overlay on touch — worse, its
+  // zones used to be invisible-but-tappable (a blind tap could reroll a shared
+  // list's cover, the old seed gone for good). A visible pencil chip toggles
+  // the overlay open instead; the zones only accept input while visible.
+  const [touchOpen, setTouchOpen] = createSignal(false);
+
+  /** Zone interactivity follows zone visibility. Exclusive branches: when
+   *  revealed (touch-open or op pending) plain auto; otherwise none at rest,
+   *  hover-restored on fine pointers only. */
+  const zoneEvents = () =>
+    touchOpen() || busy()
+      ? { "pointer-events-auto": true }
+      : { "pointer-events-none group-hover:pointer-events-auto": true };
 
   return (
     <>
@@ -296,9 +339,99 @@ export function EditableListCover(props: {
       </div>
 
       <AvatarCropDialog
-        file={pendingFile()}
-        open={cropOpen()}
-        onClose={() => setCropOpen(false)}
+        file={actions.pendingFile()}
+        open={actions.cropOpen()}
+        onClose={() => actions.setCropOpen(false)}
+        onCropped={onCropped}
+        shape="square"
+      />
+    </>
+  );
+}
+
+/** Bordered instrument button — the mobile cover-action idiom (mono caps,
+ *  hairline, calm at rest). */
+const actionBtnClass =
+  "flex flex-1 cursor-pointer items-center justify-center gap-2 border border-border px-3 py-2.5 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text disabled:cursor-default disabled:opacity-60";
+
+/**
+ * Mobile counterpart of EditableListCover: the cover itself lives in the
+ * fixed CoverHero (behind the page, non-interactive), so upload / reset /
+ * reroll become a control row in the Details section — same idiom as the
+ * neighbouring Kategorie/Tracking controls. Owner-gated by the parent.
+ */
+export function ListCoverActions(props: CoverProps) {
+  const actions = createListCoverActions(props);
+  const {
+    uploading,
+    resetMutation,
+    rerollMutation,
+    doReroll,
+    onPick,
+    onCropped,
+  } = actions;
+
+  return (
+    <>
+      <div class="mt-5 border-t border-border pt-5">
+        <p class="mb-3 font-mono text-mini uppercase tracking-wider text-text-muted">
+          Cover
+        </p>
+        <div class="flex gap-2">
+          <label class={actionBtnClass}>
+            {uploading() ? (
+              <Loader2 class="size-3.5 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <Camera class="size-3.5" strokeWidth={1.75} aria-hidden />
+            )}
+            Hochladen
+            <input
+              type="file"
+              accept="image/*"
+              class="sr-only"
+              disabled={uploading() || resetMutation.isPending}
+              onChange={onPick}
+            />
+          </label>
+          <Show
+            when={props.coverUrl}
+            fallback={
+              <button
+                type="button"
+                onClick={doReroll}
+                disabled={rerollMutation.isPending || uploading()}
+                class={actionBtnClass}
+              >
+                {rerollMutation.isPending ? (
+                  <Loader2 class="size-3.5 animate-spin" strokeWidth={1.75} />
+                ) : (
+                  <Dices class="size-3.5" strokeWidth={1.75} aria-hidden />
+                )}
+                Neu würfeln
+              </button>
+            }
+          >
+            <button
+              type="button"
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending || uploading()}
+              class={actionBtnClass}
+            >
+              {resetMutation.isPending ? (
+                <Loader2 class="size-3.5 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <RotateCcw class="size-3.5" strokeWidth={1.75} aria-hidden />
+              )}
+              Zurücksetzen
+            </button>
+          </Show>
+        </div>
+      </div>
+
+      <AvatarCropDialog
+        file={actions.pendingFile()}
+        open={actions.cropOpen()}
+        onClose={() => actions.setCropOpen(false)}
         onCropped={onCropped}
         shape="square"
       />

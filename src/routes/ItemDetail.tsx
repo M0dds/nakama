@@ -611,7 +611,9 @@ export default function ItemDetail() {
           CoverHero.tsx). No cover → no hero, the Details letter-fallback
           carries the identity instead. */}
       <Show when={item.data?.coverUrl}>
-        {(url) => <CoverHero coverUrl={url()} wide={isGame()} />}
+        {(url) => (
+          <CoverHero coverUrl={url()} aspect={isGame() ? "wide" : "portrait"} />
+        )}
       </Show>
 
       <div class="flex flex-col md:flex-row md:items-start">

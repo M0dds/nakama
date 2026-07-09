@@ -55,7 +55,11 @@ import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { NotFound } from "@/components/NotFound";
 import { DragHandle } from "@/components/DragHandle";
 import { ListCover, PinBadge, coverSeedDataUri } from "@/components/GeneratedCover";
-import { EditableListCover } from "@/components/EditableListCover";
+import {
+  EditableListCover,
+  ListCoverActions,
+} from "@/components/EditableListCover";
+import { CoverHero } from "@/components/CoverHero";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
 import { EditableListDescription } from "@/components/EditableListDescription";
 import { Pager } from "@/components/Pager";
@@ -304,7 +308,9 @@ export default function ListDetail() {
     <Show when={!notFound()} fallback={<NotFound kind="list" />}>
     <>
     <main class="w-full">
-      <CoverBackdrop coverUrl={washCover() ?? listCoverWash()} />
+      {/* boostBelowMd: same glass-sheet read as the item page — under the
+          mobile content the wash is "the list cover behind frosted glass". */}
+      <CoverBackdrop coverUrl={washCover() ?? listCoverWash()} boostBelowMd />
       <PageHeader
         kicker="LISTEN"
         title={
@@ -346,6 +352,25 @@ export default function ListDetail() {
       />
 
       <ColumnGuide />
+
+      {/* Mobile cover hero (< md): the LIST cover — uploaded photo or the
+          generated seed pattern as a data URI — fixed behind the page, wiped
+          hard at the content's glass-sheet edge (same mechanics as the item
+          page, CoverHero.tsx). Every list has a cover (generated fallback),
+          so this renders whenever the list is loaded. Deliberately the LIST
+          cover, not the hovered entry's (washCover) — the hero is the page
+          identity, the wash may drift with hover. */}
+      <Show when={list.data}>
+        {(data) => (
+          <CoverHero
+            coverUrl={
+              data().coverUrl ??
+              coverSeedDataUri(data().coverSeed, resolvedMode())
+            }
+            aspect="square"
+          />
+        )}
+      </Show>
 
       <div class="flex flex-col md:flex-row md:items-start">
         {/* Einträge — left 2/3 */}
@@ -399,14 +424,21 @@ export default function ListDetail() {
 
         {/* Details — right 1/3 */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
-          <BentoModule label="Details" number="02">
+          <BentoModule
+            label="Details"
+            number="02"
+            collapsibleBelowMd
+            defaultOpen={false}
+          >
             <Show when={list.data} fallback={<DetailsSkeleton />}>
               {(data) => (
                 <>
                   {/* Cover — owner can change it (crop + upload); others see
                       the current cover read-only. Sized to a third of the
-                      column so it reads as a thumbnail, not a hero. */}
-                  <div class="mb-5 w-1/3">
+                      column so it reads as a thumbnail, not a hero. Desktop
+                      only: on mobile the cover IS the hero, and editing moves
+                      to the ListCoverActions control row below. */}
+                  <div class="mb-5 hidden w-1/3 md:block">
                     <Show
                       when={data().isOwner}
                       fallback={
@@ -463,6 +495,21 @@ export default function ListDetail() {
                     shortCode={data().shortCode}
                     initialEnabled={data().tracksHome}
                   />
+
+                  {/* Mobile cover editing — the hero cover is behind the page
+                      and non-interactive, so upload / reset / reroll live
+                      here as a control row (owner only, like the desktop
+                      overlay). */}
+                  <Show when={data().isOwner}>
+                    <div class="md:hidden">
+                      <ListCoverActions
+                        listId={data().id}
+                        shortCode={data().shortCode}
+                        coverUrl={data().coverUrl}
+                        coverSeed={data().coverSeed}
+                      />
+                    </div>
+                  </Show>
                 </>
               )}
             </Show>
@@ -474,7 +521,12 @@ export default function ListDetail() {
           <Show when={list.data}>
             {(data) => (
               <div class="border-t border-border">
-                <BentoModule label="Mitglieder" number="03">
+                <BentoModule
+                  label="Mitglieder"
+                  number="03"
+                  collapsibleBelowMd
+                  defaultOpen={false}
+                >
                   <MembersModule listId={data().id} isOwner={data().isOwner} />
                 </BentoModule>
               </div>

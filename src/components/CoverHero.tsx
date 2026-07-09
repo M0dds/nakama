@@ -37,18 +37,26 @@ const PARALLAX = 0.25;
  *  strip on the cover is not. Only sets the resting content offset; the
  *  wipe itself is measured, not derived from this. */
 const HEADER_OFFSET = 80;
-/** Cropped-stage height: portrait posters are 2:3 (150vw at full width —
- *  far too tall), so a viewport cap crops them to a stage; Steam headers
- *  (460×215) resolve to their natural banner height instead. */
-const HERO_H_PORTRAIT = "min(150vw, 58svh)";
-const HERO_H_WIDE = "min(46.8vw, 58svh)";
+/** Cropped-stage heights per source shape: portrait posters are 2:3 (150vw
+ *  at full width — far too tall), so a viewport cap crops them to a stage;
+ *  Steam headers (460×215) resolve to their natural banner height; square
+ *  list covers (uploads are square-cropped, generated covers are square)
+ *  show whole until the cap binds. */
+const HERO_HEIGHTS = {
+  portrait: "min(150vw, 58svh)",
+  wide: "min(46.8vw, 58svh)",
+  square: "min(100vw, 58svh)",
+} as const;
 
-export function CoverHero(props: { coverUrl: string; wide?: boolean }) {
+export function CoverHero(props: {
+  coverUrl: string;
+  aspect?: keyof typeof HERO_HEIGHTS;
+}) {
   let outerEl!: HTMLDivElement;
   let innerEl!: HTMLDivElement;
   let spacerEl!: HTMLDivElement;
 
-  const heroH = () => (props.wide ? HERO_H_WIDE : HERO_H_PORTRAIT);
+  const heroH = () => HERO_HEIGHTS[props.aspect ?? "portrait"];
 
   onMount(() => {
     const md = window.matchMedia("(min-width: 768px)");
