@@ -38,6 +38,7 @@ import {
   typeLabel,
   WEEKDAYS_MON,
 } from "@/lib/format";
+import { useMediaQuery } from "@/lib/media";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
@@ -66,6 +67,7 @@ const SELECTED_TINT = "color-mix(in srgb, var(--accent) 12%, transparent)";
 
 export default function Calendar() {
   const auth = useAuth();
+  const isMd = useMediaQuery("(min-width: 768px)");
 
   const todayIso = isoDay(new Date());
   const [refDate, setRefDate] = createSignal(new Date());
@@ -205,13 +207,28 @@ export default function Calendar() {
                 fallback={<CalendarGridSkeleton view={view()} />}
               >
                 {view() === "week" ? (
-                  <WeekGrid
-                    days={weekDays()}
-                    events={dayEvents}
-                    todayIso={todayIso}
-                    selectedIso={selectedIso()}
-                    onSelect={setSelectedIso}
-                  />
+                  <>
+                    {/* Desktop: compact 7-row grid feeding the day-pane. */}
+                    <div class="max-md:hidden">
+                      <WeekGrid
+                        days={weekDays()}
+                        events={dayEvents}
+                        todayIso={todayIso}
+                        selectedIso={selectedIso()}
+                        onSelect={setSelectedIso}
+                      />
+                    </div>
+                    {/* Mobile: the week IS the day list — a vertical agenda
+                        with cover-rows under each day, no selection, no
+                        separate day-pane (mobile rework 2026-07-09). */}
+                    <div class="md:hidden">
+                      <WeekAgenda
+                        days={weekDays()}
+                        events={dayEvents}
+                        todayIso={todayIso}
+                      />
+                    </div>
+                  </>
                 ) : (
                   <MonthGrid
                     days={monthDays()}
@@ -219,7 +236,17 @@ export default function Calendar() {
                     events={dayEvents}
                     todayIso={todayIso}
                     selectedIso={selectedIso()}
-                    onSelect={setSelectedIso}
+                    maxDots={isMd() ? MAX_DOTS : 3}
+                    onSelect={(iso) => {
+                      setSelectedIso(iso);
+                      // Mobile: the month is a NAVIGATOR — tapping a day
+                      // jumps into that week's agenda (there is no day-pane
+                      // to feed). Desktop keeps select-for-pane.
+                      if (!isMd()) {
+                        setRefDate(fromIsoDay(iso));
+                        setView("week");
+                      }
+                    }}
                   />
                 )}
               </Show>
@@ -227,8 +254,11 @@ export default function Calendar() {
           </BentoModule>
         </div>
 
-        {/* Rechte Spalte 1/3 — Tag-Pane. */}
-        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+        {/* Rechte Spalte 1/3 — Tag-Pane. Desktop-only: mobil ist die Woche
+            selbst die Tagesliste (WeekAgenda), ein zweites "Tag"-Abteil
+            darunter wäre ein Duplikat unterm Fold. hidden statt unmount —
+            der DayPane-Effect treibt weiter den Backdrop-Wash. */}
+        <div class="border-t border-rule max-md:hidden md:w-1/3 md:border-t-0">
           <BentoModule label="Tag" number="02">
             <DayPane
               iso={selectedIso()}
@@ -590,6 +620,83 @@ function EventChip(props: { ev: CalendarEvent }) {
   );
 }
 
+// ── Week agenda (mobile) ──────────────────────────────────────────────
+
+/**
+ * Mobile week agenda (< md) — the week rendered as ONE vertical day list:
+ * each day is a slim header line (weekday + date, today accented + tinted),
+ * its episodes follow as full cover-rows (the DayPaneRow idiom — the exact
+ * row the desktop day-pane uses, so the vocabulary stays identical). Days
+ * without events stay one quiet line. This replaces grid + day-pane on
+ * mobile: nothing to select, no duplicate below the fold — the week IS the
+ * day list. Read-only like every calendar surface (handshake §Gotchas).
+ */
+function WeekAgenda(props: {
+  days: Date[];
+  events: (iso: string) => CalendarEvent[];
+  todayIso: string;
+}) {
+  return (
+    <ul class="-mx-5">
+      <For each={props.days}>
+        {(d, i) => {
+          const iso = isoDay(d);
+          const evs = () => props.events(iso);
+          const isToday = () => iso === props.todayIso;
+          return (
+            <li
+              class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
+              style={
+                isToday() ? { "background-color": SELECTED_TINT } : undefined
+              }
+            >
+              {/* Day header — same weekday/date vocabulary as the grids. */}
+              <div
+                class="flex items-baseline gap-2 px-5 pt-3"
+                classList={{
+                  "pb-3": evs().length === 0,
+                  "pb-0.5": evs().length > 0,
+                }}
+              >
+                <span class="w-8 shrink-0 font-mono text-mini uppercase tracking-wider text-text-muted">
+                  {WEEKDAYS_MON[i()]}
+                </span>
+                <span
+                  class="font-mono text-body tabular-nums"
+                  classList={{
+                    "text-accent": isToday(),
+                    "text-text": !isToday(),
+                  }}
+                >
+                  {String(d.getDate()).padStart(2, "0")}
+                </span>
+                <Show when={isToday()}>
+                  <span class="font-mono text-mini uppercase tracking-wider text-accent">
+                    · Heute
+                  </span>
+                </Show>
+                <Show when={evs().length === 0}>
+                  <span class="ml-4 text-body leading-none text-text-muted">
+                    —
+                  </span>
+                </Show>
+              </div>
+              {/* Cover-rows. Index, not For — same realtime-identity reasoning
+                  as the day-pane list. The rows' own hairlines separate them;
+                  the last one yields to the day boundary above. */}
+              <Show when={evs().length > 0}>
+                <ul>
+                  <Index each={evs()}>{(ev) => <DayPaneRow ev={ev()} />}</Index>
+                </ul>
+              </Show>
+            </li>
+          );
+        }}
+      </For>
+    </ul>
+  );
+}
+
 // ── Month grid ────────────────────────────────────────────────────────
 
 const MAX_DOTS = 6;
@@ -600,6 +707,8 @@ function MonthGrid(props: {
   events: (iso: string) => CalendarEvent[];
   todayIso: string;
   selectedIso: string;
+  /** Dot budget per cell — the mobile navigator cells fit fewer. */
+  maxDots?: number;
   onSelect: (iso: string) => void;
 }) {
   return (
@@ -628,7 +737,7 @@ function MonthGrid(props: {
               <button
                 type="button"
                 onClick={() => props.onSelect(iso)}
-                class="flex min-h-[4.5rem] flex-col gap-1 border-b border-r border-border p-2 text-left transition-colors hover:bg-surface [&:nth-child(7n)]:border-r-0"
+                class="flex flex-col gap-1 border-b border-r border-border p-2 text-left transition-colors hover:bg-surface max-md:aspect-square max-md:p-1.5 md:min-h-[4.5rem] [&:nth-child(7n)]:border-r-0"
                 classList={{ "opacity-40": !inMonth() }}
                 style={isSel() ? { "background-color": SELECTED_TINT } : undefined}
               >
@@ -642,7 +751,7 @@ function MonthGrid(props: {
                   {String(d.getDate()).padStart(2, "0")}
                 </span>
                 <Show when={evs().length > 0}>
-                  <DayDots events={evs()} />
+                  <DayDots events={evs()} max={props.maxDots} />
                 </Show>
               </button>
             );
@@ -654,9 +763,10 @@ function MonthGrid(props: {
 }
 
 /** Dot row for a month cell — one dot per episode (max 6, then "+N"). */
-function DayDots(props: { events: CalendarEvent[] }) {
-  const shown = () => props.events.slice(0, MAX_DOTS);
-  const overflow = () => props.events.length - MAX_DOTS;
+function DayDots(props: { events: CalendarEvent[]; max?: number }) {
+  const cap = () => props.max ?? MAX_DOTS;
+  const shown = () => props.events.slice(0, cap());
+  const overflow = () => props.events.length - cap();
   return (
     <div class="flex flex-wrap items-center gap-1">
       <For each={shown()}>
