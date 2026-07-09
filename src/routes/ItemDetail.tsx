@@ -592,16 +592,14 @@ export default function ItemDetail() {
       <ColumnGuide />
 
       <div class="flex flex-col md:flex-row md:items-start">
-        {/* Section 01 — Episode-Listing. On mobile it drops BELOW the Details
-            column (so the cover sits at the top): order-2 + a top rule to
-            separate it from the section above; the number flips to 02. From md
-            up it returns to its native first/left slot (01, no top rule —
-            the ColumnGuide handles the vertical split). */}
-        <div class="order-2 border-t border-rule md:order-1 md:w-2/3 md:border-t-0">
+        {/* Section 01 — Episode-Listing. First at every width: on mobile the
+            work surface (ticking episodes) leads right under the cover hero;
+            from md up it takes the left 2/3 (the ColumnGuide handles the
+            vertical split). */}
+        <div class="md:w-2/3">
           <BentoModule
             label={isGame() ? "Spiel" : isMovie() ? "Film" : "Episoden"}
             number="01"
-            mobileNumber={notesListId() || showSyncedSection() ? "03" : "02"}
           >
             <Show
               when={item.data}
@@ -686,11 +684,18 @@ export default function ItemDetail() {
           </BentoModule>
         </div>
 
-        {/* Section 02 — Cover + Details. On mobile it leads (order-1, no top
-            rule) so the cover is the first thing seen; the number flips to 01.
-            From md up it returns to the right column (02). */}
-        <div class="order-1 md:order-2 md:w-1/3">
-          <BentoModule label="Details" number="02" mobileNumber="01">
+        {/* Section 02 — Cover + Details. Second at every width; on mobile it
+            follows the episode section (collapsed by default — the cover
+            lives in the fixed hero up top, secondary facts fold away) with a
+            top rule separating the sections. From md up: right column, always
+            open, plain header. */}
+        <div class="border-t border-rule md:w-1/3 md:border-t-0">
+          <BentoModule
+            label="Details"
+            number="02"
+            collapsibleBelowMd
+            defaultOpen={false}
+          >
             <Show
               when={item.data}
               fallback={
@@ -769,7 +774,8 @@ export default function ItemDetail() {
             <BentoModule
               label="Gesynct in"
               number="03"
-              mobileNumber="02"
+              collapsibleBelowMd
+              defaultOpen={false}
               class="border-t border-border"
             >
               <ul class="-mx-5">
@@ -824,13 +830,13 @@ export default function ItemDetail() {
           {/* Section 03 — shared notes (text + link blocks). Only with a list
               context: notes attach to (list, item), so the global item page
               (no single list) doesn't show it. A hairline separates it from
-              Details. mobileNumber 02 — on mobile it sits between Details (01)
-              and the episode/film/game section (03). */}
+              Details; on mobile it's collapsed by default like Details. */}
           <Show when={notesListId() && item.data?.id}>
             <BentoModule
               label="Notizen"
               number="03"
-              mobileNumber="02"
+              collapsibleBelowMd
+              defaultOpen={false}
               class="border-t border-border"
             >
               <ItemNotes listId={notesListId()!} itemId={item.data!.id} />
