@@ -1,6 +1,8 @@
-import { onCleanup, onMount } from "solid-js";
+import { createEffect, onCleanup, onMount } from "solid-js";
 import { coverFor } from "@/lib/cover";
+import { coverTopLuminance, themeBgLuminance } from "@/lib/cover-tone";
 import { fadeOnLoad } from "@/lib/image-fade";
+import { safeAreaInset } from "@/lib/media";
 import { onScrollFrame } from "@/lib/scroll";
 
 /**
@@ -62,6 +64,44 @@ export function CoverHero(props: {
 
   const heroH = () => HERO_HEIGHTS[props.aspect ?? "portrait"];
 
+  // ── Adaptive header contrast ─────────────────────────────────────────
+  // The theme's grey text tokens don't survive sitting on arbitrary cover
+  // art. Sample the cover's top band, blend with the theme bg (the glass
+  // tint + top scrim mix bg into the effective surface) and mark the page's
+  // <main> with data-hero-tone="dark"|"light" — index.css flips the header's
+  // --text/--text-muted below md accordingly. `heroUnderHeader` gates it per
+  // scroll frame: once the content edge slides under the header, the glass
+  // sits on wash/content again and the theme's own tokens are correct.
+  let tone: "dark" | "light" | null = null;
+  let heroUnderHeader = true;
+  let appliedTone: string | null = null;
+  const syncTone = () => {
+    const next = heroUnderHeader ? tone : null;
+    if (next === appliedTone) return;
+    appliedTone = next;
+    const main = stageEl.closest("main");
+    if (!main) return;
+    if (next) main.setAttribute("data-hero-tone", next);
+    else main.removeAttribute("data-hero-tone");
+  };
+
+  createEffect(() => {
+    const url = coverFor(props.coverUrl)!;
+    let alive = true;
+    void coverTopLuminance(url).then((lum) => {
+      if (!alive || lum === null) return;
+      // Effective surface under the header ≈ cover shimmering through the
+      // glass tint + scrim — weight the cover at ~60%. Above mid-luminance
+      // the cover reads bright → dark text; below → light text.
+      const effective = 0.4 * themeBgLuminance() + 0.6 * lum;
+      tone = effective > 0.5 ? "light" : "dark";
+      syncTone();
+    });
+    onCleanup(() => {
+      alive = false;
+    });
+  });
+
   onMount(() => {
     const md = window.matchMedia("(min-width: 768px)");
     let dispose: (() => void) | null = null;
@@ -83,6 +123,12 @@ export function CoverHero(props: {
       // rubber-banding at the top must not pull the image off its ceiling.
       const s = Math.max(0, window.scrollY);
       imgEl.style.transform = `translateY(${(PIN * s).toFixed(1)}px)`;
+      // Header-contrast gate: the hero counts as "under the header" until
+      // the content edge (spacer bottom) has slid beneath the header band.
+      heroUnderHeader =
+        spacerEl.getBoundingClientRect().bottom >
+        HEADER_OFFSET + safeAreaInset("top");
+      syncTone();
     };
 
     // Listener + measurement only live below md (the layer is md:hidden, but
@@ -93,6 +139,8 @@ export function CoverHero(props: {
         dispose?.();
         dispose = null;
         imgEl.style.transform = "";
+        heroUnderHeader = false;
+        syncTone();
       } else if (!dispose) {
         size();
         // onScrollFrame also fires on resize — re-measure the stage there
@@ -109,6 +157,9 @@ export function CoverHero(props: {
     onCleanup(() => {
       md.removeEventListener("change", arm);
       dispose?.();
+      // Never strand the tone override on the page's <main>.
+      heroUnderHeader = false;
+      syncTone();
     });
   });
 

@@ -391,6 +391,26 @@ body {
     color 200ms ease;
 }
 
+/* Hero-Header-Kontrast (mobil): über dem CoverHero sitzt der Glas-Header
+   direkt auf beliebiger Cover-Art — die Theme-Grautöne sind dort nicht
+   verlässlich lesbar. CoverHero misst die Helligkeit des oberen Cover-Bands
+   (lib/cover-tone.ts) und markiert das <main> mit data-hero-tone:
+   dunkles Cover → helle Text-Tokens, helles Cover → dunkle. Nur der Header
+   (direktes Kind) flippt; Werte bewusst theme-unabhängig neutral. Das
+   Attribut verschwindet, sobald die Content-Kante unter den Header
+   gescrollt ist (dann liegt wieder Wash/Content hinterm Glas → Theme-Tokens
+   stimmen). Custom-Property-only → kollidiert mit keinen Utilities. */
+@media (max-width: 767px) {
+  main[data-hero-tone="dark"] > header {
+    --text: #f5f5f4;
+    --text-muted: rgba(245, 245, 244, 0.72);
+  }
+  main[data-hero-tone="light"] > header {
+    --text: #161616;
+    --text-muted: rgba(22, 22, 22, 0.64);
+  }
+}
+
 /* iOS auto-zooms the whole page when a focused input's font-size is < 16px —
    and the zoom STAYS after blur (the "tap the search field → the window
    shoots off top-left → everything is zoomed in afterwards" bug; our body
