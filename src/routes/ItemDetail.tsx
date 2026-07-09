@@ -732,7 +732,10 @@ export default function ItemDetail() {
                     fallbackLetter={typeInitial(data().type)}
                     wide={isGame()}
                   />
-                  <dl class="space-y-3 border-t border-border pt-5 text-body">
+                  {/* Hairline separates cover ↔ facts — desktop only: on
+                      mobile the cover lives in the hero, so the line would
+                      sit orphaned right under the section header. */}
+                  <dl class="space-y-3 text-body md:border-t md:border-border md:pt-5">
                     <div class="flex items-baseline justify-between gap-3">
                       <dt class={dtClass}>Typ</dt>
                       <dd class="text-text">{typeLabel(data().type)}</dd>
