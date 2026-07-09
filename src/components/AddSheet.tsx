@@ -108,13 +108,17 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   ]);
 
   /** Flatten private + shared for the SelectMenu. Order: private first,
-   *  shared second — same order the user sees on /lists. */
+   *  shared second — same order the user sees on /lists. The category rides
+   *  along as the option's meta tag — two same-named lists ("Watchlist" for
+   *  anime AND series) are otherwise indistinguishable in the picker;
+   *  uncategorized ("Alle") lists stay tag-free. */
   const listOptions = (): SelectOption[] => {
     const data = listsQuery.data;
     if (!data) return [];
     return [...data.private, ...data.shared].map((l) => ({
       id: l.id,
       label: l.name,
+      meta: l.category ? typeLabel(l.category) : undefined,
     }));
   };
 

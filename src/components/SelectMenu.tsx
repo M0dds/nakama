@@ -4,6 +4,10 @@ import { Check, ChevronDown } from "lucide-solid";
 export interface SelectOption {
   id: string;
   label: string;
+  /** Mono-mini tag on the option's right edge (popover only) — disambiguates
+   *  same-named options, e.g. the list category in the AddSheet picker
+   *  ("Watchlist · ANIME" vs "Watchlist · SERIE"). */
+  meta?: string;
 }
 
 /**
@@ -88,13 +92,20 @@ export function SelectMenu(props: {
                   }}
                   class="flex w-full items-center justify-between gap-2 rounded-xs px-2.5 py-1.5 text-left text-body text-text transition-colors hover:bg-bg"
                 >
-                  <span class="truncate">{o.label}</span>
-                  <Show when={active()}>
-                    <Check
-                      class="size-3.5 shrink-0 text-accent"
-                      strokeWidth={2.5}
-                    />
-                  </Show>
+                  <span class="min-w-0 truncate">{o.label}</span>
+                  <span class="flex shrink-0 items-center gap-2">
+                    <Show when={o.meta}>
+                      <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+                        {o.meta}
+                      </span>
+                    </Show>
+                    <Show when={active()}>
+                      <Check
+                        class="size-3.5 shrink-0 text-accent"
+                        strokeWidth={2.5}
+                      />
+                    </Show>
+                  </span>
                 </button>
               );
             }}
