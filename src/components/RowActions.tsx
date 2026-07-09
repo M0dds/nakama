@@ -142,8 +142,14 @@ export function RowActions(props: Props) {
     props.destructive?.externallyPinned === true ||
     props.forceVisible === true;
 
+  // Fold behind the coarse-pointer "⋯" only when it would reveal ≥ 2 icons —
+  // i.e. only with the destructive bundle (pin + reset/move/remove). A
+  // pin-only cluster (/lists overview rows) hides nothing worth folding, so
+  // it stays directly visible on touch and the page renders no toggle.
+  const foldable = () => !!props.destructive;
+
   return (
-    // On coarse pointers the WHOLE cluster rests at display:none (carried
+    // On coarse pointers a FOLDABLE cluster rests at display:none (carried
     // here on the root, so the row's gap-2 doesn't double up around an empty
     // box) and re-displays when the "⋯" toggle opens it — display can't
     // transition, so the reveal-row keyframe animation (fade + slide from
@@ -151,8 +157,8 @@ export function RowActions(props: Props) {
     <div
       class="flex shrink-0 items-center gap-1"
       classList={{
-        "pointer-coarse:hidden": !props.forceVisible,
-        "motion-safe:animate-reveal-row": props.forceVisible,
+        "pointer-coarse:hidden": foldable() && !props.forceVisible,
+        "motion-safe:animate-reveal-row": foldable() && props.forceVisible,
       }}
     >
       <PinButton

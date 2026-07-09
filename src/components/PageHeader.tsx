@@ -90,7 +90,12 @@ export function PageHeader(props: {
       >
         <span class="absolute inset-y-0 left-0 w-px bg-rule" />
       </div>
-      <div>
+      {/* min-w-0 + shrink-0 on the aside: the title block yields to the
+          action cluster and NEVER wraps the header taller — long titles
+          ellipsize instead (the truncation itself lives in the title
+          content: ItemDetail's span / EditableListName, since an
+          overflow-hidden h1 would clip EditableListName's focus ring). */}
+      <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span
             aria-hidden
@@ -110,7 +115,7 @@ export function PageHeader(props: {
               <BackButton onClick={goBack} fallbackHref={fallback()} />
             )}
           </Show>
-          <h1 class="text-heading font-medium tracking-tight text-text">
+          <h1 class="min-w-0 text-heading font-medium tracking-tight text-text">
             {props.title}
           </h1>
         </div>
@@ -121,7 +126,7 @@ export function PageHeader(props: {
           band exactly, plain text is centered the same way. Result: the
           text baseline is identical between "Liste löschen" trigger and
           "Wirklich löschen? ✓ ✗" confirm — no shift, no jump. */}
-      <div class="inline-flex h-6 items-center">{props.aside}</div>
+      <div class="inline-flex h-6 shrink-0 items-center pl-3">{props.aside}</div>
 
       {/* Full-bleed bottom rule — escapes the capped content frame so it
           reaches both viewport edges (the header is centered in the frame, so

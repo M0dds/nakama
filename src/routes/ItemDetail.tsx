@@ -580,7 +580,10 @@ export default function ItemDetail() {
         }
         title={
           <Show when={item.data} fallback={<span>…</span>}>
-            {(data) => <span>{data().title}</span>}
+            {/* block+truncate: the header never wraps — a long title yields
+                to the aside cluster (e.g. the expanded "⋯" icons) with an
+                ellipsis instead of growing the header a line. */}
+            {(data) => <span class="block truncate">{data().title}</span>}
           </Show>
         }
         backHref={params.shortCode ? `/lists/${params.shortCode}` : "/"}

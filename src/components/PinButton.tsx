@@ -64,16 +64,19 @@ export function PinButton(props: Props) {
           // — otherwise the pin would linger 200ms after Reset/Move/Remove
           // are already gone, reading as a flash.
           //
-          // Coarse-pointer rest state is handled by the RowActions ROOT div
-          // (display:none until the "⋯" toggle opens it via forceVisible —
-          // hover can never reveal anything on touch).
+          // Coarse-pointer rest state: a FOLDABLE cluster (destructive
+          // bundle) is display:none on the RowActions ROOT until the "⋯"
+          // toggle opens it via forceVisible. A pin-ONLY cluster (overview
+          // rows) never folds — there the pin is simply always visible on
+          // touch (pointer-coarse overrides below, like the drag handle);
+          // hover can never reveal anything there.
           props.hidden
             ? "pointer-events-none opacity-0"
             : props.forceVisible
               ? `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] opacity-100 hover:bg-bg ${
                   props.pinned ? "text-accent" : "text-text-muted hover:text-text"
                 }`
-              : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 ${
+              : `transition-opacity duration-200 [transition-timing-function:var(--ease-quart)] pointer-events-none opacity-0 hover:bg-bg group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 ${
                   props.pinned ? "text-accent" : "text-text-muted hover:text-text"
                 }`
         }`}

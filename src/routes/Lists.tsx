@@ -37,7 +37,7 @@ import { BentoModule } from "@/components/BentoModule";
 import { ColumnGuide } from "@/components/ColumnGuide";
 import { CreateListForm } from "@/components/CreateListForm";
 import { InvitationsInbox } from "@/components/InvitationsInbox";
-import { RowActions, RowActionsToggle } from "@/components/RowActions";
+import { RowActions } from "@/components/RowActions";
 import { DragHandle } from "@/components/DragHandle";
 import { Skeleton } from "@/components/Skeleton";
 import { ListCover, coverSeedDataUri } from "@/components/GeneratedCover";
@@ -511,10 +511,6 @@ function SortableListRow(props: {
   const sortable = createSortable(props.list.id, {
     section: sectionKey(props.cat, props.list.pinned),
   });
-  // Coarse-pointer reveal: hover can't show pin/handle on touch, so the
-  // row-edge "⋯" (RowActionsToggle) pins them visible instead.
-  const [touchOpen, setTouchOpen] = createSignal(false);
-
   return (
     <li
       ref={sortable}
@@ -586,16 +582,14 @@ function SortableListRow(props: {
             </div>
           </div>
         </A>
+        {/* No "⋯" toggle here: the cluster is pin-ONLY (< 2 icons), so per
+            the fold rule it shows directly on touch — a toggle that reveals
+            a single icon just costs a tap (detail rows keep theirs: pin +
+            reset/move/remove). */}
         <RowActions
           pinned={props.list.pinned}
           noun="Liste"
-          forceVisible={touchOpen()}
           onTogglePin={() => props.onTogglePin(props.list)}
-        />
-        <RowActionsToggle
-          open={touchOpen()}
-          noun="Liste"
-          onToggle={() => setTouchOpen((o) => !o)}
         />
         <DragHandle
           activators={sortable.dragActivators}

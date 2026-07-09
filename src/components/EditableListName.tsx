@@ -125,8 +125,10 @@ export function EditableListName(props: {
       fallback={
         // Non-owner: read-only heading, same typo as the editable display so
         // the title baseline is identical whether or not you can rename.
-        <span class="-ml-1 inline-flex items-center px-1 text-heading font-medium tracking-tight text-text">
-          {name()}
+        // max-w-full + inner truncate: the PageHeader never wraps — a long
+        // name ellipsizes against the aside cluster instead.
+        <span class="-ml-1 inline-flex max-w-full items-center px-1 text-heading font-medium tracking-tight text-text">
+          <span class="truncate">{name()}</span>
         </span>
       }
     >
@@ -142,11 +144,13 @@ export function EditableListName(props: {
         <button
           type="button"
           onClick={startEdit}
-          class="group inline-flex items-center gap-2 rounded-xs px-1 -ml-1 text-heading font-medium tracking-tight text-text transition-colors hover:bg-surface hover:text-accent"
+          class="group inline-flex max-w-full items-center gap-2 rounded-xs px-1 -ml-1 text-heading font-medium tracking-tight text-text transition-colors hover:bg-surface hover:text-accent"
         >
-          <span>{name()}</span>
+          {/* truncate: header stays one line, long names ellipsize (the
+              pencil keeps its slot via shrink-0). */}
+          <span class="truncate">{name()}</span>
           <Pencil
-            class="size-4 text-text-muted opacity-0 transition-opacity group-hover:opacity-100"
+            class="size-4 shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100"
             strokeWidth={1.75}
           />
         </button>
