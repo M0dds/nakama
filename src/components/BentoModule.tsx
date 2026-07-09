@@ -19,7 +19,13 @@ import { useMediaQuery } from "@/lib/media";
  * on the right, so the instrument read is untouched) and the body collapses
  * via the grid-rows 0fr↔1fr idiom (ReleaseNotesDialog). From `md` up the
  * section is forced open and renders the plain header — no phantom button in
- * the desktop DOM. State resets per mount (no storage).
+ * the desktop DOM.
+ *
+ * Fold-state lifetime: per mount by default (secondary sections like Details/
+ * Notizen re-collapse on every visit — that's their point). `persistKey`
+ * (opt-in) remembers the user's choice in localStorage instead — for CONTENT
+ * sections (Home's three, the /lists category shelves) where re-folding the
+ * same rarely-used sections every visit would be busywork.
  */
 export function BentoModule(
   props: ParentProps<{
@@ -28,6 +34,8 @@ export function BentoModule(
     class?: string;
     collapsibleBelowMd?: boolean;
     defaultOpen?: boolean;
+    /** Persist the fold state as `nakama:fold:<persistKey>`. */
+    persistKey?: string;
   }>,
 ) {
   // The prop is static at every call site — branch once (components run
@@ -45,7 +53,18 @@ export function BentoModule(
   }
 
   const mdUp = useMediaQuery("(min-width: 768px)");
-  const [open, setOpen] = createSignal(props.defaultOpen ?? true);
+  const storageKey = props.persistKey
+    ? `nakama:fold:${props.persistKey}`
+    : null;
+  const stored = storageKey ? localStorage.getItem(storageKey) : null;
+  const [open, setOpen] = createSignal(
+    stored !== null ? stored === "1" : (props.defaultOpen ?? true),
+  );
+  const toggle = () => {
+    const next = !open();
+    setOpen(next);
+    if (storageKey) localStorage.setItem(storageKey, next ? "1" : "0");
+  };
   const expanded = () => mdUp() || open();
   const bodyId = createUniqueId();
 
@@ -67,7 +86,7 @@ export function BentoModule(
           type="button"
           aria-expanded={open()}
           aria-controls={bodyId}
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggle}
           class="-m-2 flex w-[calc(100%+1rem)] items-baseline justify-between gap-3 p-2 text-left"
         >
           <span class="flex min-w-0 items-baseline gap-2">
@@ -88,7 +107,11 @@ export function BentoModule(
         class="grid transition-[grid-template-rows] duration-300 [transition-timing-function:var(--ease-quart)]"
         style={{ "grid-template-rows": expanded() ? "1fr" : "0fr" }}
       >
-        <div class="min-h-0 overflow-hidden">
+        {/* -mx-5/px-5 mirror the section's p-5: overflow-hidden is needed
+            for the vertical 0fr collapse, but content full-bleeds via -mx-5
+            (list rows, logbook feed) — widening the clip box to the section
+            edge lets that bleed through instead of shearing it off. */}
+        <div class="-mx-5 min-h-0 overflow-hidden px-5">
           <div class="pt-4">{props.children}</div>
         </div>
       </div>

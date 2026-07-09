@@ -168,10 +168,15 @@ export default function Home() {
       <div class="flex flex-col md:flex-row md:items-start">
         {/* Linke Spalte 2/3 — Was kommt + Fortsetzen stacked. */}
         <div class="md:w-2/3">
+          {/* Content sections fold on mobile — default OPEN, and the choice
+              persists (nakama:fold:*): tucking away e.g. the Logbuch is a
+              standing preference, not a per-visit act. */}
           <BentoModule
             label="Was kommt"
             number="01"
             class="border-b border-rule"
+            collapsibleBelowMd
+            persistKey="home:was-kommt"
           >
             {/* Error gate FIRST — a failed query must not fall through to the
                 truthful-sounding empty copy ("Diese Woche ruhig."). */}
@@ -195,7 +200,12 @@ export default function Home() {
             </Show>
           </BentoModule>
 
-          <BentoModule label="Fortsetzen" number="02">
+          <BentoModule
+            label="Fortsetzen"
+            number="02"
+            collapsibleBelowMd
+            persistKey="home:fortsetzen"
+          >
             <Show
               when={!continueQ.isError}
               fallback={
@@ -225,7 +235,12 @@ export default function Home() {
 
         {/* Rechte Spalte 1/3 — Logbuch. */}
         <div class="border-t border-rule md:w-1/3 md:border-t-0">
-          <BentoModule label="Logbuch" number="03">
+          <BentoModule
+            label="Logbuch"
+            number="03"
+            collapsibleBelowMd
+            persistKey="home:logbuch"
+          >
             <Show
               when={!logbookQ.isError}
               fallback={
