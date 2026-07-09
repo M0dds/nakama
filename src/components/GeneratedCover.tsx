@@ -156,7 +156,19 @@ const PALETTE = {
 } as const;
 const SL = { light: PALETTE, dark: PALETTE };
 
-function buildSvg(seed: number, mode: ThemeMode): string {
+/**
+ * @param detail Resolution scale. 1 = the classic 100×100 user space (inline
+ *   thumbnails). Larger values grow the coordinate space while a scale()
+ *   wrapper keeps ALL geometry visually identical — only the grain, which
+ *   lives OUTSIDE the wrapper, stays at its native frequency and therefore
+ *   gets proportionally FINER. That's the whole point: at hero size the
+ *   100-unit grain blew up into soft ~5-device-px blobs that read as a
+ *   scaled-up thumbnail (and stopped dithering the gradient banding away).
+ *   Detail also sets an explicit intrinsic width/height on the root — an
+ *   SVG-as-<img> without one can get rasterized at a small fallback size
+ *   and upscaled blurry by some engines.
+ */
+function buildSvg(seed: number, mode: ThemeMode, detail = 1): string {
   const { hue, scheme, motif } = coverSpecFromSeed(seed);
   const t = SL[mode];
   // Incidental variation (jitter/angle/orb positions) off a warmed stream — two
@@ -278,25 +290,42 @@ function buildSvg(seed: number, mode: ThemeMode): string {
   uses.push(`<g opacity="0.5">${pattern}</g>`);
 
   // Faint grain — greyscale fractal noise, overlay-blended (matches the app's
-  // grain layer).
+  // grain layer). Deliberately NOT inside the scale() wrapper below: its
+  // frequency is per user unit, so in the enlarged space it stays fine-grained
+  // instead of scaling up into blobs — and keeps dithering gradient banding.
   defs.push(
     `<filter id="${uid}g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>`,
   );
-  uses.push(
-    `<rect width="100" height="100" filter="url(#${uid}g)" opacity="0.12" style="mix-blend-mode:overlay"/>`,
-  );
+  const S = 100 * detail;
+  const grain = `<rect width="${S}" height="${S}" filter="url(#${uid}g)" opacity="0.12" style="mix-blend-mode:overlay"/>`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice"><defs>${defs.join(
+  // All geometry stays authored in 100×100; the wrapper scales it into the
+  // detail space (orb gradients are objectBoundingBox-fractions and the mesh
+  // blur lives in the group's user space, so both scale along — visually
+  // identical to detail=1 at every size).
+  const scaled =
+    detail === 1
+      ? uses.join("")
+      : `<g transform="scale(${detail})">${uses.join("")}</g>`;
+
+  const intrinsic =
+    detail === 1 ? `width="100%" height="100%"` : `width="${S}" height="${S}"`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" ${intrinsic} preserveAspectRatio="xMidYMid slice"><defs>${defs.join(
     "",
-  )}</defs>${uses.join("")}</svg>`;
+  )}</defs>${scaled}${grain}</svg>`;
 }
 
+/** Detail scale for image-source use: the mobile CoverHero shows the cover at
+ *  up to ~430 CSS px × 3 DPR ≈ 1290 device px — a 1200×1200 intrinsic keeps
+ *  even worst-case rasterizers sharp there, with per-device-pixel grain. */
+const URI_DETAIL = 12;
+
 /** Data-URI of the seed's generated cover, for use anywhere an image SOURCE is
- *  expected (not just the inline component) — e.g. feeding the ambient
- *  CoverBackdrop, where a heavy blur dissolves the motif into a soft field of
- *  the seed's colours. */
+ *  expected (not just the inline component) — the mobile CoverHero (full-width,
+ *  needs the high-detail render) and the ambient CoverBackdrop, where a heavy
+ *  blur dissolves the motif into a soft field of the seed's colours anyway. */
 export function coverSeedDataUri(seed: number, mode: ThemeMode): string {
-  return `data:image/svg+xml,${encodeURIComponent(buildSvg(seed, mode))}`;
+  return `data:image/svg+xml,${encodeURIComponent(buildSvg(seed, mode, URI_DETAIL))}`;
 }
 
 export function GeneratedCover(props: { seed: number; class?: string }) {
