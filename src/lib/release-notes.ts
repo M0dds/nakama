@@ -24,6 +24,20 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.22.0",
+    date: "2026-07-09",
+    title: "Mobil neu gedacht — das Cover als Bühne",
+    changes: [
+      "Titelseiten auf dem Handy neu: Das Cover füllt die volle Breite und liegt fest im Hintergrund — beim Scrollen schiebt sich der Inhalt wie eine Glasscheibe darüber, hinter der das Cover weich verschwimmt. Die Folgen stehen jetzt direkt oben; Details und Notizen sind eingeklappt, ein Tipp öffnet sie.",
+      "Listen-Seiten bekommen denselben Auftritt — mit dem Listen-Cover als Bühne. Das Cover ändern (Hochladen, Neu würfeln, Zurücksetzen) geht mobil jetzt über Buttons unter „Details“.",
+      "Bereiche lassen sich mobil einklappen: die drei Startseiten-Bereiche und die Kategorie-Abteile der Listenübersicht — letztere auch am Desktop. Was du zuklappst, bleibt zu, auch beim nächsten Besuch.",
+      "Die Aktionen oben rechts auf der Titelseite klappen auf dem Handy hinter „⋯“ auf, wie in den Listen — außer es wäre nur ein einzelnes Icon versteckt, dann bleibt es direkt sichtbar. Lange Titel kürzen sich jetzt mit „…“ statt die Kopfzeile umzubrechen.",
+      "Als installierte App nutzt Nakama jetzt den ganzen Bildschirm: Das Cover läuft bis unter die Statusleiste, die Navigation macht dem Home-Indikator Platz. (Dafür die App einmal neu zum Home-Bildschirm hinzufügen.)",
+      "Generierte Listen-Cover rendern jetzt in voller Schärfe — großflächig wirkten sie vorher matschig.",
+      "Beim Hinzufügen zeigt die Listen-Auswahl jetzt die Kategorie — zwei gleichnamige Listen sind endlich unterscheidbar.",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-07-08",
     title: "Nakama stellt sich vor",
