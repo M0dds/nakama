@@ -380,14 +380,7 @@ export default function ListDetail() {
           content slides over it). NOT a stacking context. */}
       <div class="relative flex flex-col md:flex-row md:items-start">
         <Show when={list.data}>
-          {(data) => (
-            <CoverSheetBacking
-              coverUrl={
-                data().coverUrl ??
-                coverSeedDataUri(data().coverSeed, resolvedMode())
-              }
-            />
-          )}
+          <CoverSheetBacking />
         </Show>
         {/* Einträge — left 2/3 */}
         <div class="md:w-2/3">

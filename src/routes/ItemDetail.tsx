@@ -624,7 +624,7 @@ export default function ItemDetail() {
           content slides over it). NOT a stacking context. */}
       <div class="relative flex flex-col md:flex-row md:items-start">
         <Show when={item.data?.coverUrl}>
-          {(url) => <CoverSheetBacking coverUrl={url()} />}
+          <CoverSheetBacking />
         </Show>
         {/* Section 01 — Episode-Listing. First at every width: on mobile the
             work surface (ticking episodes) leads right under the cover hero;

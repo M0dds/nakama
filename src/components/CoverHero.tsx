@@ -1,5 +1,4 @@
-import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { bakeAmbient } from "@/components/CoverBackdrop";
+import { createEffect, onCleanup, onMount } from "solid-js";
 import { coverFor } from "@/lib/cover";
 import { coverTopLuminance, themeBgLuminance } from "@/lib/cover-tone";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -190,66 +189,40 @@ export function CoverHero(props: {
 }
 
 /**
- * The glass sheet's opaque backing (< md) — mount as FIRST child of the
- * page's content wrapper (which must be `relative` and must NOT be a
- * stacking context). Spans the wrapper exactly (`inset-0`), so its top edge
- * IS the content edge: as the content scrolls over the fixed cover, this
- * backing occludes it — that hard line is the wipe.
+ * The glass sheet itself (< md) — mount as FIRST child of the page's
+ * content wrapper (which must be `relative` and must NOT be a stacking
+ * context). Spans the wrapper exactly (`inset-0`), so its top edge IS the
+ * content edge — and that edge is a `backdrop-filter` boundary: REAL
+ * glass. The sheet live-blurs whatever lies behind it — the fixed sharp
+ * cover in the viewport's hero band, the fixed CoverBackdrop wash below —
+ * so the frost is viewport-true: scroll the sheet over the cover and you
+ * watch the cover blur, instead of the sheet carrying a painted-on
+ * backdrop that moves with it.
  *
- * The wash inside is GLUED to the sheet: plain absolute at the backing top,
- * one viewport tall, dissolving to full bg at its bottom — the frosted
- * cover lives at the sheet edge (where the blur continues the sharp cover
- * it cuts off) and deeper content rests on calm bg. Deliberately NOT
- * viewport-pinned: a sticky version shipped first and real iOS left it
- * unpinned mid-scroll (hard wash-bottom seam walking through the page) —
- * device WebKit's async scrolling mistreats ANY pinned layer under the
- * content, sticky included, even where desktop/Playwright WebKit complies.
- * Below the content, only `position: fixed` may pin; everything else must
- * scroll with the document. Height caps at the wrapper (`min(100svh,
- * 100%)`) so short pages never grow phantom scroll range.
+ * This is the fourth shape of this layer, and the first correct one:
+ * an opaque wash pinned sticky (real iOS left it unpinned — device WebKit
+ * mistreats ANY pinned layer under the content, even where desktop/
+ * Playwright WebKit complies), then a wash glued to the sheet (its fade-
+ * out traveled with the content = walking seam, and a scrolling texture
+ * kills the glass read — the user called it precisely: "sieht aus als
+ * hätte er einfach nur einen geblurten Hintergrund der sich mit ihm
+ * bewegt"). backdrop-filter needs none of that: no pin, no texture, no
+ * end — the compositor samples the backdrop per frame, viewport-true by
+ * definition. NOTE this is NOT the CoverBackdrop freeze-gotcha: that was
+ * `filter: blur()` re-rasterizing a layer per mount; backdrop-filter is a
+ * live compositor effect iOS runs OS-wide (and the .glass HeadBar has
+ * shipped it over these very covers since v0.16).
+ *
+ * Deliberately a childless div: backdrop-filter creates a containing
+ * block for fixed descendants — on the CONTENT wrapper it would break
+ * fixed-positioned children (tooltips, dialogs); on this empty sibling it
+ * can't break anything.
  */
-export function CoverSheetBacking(props: { coverUrl: string }) {
-  const [baked, setBaked] = createSignal<string | null>(null);
-
-  createEffect(() => {
-    // Bake the RAW url — same cache key as the page's CoverBackdrop, so
-    // this is a cache hit, never a second bake.
-    const url = props.coverUrl;
-    setBaked(null);
-    let alive = true;
-    void bakeAmbient(url).then((b) => {
-      if (alive) setBaked(b);
-    });
-    onCleanup(() => {
-      alive = false;
-    });
-  });
-
+export function CoverSheetBacking() {
   return (
     <div
       aria-hidden
-      class="pointer-events-none absolute inset-0 -z-[2] bg-bg md:hidden"
-    >
-      <div class="absolute inset-x-0 top-0 h-[min(100svh,100%)] overflow-hidden">
-        <Show when={baked() !== null}>
-          {/* Same recipe as the boosted CoverBackdrop layer: baked-tiny
-              cover stretched (the stretching IS the blur), CSS-blur
-              fallback for CORS-tainted dev covers. */}
-          <img
-            ref={fadeOnLoad}
-            src={baked() || props.coverUrl}
-            alt=""
-            class="absolute inset-0 size-full scale-125 object-cover opacity-70 dark:opacity-55"
-            classList={{ "blur-[80px] saturate-[1.25]": baked() === "" }}
-          />
-          {/* Veil grade: bg floor at the sheet edge (section labels land on
-              the wash directly — dark covers need it), dissolving to FULL
-              bg at the wash bottom so it melts seamlessly into the backing
-              base — any translucent endpoint here draws a visible seam
-              where the wash box ends. */}
-          <div class="absolute inset-0 bg-gradient-to-b from-bg/55 via-bg/70 to-bg" />
-        </Show>
-      </div>
-    </div>
+      class="pointer-events-none absolute inset-0 -z-[2] bg-bg/60 backdrop-blur-[40px] backdrop-saturate-125 md:hidden"
+    />
   );
 }
