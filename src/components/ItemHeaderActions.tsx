@@ -3,6 +3,7 @@ import { useNavigate } from "@solidjs/router";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
 import { ArrowRightLeft, ListX, RotateCcw, X } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
+import { RowActionsToggle } from "@/components/RowActions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { MoveItemDialog } from "@/components/MoveItemDialog";
 import { useToast } from "@/lib/toast";
@@ -33,6 +34,11 @@ type Confirming = "reset" | "remove" | null;
  * remove navigates BACK to the source list (the page just lost its item),
  * while move FOLLOWS the item into the target list's scoped route (the row
  * keeps its id across the move; sync is always off afterwards).
+ *
+ * On coarse pointers the cluster collapses behind the same "⋯" toggle the
+ * list rows use (RowActionsToggle + reveal-row) — but only when it would
+ * reveal at least TWO icons: a lone action hides nothing worth folding, so
+ * it stays directly visible instead of costing an extra tap.
  */
 export function ItemHeaderActions(props: {
   itemId: string;
@@ -54,8 +60,13 @@ export function ItemHeaderActions(props: {
 
   const [confirming, setConfirming] = createSignal<Confirming>(null);
   const [moveOpen, setMoveOpen] = createSignal(false);
+  const [touchOpen, setTouchOpen] = createSignal(false);
 
   const hasListContext = () => !!props.listItemId && !!props.listShortCode;
+  // Fold behind "⋯" only when it would reveal ≥ 2 icons (reactive: a reset
+  // dropping canReset can dissolve the toggle live, the lone icon surfaces).
+  const folded = () =>
+    (props.canReset ? 1 : 0) + (hasListContext() ? 2 : 0) >= 2;
   const backToList = () => navigate(`/lists/${props.listShortCode}`);
 
   const resetMut = createMutation(() => ({
@@ -121,6 +132,17 @@ export function ItemHeaderActions(props: {
   return (
     <>
       <div class="flex items-center gap-1">
+        {/* Icon cluster — on coarse pointers it rests at display:none while
+            folded and re-displays via the reveal-row keyframe when the "⋯"
+            opens it (same mechanics as RowActions; display can't transition).
+            Unfolded (≤ 1 icon) it's simply always visible. */}
+        <div
+          class="flex items-center gap-1"
+          classList={{
+            "pointer-coarse:hidden": folded() && !touchOpen(),
+            "motion-safe:animate-reveal-row": folded() && touchOpen(),
+          }}
+        >
         <Show when={props.canReset}>
           <Tooltip label="Fortschritt zurücksetzen">
             <button
@@ -154,6 +176,16 @@ export function ItemHeaderActions(props: {
               <X class="size-4" strokeWidth={1.75} aria-hidden />
             </button>
           </Tooltip>
+        </Show>
+        </div>
+        {/* Coarse-pointer entry — renders only while folded (≥ 2 icons);
+            hidden on fine pointers by its own pointer-coarse gate. */}
+        <Show when={folded()}>
+          <RowActionsToggle
+            open={touchOpen()}
+            noun="Eintrag"
+            onToggle={() => setTouchOpen((o) => !o)}
+          />
         </Show>
       </div>
 
