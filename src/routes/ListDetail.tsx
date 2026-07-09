@@ -307,7 +307,10 @@ export default function ListDetail() {
   return (
     <Show when={!notFound()} fallback={<NotFound kind="list" />}>
     <>
-    <main class="w-full">
+    {/* relative: positioning context for the CoverHero clip stage (absolute
+        at top). Deliberately NOT a stacking context — the hero (-z-8) and
+        the CoverBackdrop (-10) must resolve against the root. */}
+    <main class="relative w-full">
       {/* boostBelowMd: same glass-sheet read as the item page — under the
           mobile content the wash is "the list cover behind frosted glass". */}
       <CoverBackdrop coverUrl={washCover() ?? listCoverWash()} boostBelowMd />
