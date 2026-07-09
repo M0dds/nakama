@@ -23,7 +23,7 @@ export function Toaster(props: {
   return (
     <div
       aria-live="polite"
-      class="pointer-events-none fixed right-4 top-4 z-30 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
+      class="pointer-events-none fixed right-4 top-[calc(1rem+var(--safe-top))] z-30 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2"
     >
       <For each={props.toasts}>
         {(t) => (

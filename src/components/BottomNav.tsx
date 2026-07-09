@@ -280,7 +280,11 @@ export function BottomNav(props: {
       // pointer-events-none on the full-width wrapper so its transparent sides
       // don't swallow clicks meant for page content sitting at the nav's height
       // band (e.g. a pager row); only the centered pill below re-enables them.
-      class="pointer-events-none fixed inset-x-0 bottom-[26px] z-30 flex justify-center px-4"
+      // bottom max(): browser tabs keep the classic 26px float; in the
+      // installed PWA (home-indicator inset ~34px) the pill rides 12px above
+      // the indicator instead of colliding with it. The AddSheet morph origin
+      // measures this rect live, so it follows automatically.
+      class="pointer-events-none fixed inset-x-0 bottom-[max(26px,calc(var(--safe-bottom)+12px))] z-30 flex justify-center px-4"
     >
       <div
         ref={pillEl!}

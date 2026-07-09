@@ -2,7 +2,15 @@
 <html lang="de" data-theme="default" class="antialiased">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: the app draws edge-to-edge (under the iOS status
+         bar / behind the home indicator); chrome that must stay clear pads
+         itself via env(safe-area-inset-*) — see --safe-top/--safe-bottom in
+         index.css. In a Safari TAB the top inset is 0 in portrait (the URL
+         bar owns that region) — the real effect shows in the installed PWA. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <meta
       name="description"
       content="Media-Tracker für Anime, Manga, Serien, Filme, Spiele — gemeinsam schauen."
@@ -16,6 +24,16 @@
     <!-- iOS home-screen icon (PNG; iOS ignores SVG apple-touch-icons). -->
     <link rel="apple-touch-icon" href="/pwa-icon-180.png" />
     <meta name="apple-mobile-web-app-title" content="Nakama" />
+    <!-- black-translucent is the ONLY status-bar mode that lets the PWA draw
+         underneath (default/black are opaque bars pushed above the app).
+         Trade-off: iOS renders the system text up there in WHITE — great
+         over dark themes and the mobile cover hero; needs a device check in
+         light mode (fallback: revert to "default", losing edge-to-edge at
+         the very top). -->
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

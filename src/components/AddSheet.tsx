@@ -15,6 +15,7 @@ import { searchMedia, type MediaResult } from "@/lib/search";
 import { typeInitial, typeLabel } from "@/lib/format";
 import type { MediaType } from "@/lib/queries/home";
 import { fadeOnLoad } from "@/lib/image-fade";
+import { safeAreaInset } from "@/lib/media";
 import { addItemToList, removeItemFromList } from "@/lib/queries/items";
 import {
   listCategoryLabel,
@@ -508,7 +509,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
         keyboardOffset() > 0 ? h - keyboardOffset() - pillH - 16 : o.top;
       return { left: (w - width) / 2, top, width, height: pillH };
     }
-    return { left: sideGap, top: 16, width: w - 2 * sideGap, height: pillH };
+    // 16px below the status bar (safe-top is 0 outside the edge-to-edge PWA).
+    return {
+      left: sideGap,
+      top: 16 + safeAreaInset("top"),
+      width: w - 2 * sideGap,
+      height: pillH,
+    };
   };
 
   /** Pill style — origin-rect while resting, target-rect while entered.
@@ -539,7 +546,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
     const { w, h } = viewport();
     const innerGap = 12; // space between card and pill
     if (w >= 768) {
-      const topGap = 24;
+      const topGap = 24 + safeAreaInset("top");
       return {
         left: `${t.left}px`,
         top: `${topGap}px`,
@@ -554,7 +561,8 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       left: `${t.left}px`,
       top: `${top}px`,
       width: `${t.width}px`,
-      height: `${Math.max(0, h - top - 16)}px`,
+      // Bottom gap clears the home indicator in the edge-to-edge PWA.
+      height: `${Math.max(0, h - top - 16 - safeAreaInset("bottom"))}px`,
     };
   };
 

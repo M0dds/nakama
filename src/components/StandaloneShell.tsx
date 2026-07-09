@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth";
 export function StandaloneHeader() {
   const auth = useAuth();
   return (
-    <header class="sticky top-0 z-20 flex items-center justify-between bg-bg/55 px-5 py-4 backdrop-blur-md">
+    <header class="sticky top-0 z-20 flex items-center justify-between bg-bg/55 px-5 pb-4 pt-[calc(1rem+var(--safe-top))] backdrop-blur-md">
       <A href="/features" class="flex items-center gap-2">
         <span aria-hidden class="size-2 shrink-0 rounded-full bg-accent" />
         <span class="font-mono text-mini uppercase tracking-[0.25em] text-text-muted">

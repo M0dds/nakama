@@ -8,6 +8,17 @@ import { createSignal, onCleanup } from "solid-js";
  *
  * Must be called under a component owner (uses onCleanup).
  */
+/** Numeric safe-area inset in px (0 everywhere except notched iOS with the
+ *  edge-to-edge viewport). Reads the --safe-top/--safe-bottom vars from
+ *  index.css — env() resolves at computed-value time, so the JS-positioned
+ *  chrome (AddSheet) shares the exact value the CSS paddings use. */
+export function safeAreaInset(side: "top" | "bottom"): number {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(
+    side === "top" ? "--safe-top" : "--safe-bottom",
+  );
+  return parseFloat(v) || 0;
+}
+
 export function useMediaQuery(query: string) {
   const mq = window.matchMedia(query);
   const [match, setMatch] = createSignal(mq.matches);

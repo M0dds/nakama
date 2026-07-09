@@ -38,6 +38,14 @@
    Own :root block since it's theme-independent. */
 :root {
   --content-max: 1728px;
+  /* Safe-area insets (viewport-fit=cover, see index.html): the app draws
+     edge-to-edge, so any FIXED/STICKY chrome pads itself with these — the
+     glass header (top), the floating nav + AddSheet (bottom), the Toaster.
+     Plain page content never needs them (the header/nav paddings carry it).
+     0px everywhere except notched iOS devices — and in a Safari TAB the top
+     inset is 0 too (portrait), so this really targets the installed PWA. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 :root,

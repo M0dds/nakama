@@ -54,7 +54,10 @@ export function PageHeader(props: {
     // absolute full-bleed backing + bottom rule. Works because no scroll-
     // container ancestor exists — body's `overflow-x: clip` doesn't establish
     // one, so sticky resolves against the viewport.
-    <header class="sticky top-0 z-20 flex items-end justify-between px-5 pb-3 pt-6">
+    // pt folds in --safe-top (edge-to-edge PWA): the glass backing spans the
+    // header's full box, so it extends up UNDER the iOS status bar and the
+    // kicker/title start below it. Elsewhere the var is 0px → plain pt-6.
+    <header class="sticky top-0 z-20 flex items-end justify-between px-5 pb-3 pt-[calc(1.5rem+var(--safe-top))]">
       {/* Full-bleed frosted backing. The header itself is capped to the content
           frame (it lives inside AppShell's --content-max wrapper), so without
           this the glass ended at the content edge — and now that a full-bleed

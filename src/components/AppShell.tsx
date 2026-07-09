@@ -123,9 +123,10 @@ export function AppShell(props: ParentProps) {
       {/* Centered, width-capped content frame (--content-max). On wide screens
           the page no longer sprawls edge-to-edge; the ColumnGuide stays
           full-bleed and re-aligns to this frame's 2/3 boundary. Bottom padding
-          = nav height (44 px) + offset (26 px) + breathing (24 px); the pill is
-          `position: fixed` so it doesn't reserve flow space itself. */}
-      <div class="mx-auto w-full max-w-[var(--content-max)] pb-[94px]">
+          = nav height (44 px) + offset (26 px) + breathing (24 px) + the
+          safe-bottom inset (the nav floats higher in the installed PWA); the
+          pill is `position: fixed` so it doesn't reserve flow space itself. */}
+      <div class="mx-auto w-full max-w-[var(--content-max)] pb-[calc(94px+var(--safe-bottom))]">
         {props.children}
       </div>
       <ContentFrame />

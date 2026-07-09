@@ -147,12 +147,15 @@ export function CoverHero(props: {
           edge doubles as the wipe measurement (see apply()), and its bottom
           border draws a crisp instrument rule ON the glass sheet's top edge
           (only exists when a hero exists — no stray rule under the header
-          on cover-less items). */}
+          on cover-less items). --safe-top compensates the header growing by
+          the status-bar inset in the edge-to-edge PWA (PageHeader pt). */}
       <div
         ref={spacerEl}
         aria-hidden
         class="border-b border-rule md:hidden"
-        style={{ height: `calc(${heroH()} - ${HEADER_OFFSET}px)` }}
+        style={{
+          height: `calc(${heroH()} - ${HEADER_OFFSET}px - var(--safe-top))`,
+        }}
       />
     </>
   );
