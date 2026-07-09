@@ -180,12 +180,18 @@ export function CoverHero(props: {
           {/* coverFor sharpens per source (AniList medium→large, Steam
               header→capsule); it's the mobile LCP, so fetch it eagerly.
               sticky top-0: the browser pins the picture to the viewport top
-              natively (compositor-synced) for the stage's visible range. */}
+              natively (compositor-synced) for the stage's visible range.
+              will-change-transform: without it WebKit rasterizes the sticky
+              image into the document's shared tile grid — the pin moves it
+              through document space every frame, so it keeps crossing tiles
+              Safari has already discarded → chunks of the cover vanish and
+              repaint lazily mid-scroll (checkerboarding). Own layer = raster
+              once, composite forever. */}
           <img
             ref={fadeOnLoad}
             src={coverFor(props.coverUrl)!}
             alt=""
-            class="sticky top-0 block h-1/2 w-full object-cover object-[50%_25%]"
+            class="sticky top-0 block h-1/2 w-full object-cover object-[50%_25%] will-change-transform"
             fetchpriority="high"
           />
         </div>
