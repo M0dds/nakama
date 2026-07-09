@@ -93,10 +93,11 @@ import { CoverHero } from "@/components/CoverHero";
  *
  * Mobile (< md): same section ORDER (Episoden 01 → Details 02 → Notizen/
  * Gesynct 03), but the cover becomes a full-width FIXED hero behind the page
- * (CoverHero.tsx) — content starts at its bottom edge and slides over it on
- * scroll, fading the sharp cover into the CoverBackdrop wash. Details +
- * Notizen/Gesynct start collapsed (BentoModule collapsibleBelowMd) so the
- * tick surface leads.
+ * (CoverHero.tsx) — the content slides over it as a glass sheet: the sharp
+ * cover is wiped HARD at the content's top edge, underneath shows the
+ * boosted CoverBackdrop wash (same cover, blurred). Details + Notizen/
+ * Gesynct start collapsed (BentoModule collapsibleBelowMd) so the tick
+ * surface leads.
  *
  * PageHeader aside carries the ItemHeaderActions cluster (reset / move /
  * remove in the RowActions icon idiom): reset when the caller has at least
@@ -567,7 +568,10 @@ export default function ItemDetail() {
       }
     >
     <main class="relative w-full">
-      <CoverBackdrop coverUrl={item.data?.coverUrl ?? null} />
+      {/* boostBelowMd: under the mobile glass-sheet content the wash IS the
+          "cover behind frosted glass" — it needs presence there, not just
+          ambience. Desktop keeps the restrained default. */}
+      <CoverBackdrop coverUrl={item.data?.coverUrl ?? null} boostBelowMd />
       <PageHeader
         kicker={
           <span class="truncate font-mono text-mini uppercase tracking-[0.25em] text-text-muted">
@@ -600,10 +604,12 @@ export default function ItemDetail() {
       <ColumnGuide />
 
       {/* Mobile cover hero (< md): full-width cover fixed BEHIND the page +
-          in-flow spacer so content starts at its bottom edge and slides over
-          it on scroll, fading the sharp cover into the CoverBackdrop wash
-          underneath (mechanics in CoverHero.tsx). No cover → no hero, the
-          Details letter-fallback carries the identity instead. */}
+          in-flow spacer so content starts at its bottom edge. On scroll the
+          content slides over it as a glass sheet — the sharp cover is wiped
+          HARD at the content's top edge, and underneath the transparent
+          content the boosted wash shows the same cover blurred (mechanics in
+          CoverHero.tsx). No cover → no hero, the Details letter-fallback
+          carries the identity instead. */}
       <Show when={item.data?.coverUrl}>
         {(url) => <CoverHero coverUrl={url()} wide={isGame()} />}
       </Show>

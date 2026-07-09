@@ -6,37 +6,37 @@ import { onScrollFrame } from "@/lib/scroll";
 /**
  * Mobile cover hero (< md only) — the item cover fills the full viewport
  * width and lies FIXED behind the page. Content scrolls up from below and
- * slides over it; as it does, the sharp cover fades out with scroll progress.
+ * slides over it like a GLASS SHEET: at the content's top edge the sharp
+ * cover is cut off HARD (no fade, no feather — matches the sharp-edge
+ * design), and what shows underneath the transparent content is the blurred
+ * CoverBackdrop wash (boosted below md via `boostBelowMd`) — i.e. the same
+ * cover "behind frosted glass". The sheet edge IS the sharp→blur line.
  *
- * The trick: this is NOT a crossfade we run. The blurred CoverBackdrop wash
- * (fixed, z -10) already sits permanently underneath everything on the item
- * page — the hero is just a sharp layer above it (z -8, still behind all
- * content) that gets out of the way. What remains when it's gone IS the wash.
- * No second bake, no filter changes; opacity + transform only (iOS-safe).
+ * The wipe is compositor-only — no clip-path/height writes per frame:
+ * an overflow-hidden OUTER translates up so its bottom edge tracks the
+ * content's top edge, while an INNER wrapper counter-translates so the
+ * image itself stays put in the viewport. Both are plain transforms.
+ * The edge is measured off the in-flow spacer (its bottom == content top),
+ * so it stays exact regardless of the sticky header's real height
+ * (wrapping 2-line titles included).
  *
- * Renders the fixed layer PLUS the in-flow spacer that pushes the content
- * start to the hero's bottom edge — mount it in flow, right before the
- * content row. The sticky glass PageHeader (z 20) is in flow above the
- * spacer, so content top at scroll 0 lands at ~headerH + spacerH ≈ heroH.
- * Header height varies (long titles wrap) — the bottom feather absorbs the
- * imprecision; if 2-line titles ever look sloppy, measure --header-h via a
- * ResizeObserver instead of HEADER_OFFSET.
- *
- * Heights use svh, never vh (iOS toolbar-safe, smallest viewport → no jump
- * when Safari chrome collapses) and nothing reads visualViewport (iOS-26 bug,
- * see handshake §iOS/Mobile).
+ * Renders the fixed layer PLUS that spacer — mount it in flow, right before
+ * the content row. Heights use svh, never vh (iOS toolbar-safe) and nothing
+ * reads visualViewport (iOS-26 bug, see handshake §iOS/Mobile).
  */
 
 // ── Tuning knobs ────────────────────────────────────────────────────────
-/** Fraction of the content travel over which the hero fully fades. Front-
- *  loaded on purpose: the fade must be spent before text climbs out of the
- *  bottom feather onto (would-be) raw pixels. */
-const FADE_TRAVEL = 0.55;
-/** Upward image drift per scrolled px (recede-into-depth read). The <img>
- *  is 115% tall so the drift never exposes a gap at the hero's bottom. */
+/** Upward image drift per scrolled px (recede-into-depth read; reduced-
+ *  motion drops it). The <img> is 115% tall so the drift never exposes a
+ *  gap; the slight shear against the static wash at the wipe edge is
+ *  invisible in the 48px-bake smear. */
 const PARALLAX = 0.25;
-/** ≈ single-line sticky PageHeader height (pt-6 + kicker + h1 + pb-3). */
-const HEADER_OFFSET = 84;
+/** ≈ single-line sticky PageHeader height (pt-6 + kicker + h1 + pb-3 ≈
+ *  82px). Deliberately a hair UNDER so the hero never starts pre-wiped —
+ *  a 1-2px sliver of wash under the sheet edge is invisible, a pre-wiped
+ *  strip on the cover is not. Only sets the resting content offset; the
+ *  wipe itself is measured, not derived from this. */
+const HEADER_OFFSET = 80;
 /** Cropped-stage height: portrait posters are 2:3 (150vw at full width —
  *  far too tall), so a viewport cap crops them to a stage; Steam headers
  *  (460×215) resolve to their natural banner height instead. */
@@ -44,8 +44,9 @@ const HERO_H_PORTRAIT = "min(150vw, 58svh)";
 const HERO_H_WIDE = "min(46.8vw, 58svh)";
 
 export function CoverHero(props: { coverUrl: string; wide?: boolean }) {
-  let rootEl!: HTMLDivElement;
-  let imgEl!: HTMLImageElement;
+  let outerEl!: HTMLDivElement;
+  let innerEl!: HTMLDivElement;
+  let spacerEl!: HTMLDivElement;
 
   const heroH = () => (props.wide ? HERO_H_WIDE : HERO_H_PORTRAIT);
 
@@ -55,21 +56,25 @@ export function CoverHero(props: { coverUrl: string; wide?: boolean }) {
     let dispose: (() => void) | null = null;
 
     const apply = () => {
-      // Travel ≈ spacer height: how far content scrolls before it has fully
-      // covered the hero. Math.max(0, scrollY) pins the resting state through
-      // iOS rubber-banding (overscroll at top just shows the full hero).
-      const travel = Math.max(1, rootEl.offsetHeight - HEADER_OFFSET);
-      const s = Math.max(0, window.scrollY);
-      const p = Math.min(1, s / (FADE_TRAVEL * travel));
-      rootEl.style.opacity = String(1 - p);
-      // Fully spent → stop compositing the full-width layer entirely.
-      rootEl.style.visibility = p >= 1 ? "hidden" : "";
-      // Reduced motion: keep the 1:1 scroll-linked fade (positional, not
-      // autonomous motion — same rationale as the fixed wash itself), drop
-      // only the parallax drift.
-      if (!reduce.matches) {
-        imgEl.style.transform = `translateY(${(-PARALLAX * s).toFixed(1)}px)`;
+      const h = outerEl.offsetHeight;
+      // Content top edge in viewport coords == spacer bottom (the spacer sits
+      // in flow directly above the content row). Clamped to the hero height
+      // so iOS rubber-banding / a taller-than-estimated header never pushes
+      // the outer DOWN off the viewport top.
+      const edge = Math.min(h, spacerEl.getBoundingClientRect().bottom);
+      if (edge <= 0) {
+        // Content has fully covered the hero — stop compositing it.
+        outerEl.style.visibility = "hidden";
+        return;
       }
+      outerEl.style.visibility = "";
+      const ty = edge - h; // ≤ 0: outer's bottom edge rides the content edge
+      const s = Math.max(0, window.scrollY);
+      const drift = reduce.matches ? 0 : PARALLAX * s;
+      outerEl.style.transform = `translateY(${ty}px)`;
+      // Counter-translate: image stays viewport-static (minus the drift)
+      // while the outer's clip box slides up over it.
+      innerEl.style.transform = `translateY(${(-ty - drift).toFixed(1)}px)`;
     };
 
     // The listener only lives below md; the layer itself is md:hidden, but an
@@ -79,9 +84,9 @@ export function CoverHero(props: { coverUrl: string; wide?: boolean }) {
       if (md.matches) {
         dispose?.();
         dispose = null;
-        rootEl.style.opacity = "";
-        rootEl.style.visibility = "";
-        imgEl.style.transform = "";
+        outerEl.style.visibility = "";
+        outerEl.style.transform = "";
+        innerEl.style.transform = "";
       } else if (!dispose) {
         dispose = onScrollFrame(apply);
       }
@@ -102,37 +107,43 @@ export function CoverHero(props: { coverUrl: string; wide?: boolean }) {
           (same invariant as CoverBackdrop). Decorative: aria-hidden, no
           pointer events. */}
       <div
-        ref={rootEl}
+        ref={outerEl}
         aria-hidden
         class="pointer-events-none fixed inset-x-0 top-0 -z-[8] overflow-hidden md:hidden"
         style={{ height: heroH() }}
       >
-        {/* coverFor sharpens per source (AniList medium→large, Steam
-            header→capsule); it's the mobile LCP, so fetch it eagerly. */}
-        <img
-          ref={(el) => {
-            imgEl = el;
-            fadeOnLoad(el);
-          }}
-          src={coverFor(props.coverUrl)!}
-          alt=""
-          class="absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[50%_25%]"
-          fetchpriority="high"
-        />
-        {/* Top scrim: legibility for the glass PageHeader at scroll 0 —
-            mirrors the wash's own from-bg/45 top grade so the header band
-            reads consistently before and after the fade. */}
-        <div class="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-bg/55 to-transparent" />
-        {/* Bottom feather: grades the sharp cover into (approximately) the
-            wash at that height — the content's leading edge always enters
-            over this zone, never over raw pixels. */}
-        <div class="absolute inset-x-0 bottom-0 h-[38%] bg-gradient-to-b from-transparent to-bg/95" />
+        <div ref={innerEl} class="absolute inset-0">
+          {/* coverFor sharpens per source (AniList medium→large, Steam
+              header→capsule); it's the mobile LCP, so fetch it eagerly. */}
+          <img
+            ref={(el) => {
+              fadeOnLoad(el);
+            }}
+            src={coverFor(props.coverUrl)!}
+            alt=""
+            class="absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[50%_25%]"
+            fetchpriority="high"
+          />
+        </div>
       </div>
-      {/* In-flow spacer — pushes the content start to the hero's bottom
-          edge (header is sticky but in flow, hence the offset). */}
+      {/* Top scrim — legibility for the glass PageHeader. Its OWN fixed
+          layer (z -7, above the hero) so it stays pinned to the viewport top
+          for the whole scroll: first over the sharp cover, then over the
+          wash, where it simply deepens the wash's existing top grade. */}
       <div
         aria-hidden
-        class="md:hidden"
+        class="pointer-events-none fixed inset-x-0 top-0 -z-[7] h-28 bg-gradient-to-b from-bg/55 to-transparent md:hidden"
+      />
+      {/* In-flow spacer — pushes the content start to the hero's bottom
+          edge (header is sticky but in flow, hence the offset). Its bottom
+          edge doubles as the wipe measurement (see apply()), and its bottom
+          border draws a crisp instrument rule ON the glass sheet's top edge
+          (only exists when a hero exists — no stray rule under the header
+          on cover-less items). */}
+      <div
+        ref={spacerEl}
+        aria-hidden
+        class="border-b border-rule md:hidden"
         style={{ height: `calc(${heroH()} - ${HEADER_OFFSET}px)` }}
       />
     </>
