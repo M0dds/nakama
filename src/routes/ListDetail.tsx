@@ -59,7 +59,7 @@ import {
   EditableListCover,
   ListCoverActions,
 } from "@/components/EditableListCover";
-import { CoverHero } from "@/components/CoverHero";
+import { CoverHero, CoverSheetBacking } from "@/components/CoverHero";
 import { useResolvedMode } from "@/lib/use-resolved-mode";
 import { EditableListDescription } from "@/components/EditableListDescription";
 import { Pager } from "@/components/Pager";
@@ -375,7 +375,20 @@ export default function ListDetail() {
         )}
       </Show>
 
-      <div class="flex flex-col md:flex-row md:items-start">
+      {/* relative: containing block for the CoverSheetBacking (the mobile
+          glass sheet's opaque backing — occludes the fixed CoverHero as the
+          content slides over it). NOT a stacking context. */}
+      <div class="relative flex flex-col md:flex-row md:items-start">
+        <Show when={list.data}>
+          {(data) => (
+            <CoverSheetBacking
+              coverUrl={
+                data().coverUrl ??
+                coverSeedDataUri(data().coverSeed, resolvedMode())
+              }
+            />
+          )}
+        </Show>
         {/* Einträge — left 2/3 */}
         <div class="md:w-2/3">
           <BentoModule label="Einträge" number="01">

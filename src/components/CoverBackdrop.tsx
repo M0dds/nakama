@@ -45,7 +45,9 @@ const BAKE_W = 48;
  *  back to a recently hovered cover) never re-decodes or re-draws. */
 const bakeCache = new Map<string, string>();
 
-async function bakeAmbient(url: string): Promise<string> {
+/** Exported for CoverSheetBacking (CoverHero.tsx), which renders the same
+ *  wash inside the mobile glass sheet — shared cache, one bake per URL. */
+export async function bakeAmbient(url: string): Promise<string> {
   const cached = bakeCache.get(url);
   if (cached !== undefined) return cached;
   let baked = "";

@@ -72,7 +72,7 @@ import { ItemHeaderActions } from "@/components/ItemHeaderActions";
 import { SyncToggle } from "@/components/SyncToggle";
 import { Pager } from "@/components/Pager";
 import { ItemNotes } from "@/components/ItemNotes";
-import { CoverHero } from "@/components/CoverHero";
+import { CoverHero, CoverSheetBacking } from "@/components/CoverHero";
 
 /**
  * /item/:type/:slug — Item-Detail. Layout:
@@ -619,7 +619,13 @@ export default function ItemDetail() {
         )}
       </Show>
 
-      <div class="flex flex-col md:flex-row md:items-start">
+      {/* relative: containing block for the CoverSheetBacking (the mobile
+          glass sheet's opaque backing — occludes the fixed CoverHero as the
+          content slides over it). NOT a stacking context. */}
+      <div class="relative flex flex-col md:flex-row md:items-start">
+        <Show when={item.data?.coverUrl}>
+          {(url) => <CoverSheetBacking coverUrl={url()} />}
+        </Show>
         {/* Section 01 — Episode-Listing. First at every width: on mobile the
             work surface (ticking episodes) leads right under the cover hero;
             from md up it takes the left 2/3 (the ColumnGuide handles the

@@ -1,4 +1,5 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { bakeAmbient } from "@/components/CoverBackdrop";
 import { coverFor } from "@/lib/cover";
 import { coverTopLuminance, themeBgLuminance } from "@/lib/cover-tone";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -10,45 +11,50 @@ import { onScrollFrame } from "@/lib/scroll";
  * width and lies pinned behind the page. Content scrolls up from below and
  * slides over it like a GLASS SHEET: at the content's top edge the sharp
  * cover is cut off HARD (no fade, no feather — matches the sharp-edge
- * design), and what shows underneath the transparent content is the blurred
- * CoverBackdrop wash (boosted below md via `boostBelowMd`) — i.e. the same
- * cover "behind frosted glass". The sheet edge IS the sharp→blur line.
+ * design), and under the sheet the same cover shows blurred (= "behind
+ * frosted glass"). The sheet edge IS the sharp→blur line.
  *
- * ARCHITECTURE (v4 — plain sticky, zero moving parts): the clip stage is an
- * IN-FLOW absolute element that scrolls with the document, so its bottom
- * edge is compositor-locked to the content edge — pixel-exact at any scroll
- * speed. Inside it, a 200%-tall TRACK gives a `position: sticky; top: 0`
- * image (50% of the track = one stage height) exactly one stage-height of
- * headroom — so the browser itself pins the picture to the viewport top for
- * precisely the scroll range in which the stage is visible, natively on the
- * compositor. `overflow: clip` (NOT hidden — hidden would make the stage a
- * scroll container and break sticky) crops the track's lower half.
- * History of this edge: v1 chased the content edge with JS transforms on a
- * fixed layer (wash gap at speed — iOS scrolls on the compositor, JS on
- * main); v2 clipped in flow but counter-translated the image per scroll
- * event (edge solid, image jittered); v3 tried a CSS scroll-driven
- * animation (image slid down — animation-range + var() misbehaved). Sticky
- * needs none of it: no JS, no animation, no measured variables.
+ * ARCHITECTURE (v5 — fixed image + occluding sheet backing): the sharp
+ * cover is a plain `position: fixed` layer (z -8) — the exact construct the
+ * CoverBackdrop wash uses, which iOS has composited glitch-free for months.
+ * It is NEVER clipped and NEVER repositioned. The wipe comes from the other
+ * side: the page's content wrapper carries a `CoverSheetBacking` — an
+ * opaque, in-flow-anchored backing (bg + blurred cover wash) that occludes
+ * the fixed cover as the content slides over it. The sheet edge is the
+ * wrapper's own top border — pixel-exact by construction, nothing measured,
+ * nothing synchronized.
  *
- * Renders the stage PLUS the in-flow spacer that pushes the content start
- * to the hero's bottom edge — mount it in flow, right before the content
- * row, inside a `relative` <main> that is NOT a stacking context (the
- * stage's -z-8 must resolve against the root, between the CoverBackdrop
- * wash at -10 and the content). Heights use svh, never vh (iOS toolbar-
- * safe) and nothing reads visualViewport (handshake §iOS/Mobile).
+ * Graveyard (all four tried, all torn apart by iOS): v1 JS-chased a clip on
+ * the fixed image (edge gap at speed — iOS scrolls on the compositor, JS on
+ * main), v2 counter-translated per scroll event (jitter), v3 CSS
+ * scroll-driven animation (range/var() misbehaved), v4 sticky-in-
+ * overflow-clip at negative z (WebKit discarded the image's raster tiles
+ * mid-scroll — chunks vanished and repainted lazily). The durable lesson:
+ * any construct that repositions or re-clips the SHARP image per scroll
+ * frame shows its seams; v5 has none — the only scroll-coupled surface is
+ * the opaque sheet itself, which is ordinary in-flow content.
+ *
+ * Renders the fixed cover PLUS the in-flow spacer that pushes the content
+ * start to the hero's bottom edge. The counterpart `CoverSheetBacking` must
+ * be mounted as first child of the page's `relative` content wrapper.
+ * Relies on <main> and the wrapper NOT being stacking contexts (the fixed
+ * layers must resolve against the root, same invariant as CoverBackdrop).
+ * Heights use svh, never vh (iOS toolbar-safe) and nothing reads
+ * visualViewport (handshake §iOS/Mobile).
  */
 
 // ── Tuning knobs ────────────────────────────────────────────────────────
 /** ≈ single-line sticky PageHeader height (pt-6 + kicker + h1 + pb-3 ≈
- *  82px; titles truncate, so it no longer wraps taller). Only seeds the
- *  resting layout — the stage height is MEASURED off the spacer, so the
- *  sheet edge is exact regardless. */
+ *  82px; titles truncate, so it no longer wraps taller). Seeds the spacer
+ *  height; the sheet edge itself is the content wrapper's top edge, so a
+ *  small mis-estimate here only shifts WHERE content starts, never opens a
+ *  seam. */
 const HEADER_OFFSET = 80;
-/** Cropped-stage heights per source shape: portrait posters are 2:3 (150vw
- *  at full width — far too tall), so a viewport cap crops them to a stage;
- *  Steam headers (460×215) resolve to their natural banner height; square
- *  list covers (uploads are square-cropped, generated covers are square)
- *  show whole until the cap binds. */
+/** Hero heights per source shape: portrait posters are 2:3 (150vw at full
+ *  width — far too tall), so a viewport cap crops them; Steam headers
+ *  (460×215) resolve to their natural banner height; square list covers
+ *  (uploads are square-cropped, generated covers are square) show whole
+ *  until the cap binds. */
 const HERO_HEIGHTS = {
   portrait: "min(150vw, 58svh)",
   wide: "min(46.8vw, 58svh)",
@@ -59,7 +65,6 @@ export function CoverHero(props: {
   coverUrl: string;
   aspect?: keyof typeof HERO_HEIGHTS;
 }) {
-  let stageEl!: HTMLDivElement;
   let spacerEl!: HTMLDivElement;
 
   const heroH = () => HERO_HEIGHTS[props.aspect ?? "portrait"];
@@ -71,7 +76,7 @@ export function CoverHero(props: {
   // <main> with data-hero-tone="dark"|"light" — index.css flips the header's
   // --text/--text-muted below md accordingly. `heroUnderHeader` gates it per
   // scroll frame: once the content edge slides under the header, the glass
-  // sits on wash/content again and the theme's own tokens are correct.
+  // sits on the sheet backing again and the theme's own tokens are correct.
   let tone: "dark" | "light" | null = null;
   let heroUnderHeader = true;
   let appliedTone: string | null = null;
@@ -79,7 +84,7 @@ export function CoverHero(props: {
     const next = heroUnderHeader ? tone : null;
     if (next === appliedTone) return;
     appliedTone = next;
-    const main = stageEl.closest("main");
+    const main = spacerEl.closest("main");
     if (!main) return;
     if (next) main.setAttribute("data-hero-tone", next);
     else main.removeAttribute("data-hero-tone");
@@ -106,31 +111,20 @@ export function CoverHero(props: {
     const md = window.matchMedia("(min-width: 768px)");
     let dispose: (() => void) | null = null;
 
-    // The stage must end EXACTLY where content starts (= the spacer's bottom,
-    // in document space) — measured, not derived from the HEADER_OFFSET
-    // estimate, so the sheet edge carries no sliver of mis-estimate. Static
-    // between resizes (the header is single-line by construction). Track
-    // (200%) and image (50% of track) follow via percentages.
-    const size = () => {
-      stageEl.style.height = `${
-        spacerEl.getBoundingClientRect().bottom + window.scrollY
-      }px`;
-    };
-
     const apply = () => {
       // Header-contrast gate: the hero counts as "under the header" until
       // the content edge (spacer bottom) has slid beneath the header band.
-      // (The image pin itself is pure CSS — nothing per-frame here but this
-      // cheap gate.)
+      // (The pin itself is pure CSS — nothing per-frame here but this
+      // cheap read, no style writes.)
       heroUnderHeader =
         spacerEl.getBoundingClientRect().bottom >
         HEADER_OFFSET + safeAreaInset("top");
       syncTone();
     };
 
-    // Listener + measurement only live below md (the layer is md:hidden, but
-    // an orphaned per-frame writer would keep working invisibly). Re-arms on
-    // breakpoint crossings.
+    // Listener only lives below md (the layer is md:hidden, but an orphaned
+    // per-frame reader would keep working invisibly). Re-arms on breakpoint
+    // crossings.
     const arm = () => {
       if (md.matches) {
         dispose?.();
@@ -138,14 +132,7 @@ export function CoverHero(props: {
         heroUnderHeader = false;
         syncTone();
       } else if (!dispose) {
-        size();
-        // onScrollFrame also fires on resize — re-measure the stage there
-        // (cheap: one gBCR per frame; constant during pure scrolls, so the
-        // re-read is a no-op write).
-        dispose = onScrollFrame(() => {
-          size();
-          apply();
-        });
+        dispose = onScrollFrame(apply);
       }
     };
     arm();
@@ -161,56 +148,35 @@ export function CoverHero(props: {
 
   return (
     <>
-      {/* In-flow clip stage. z -8 slots between the CoverBackdrop wash (-10)
-          and the ContentFrame hairlines (-5, zero-width on mobile anyway) —
-          behind ALL content; relies on <main> being `relative` but NOT a
-          stacking context (same invariant as CoverBackdrop). Scrolls away
-          with the document — that IS the wipe. Decorative: aria-hidden, no
-          pointer events. */}
-      <div
-        ref={stageEl}
+      {/* The sharp cover — plain fixed layer, z -8, between the CoverBackdrop
+          wash (-10) and the sheet backing (-2). It never moves; the sheet
+          backing slides over it. coverFor sharpens per source (AniList
+          medium→large, Steam header→capsule); it's the mobile LCP, so fetch
+          it eagerly. Decorative: aria-hidden, no pointer events. */}
+      <img
+        ref={fadeOnLoad}
+        src={coverFor(props.coverUrl)!}
+        alt=""
         aria-hidden
-        class="pointer-events-none absolute inset-x-0 top-0 -z-[8] overflow-clip md:hidden"
+        class="pointer-events-none fixed inset-x-0 top-0 -z-[8] w-full object-cover object-[50%_25%] md:hidden"
         style={{ height: heroH() }}
-      >
-        {/* Track: twice the stage → exactly one stage-height of sticky
-            headroom for the image below. Its lower half is cropped by the
-            stage's overflow: clip. */}
-        <div class="h-[200%]">
-          {/* coverFor sharpens per source (AniList medium→large, Steam
-              header→capsule); it's the mobile LCP, so fetch it eagerly.
-              sticky top-0: the browser pins the picture to the viewport top
-              natively (compositor-synced) for the stage's visible range.
-              will-change-transform: without it WebKit rasterizes the sticky
-              image into the document's shared tile grid — the pin moves it
-              through document space every frame, so it keeps crossing tiles
-              Safari has already discarded → chunks of the cover vanish and
-              repaint lazily mid-scroll (checkerboarding). Own layer = raster
-              once, composite forever. */}
-          <img
-            ref={fadeOnLoad}
-            src={coverFor(props.coverUrl)!}
-            alt=""
-            class="sticky top-0 block h-1/2 w-full object-cover object-[50%_25%] will-change-transform"
-            fetchpriority="high"
-          />
-        </div>
-      </div>
+        fetchpriority="high"
+      />
       {/* Top scrim — legibility for the glass PageHeader. Its OWN fixed
-          layer (z -7, above the hero) so it stays pinned to the viewport top
-          for the whole scroll: first over the sharp cover, then over the
-          wash, where it simply deepens the wash's existing top grade. */}
+          layer at z -1, ABOVE the sheet backing (-2), so it stays pinned to
+          the viewport top for the whole scroll: first over the sharp cover,
+          then over the backing, where it simply deepens the wash's top
+          grade. */}
       <div
         aria-hidden
-        class="pointer-events-none fixed inset-x-0 top-0 -z-[7] h-28 bg-gradient-to-b from-bg/55 to-transparent md:hidden"
+        class="pointer-events-none fixed inset-x-0 top-0 -z-[1] h-28 bg-gradient-to-b from-bg/55 to-transparent md:hidden"
       />
       {/* In-flow spacer — pushes the content start to the hero's bottom
           edge (header is sticky but in flow, hence the offset). Its bottom
-          edge doubles as the stage-height measurement (see size()), and its
-          bottom border draws a crisp instrument rule ON the glass sheet's
-          top edge (only exists when a hero exists — no stray rule under the
-          header on cover-less items). --safe-top compensates the header
-          growing by the status-bar inset in the edge-to-edge PWA. */}
+          border draws a crisp instrument rule ON the glass sheet's top edge
+          (only exists when a hero exists — no stray rule under the header
+          on cover-less items). --safe-top compensates the header growing by
+          the status-bar inset in the edge-to-edge PWA. */}
       <div
         ref={spacerEl}
         aria-hidden
@@ -220,5 +186,70 @@ export function CoverHero(props: {
         }}
       />
     </>
+  );
+}
+
+/**
+ * The glass sheet's opaque backing (< md) — mount as FIRST child of the
+ * page's content wrapper (which must be `relative` and must NOT be a
+ * stacking context). Spans the wrapper exactly (`inset-0`), so its top edge
+ * IS the content edge: as the content scrolls over the fixed cover, this
+ * backing occludes it — that hard line is the wipe. Composition mirrors
+ * what the boosted CoverBackdrop wash shows through transparent content
+ * (opaque bg base + baked cover wash + legibility grade), so the sheet
+ * reads identically to the old translucent-glass stack — but occluding.
+ *
+ * The wash layer pins to the viewport with a PLAIN sticky (no overflow
+ * clip, no negative-z subtree around it — the vanilla sticky path the
+ * PageHeader itself uses). Until the backing's top reaches the viewport
+ * top, the wash rides at its natural position (the sheet edge — where the
+ * blur continues the sharp cover it cuts off); after ~a hero height of
+ * scroll it pins and behaves exactly like the fixed wash. If WebKit ever
+ * mis-times the pin, the error is an offset in a 48px-baked blur —
+ * invisible, which is the whole point of clipping the WASH side instead of
+ * the sharp image. Height caps at the wrapper (`min(100svh, 100%)`) so
+ * short pages never grow phantom scroll range.
+ */
+export function CoverSheetBacking(props: { coverUrl: string }) {
+  const [baked, setBaked] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    // Bake the RAW url — same cache key as the page's CoverBackdrop, so
+    // this is a cache hit, never a second bake.
+    const url = props.coverUrl;
+    setBaked(null);
+    let alive = true;
+    void bakeAmbient(url).then((b) => {
+      if (alive) setBaked(b);
+    });
+    onCleanup(() => {
+      alive = false;
+    });
+  });
+
+  return (
+    <div
+      aria-hidden
+      class="pointer-events-none absolute inset-0 -z-[2] bg-bg md:hidden"
+    >
+      <div class="sticky top-0 h-[min(100svh,100%)] w-full overflow-hidden">
+        <Show when={baked() !== null}>
+          {/* Same recipe as the boosted CoverBackdrop layer: baked-tiny
+              cover stretched (the stretching IS the blur), CSS-blur
+              fallback for CORS-tainted dev covers. */}
+          <img
+            ref={fadeOnLoad}
+            src={baked() || props.coverUrl}
+            alt=""
+            class="absolute inset-0 size-full scale-125 object-cover opacity-70 dark:opacity-55"
+            classList={{ "blur-[80px] saturate-[1.25]": baked() === "" }}
+          />
+          {/* Steadier veil than the fixed wash's 30/50/65: the wash TOP sits
+              at the sheet edge at rest (pre-pin), where section labels land
+              on it directly — dark covers need the bg floor there. */}
+          <div class="absolute inset-0 bg-gradient-to-b from-bg/55 via-bg/55 to-bg/65" />
+        </Show>
+      </div>
+    </div>
   );
 }
