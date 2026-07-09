@@ -194,21 +194,19 @@ export function CoverHero(props: {
  * page's content wrapper (which must be `relative` and must NOT be a
  * stacking context). Spans the wrapper exactly (`inset-0`), so its top edge
  * IS the content edge: as the content scrolls over the fixed cover, this
- * backing occludes it — that hard line is the wipe. Composition mirrors
- * what the boosted CoverBackdrop wash shows through transparent content
- * (opaque bg base + baked cover wash + legibility grade), so the sheet
- * reads identically to the old translucent-glass stack — but occluding.
+ * backing occludes it — that hard line is the wipe.
  *
- * The wash layer pins to the viewport with a PLAIN sticky (no overflow
- * clip, no negative-z subtree around it — the vanilla sticky path the
- * PageHeader itself uses). Until the backing's top reaches the viewport
- * top, the wash rides at its natural position (the sheet edge — where the
- * blur continues the sharp cover it cuts off); after ~a hero height of
- * scroll it pins and behaves exactly like the fixed wash. If WebKit ever
- * mis-times the pin, the error is an offset in a 48px-baked blur —
- * invisible, which is the whole point of clipping the WASH side instead of
- * the sharp image. Height caps at the wrapper (`min(100svh, 100%)`) so
- * short pages never grow phantom scroll range.
+ * The wash inside is GLUED to the sheet: plain absolute at the backing top,
+ * one viewport tall, dissolving to full bg at its bottom — the frosted
+ * cover lives at the sheet edge (where the blur continues the sharp cover
+ * it cuts off) and deeper content rests on calm bg. Deliberately NOT
+ * viewport-pinned: a sticky version shipped first and real iOS left it
+ * unpinned mid-scroll (hard wash-bottom seam walking through the page) —
+ * device WebKit's async scrolling mistreats ANY pinned layer under the
+ * content, sticky included, even where desktop/Playwright WebKit complies.
+ * Below the content, only `position: fixed` may pin; everything else must
+ * scroll with the document. Height caps at the wrapper (`min(100svh,
+ * 100%)`) so short pages never grow phantom scroll range.
  */
 export function CoverSheetBacking(props: { coverUrl: string }) {
   const [baked, setBaked] = createSignal<string | null>(null);
@@ -232,7 +230,7 @@ export function CoverSheetBacking(props: { coverUrl: string }) {
       aria-hidden
       class="pointer-events-none absolute inset-0 -z-[2] bg-bg md:hidden"
     >
-      <div class="sticky top-0 h-[min(100svh,100%)] w-full overflow-hidden">
+      <div class="absolute inset-x-0 top-0 h-[min(100svh,100%)] overflow-hidden">
         <Show when={baked() !== null}>
           {/* Same recipe as the boosted CoverBackdrop layer: baked-tiny
               cover stretched (the stretching IS the blur), CSS-blur
@@ -244,10 +242,12 @@ export function CoverSheetBacking(props: { coverUrl: string }) {
             class="absolute inset-0 size-full scale-125 object-cover opacity-70 dark:opacity-55"
             classList={{ "blur-[80px] saturate-[1.25]": baked() === "" }}
           />
-          {/* Steadier veil than the fixed wash's 30/50/65: the wash TOP sits
-              at the sheet edge at rest (pre-pin), where section labels land
-              on it directly — dark covers need the bg floor there. */}
-          <div class="absolute inset-0 bg-gradient-to-b from-bg/55 via-bg/55 to-bg/65" />
+          {/* Veil grade: bg floor at the sheet edge (section labels land on
+              the wash directly — dark covers need it), dissolving to FULL
+              bg at the wash bottom so it melts seamlessly into the backing
+              base — any translucent endpoint here draws a visible seam
+              where the wash box ends. */}
+          <div class="absolute inset-0 bg-gradient-to-b from-bg/55 via-bg/70 to-bg" />
         </Show>
       </div>
     </div>
