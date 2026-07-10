@@ -24,6 +24,17 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "0.23.0",
+    date: "2026-07-10",
+    title: "Der Kalender, neu fürs Handy",
+    changes: [
+      "Der Kalender ist am Handy neu gebaut: Die Woche zeigt ihre Folgen jetzt direkt als Liste mit Covern — und nur die Tage, an denen wirklich etwas läuft.",
+      "Oben führt ein Wochen-Dial: Wischen wechselt die Woche, jeder Tag trägt einen Status-Punkt (verpasst, gesehen, kommt noch), heute ist markiert.",
+      "Ein Tipp aufs Dial öffnet den Monat als Karte von unten — auch er lässt sich durchwischen, und ein Tipp auf einen Tag springt direkt in dessen Woche. Die separate Monats-Ansicht braucht es am Handy damit nicht mehr.",
+      "Die Cover-Bühne der Titel- und Listen-Seiten gleitet beim Scrollen jetzt sanft mit (Parallax) — und die Bild-Aussetzer beim schnellen Scrollen sind behoben. Hinter dem Inhalt liegt wieder durchgehend das Cover hinter Milchglas.",
+    ],
+  },
+  {
     version: "0.22.0",
     date: "2026-07-09",
     title: "Mobil neu gedacht — das Cover als Bühne",
