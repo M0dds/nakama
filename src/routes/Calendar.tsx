@@ -810,12 +810,14 @@ function WeekDial(props: {
 // ── Month drawer (mobile) ─────────────────────────────────────────────
 
 /**
- * Month calendar as a top drawer — the week dial's tap target, replacing
- * the mobile month VIEW entirely. Browses months with its own state
- * (re-seeded from the viewed week on every open); picking a day jumps the
- * agenda to that week and closes. Always mounted (cheap static grid),
- * animated by class toggles — slide from the top edge + the dialogs' scrim
- * recipe; pointer-events gate the closed state.
+ * Month calendar as a BOTTOM sheet — the week dial's tap target, replacing
+ * the mobile month VIEW entirely. Bottom, not top (user call 2026-07-10):
+ * the grid lands in thumb reach for the follow-up day-tap, it's the iOS
+ * sheet idiom, and the dial stays visible above as context. Browses months
+ * with its own state (re-seeded from the viewed week on every open);
+ * picking a day jumps the agenda to that week and closes. Always mounted
+ * (cheap static grid), animated by class toggles — slide from the bottom
+ * edge + the dialogs' scrim recipe; pointer-events gate the closed state.
  */
 function MonthDrawer(props: {
   open: boolean;
@@ -858,17 +860,17 @@ function MonthDrawer(props: {
           "pointer-events-none bg-black/0 backdrop-blur-none": !props.open,
         }}
       />
-      {/* Sheet from the top edge. Fixed at a viewport edge ⇒ carries the
+      {/* Sheet from the bottom edge. Fixed at a viewport edge ⇒ carries the
           safe-area inset (edge-to-edge rule, handshake §iOS/Mobile). */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Monatskalender"
-        class="fixed inset-x-0 top-0 z-50 border-b border-rule bg-bg px-5 pb-4 shadow-floating transition-transform duration-500 [transition-timing-function:var(--ease-quart)] motion-reduce:transition-none"
-        style={{ "padding-top": "calc(var(--safe-top) + 1rem)" }}
+        class="fixed inset-x-0 bottom-0 z-50 border-t border-rule bg-bg px-5 pt-4 shadow-floating transition-transform duration-500 [transition-timing-function:var(--ease-quart)] motion-reduce:transition-none"
+        style={{ "padding-bottom": "calc(var(--safe-bottom) + 1rem)" }}
         classList={{
           "translate-y-0": props.open,
-          "pointer-events-none -translate-y-full": !props.open,
+          "pointer-events-none translate-y-full": !props.open,
         }}
       >
         {/* Month pager + heute. */}
@@ -928,64 +930,68 @@ function WeekAgenda(props: {
   events: (iso: string) => CalendarEvent[];
   todayIso: string;
 }) {
+  // Only days that actually carry something — the dial above already shows
+  // the full week (incl. quiet days), repeating empty rows here was noise
+  // (user call, 2026-07-10). Weekday labels via getDay(), NOT the loop
+  // index: after filtering, position no longer maps to the weekday.
+  const activeDays = () =>
+    props.days.filter((d) => props.events(isoDay(d)).length > 0);
+  const weekdayAbbr = (d: Date) => WEEKDAYS_MON[(d.getDay() + 6) % 7];
+
   return (
-    <ul class="-mx-5">
-      <For each={props.days}>
-        {(d, i) => {
-          const iso = isoDay(d);
-          const evs = () => props.events(iso);
-          const isToday = () => iso === props.todayIso;
-          return (
-            <li
-              class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
-              style={
-                isToday() ? { "background-color": SELECTED_TINT } : undefined
-              }
-            >
-              {/* Day header — same weekday/date vocabulary as the grids. */}
-              <div
-                class="flex items-baseline gap-2 px-5 pt-3"
-                classList={{
-                  "pb-3": evs().length === 0,
-                  "pb-0.5": evs().length > 0,
-                }}
+    <Show
+      when={activeDays().length > 0}
+      fallback={
+        <p class="py-4 text-body text-text-muted">
+          Keine Folgen in dieser Woche.
+        </p>
+      }
+    >
+      <ul class="-mx-5">
+        <For each={activeDays()}>
+          {(d) => {
+            const iso = isoDay(d);
+            const evs = () => props.events(iso);
+            const isToday = () => iso === props.todayIso;
+            return (
+              <li
+                class="relative after:absolute after:inset-x-5 after:bottom-0 after:h-px after:bg-border last:after:hidden"
+                style={
+                  isToday() ? { "background-color": SELECTED_TINT } : undefined
+                }
               >
-                <span class="w-8 shrink-0 font-mono text-mini uppercase tracking-wider text-text-muted">
-                  {WEEKDAYS_MON[i()]}
-                </span>
-                <span
-                  class="font-mono text-body tabular-nums"
-                  classList={{
-                    "text-accent": isToday(),
-                    "text-text": !isToday(),
-                  }}
-                >
-                  {String(d.getDate()).padStart(2, "0")}.
-                </span>
-                <Show when={isToday()}>
-                  <span class="font-mono text-mini uppercase tracking-wider text-accent">
-                    · Heute
+                {/* Day header — same weekday/date vocabulary as the grids. */}
+                <div class="flex items-baseline gap-2 px-5 pb-0.5 pt-3">
+                  <span class="w-8 shrink-0 font-mono text-mini uppercase tracking-wider text-text-muted">
+                    {weekdayAbbr(d)}
                   </span>
-                </Show>
-                <Show when={evs().length === 0}>
-                  <span class="ml-4 text-body leading-none text-text-muted">
-                    —
+                  <span
+                    class="font-mono text-body tabular-nums"
+                    classList={{
+                      "text-accent": isToday(),
+                      "text-text": !isToday(),
+                    }}
+                  >
+                    {String(d.getDate()).padStart(2, "0")}.
                   </span>
-                </Show>
-              </div>
-              {/* Cover-rows. Index, not For — same realtime-identity reasoning
-                  as the day-pane list. The rows' own hairlines separate them;
-                  the last one yields to the day boundary above. */}
-              <Show when={evs().length > 0}>
+                  <Show when={isToday()}>
+                    <span class="font-mono text-mini uppercase tracking-wider text-accent">
+                      · Heute
+                    </span>
+                  </Show>
+                </div>
+                {/* Cover-rows. Index, not For — same realtime-identity
+                    reasoning as the day-pane list. The rows' own hairlines
+                    separate them; the last one yields to the day boundary. */}
                 <ul>
                   <Index each={evs()}>{(ev) => <DayPaneRow ev={ev()} />}</Index>
                 </ul>
-              </Show>
-            </li>
-          );
-        }}
-      </For>
-    </ul>
+              </li>
+            );
+          }}
+        </For>
+      </ul>
+    </Show>
   );
 }
 
