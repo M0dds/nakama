@@ -29,15 +29,17 @@ export default function App(props: ParentProps) {
         aria-hidden
         class="grain-layer pointer-events-none fixed inset-0 z-50 opacity-[0.04] mix-blend-multiply dark:opacity-[0.06] dark:mix-blend-screen"
       />
-      {/* Below md the min-height OVERSHOOTS the viewport by 1px: an exactly
-          viewport-high page is non-scrollable, and iOS 26 standalone anchors
-          fixed-bottom elements ~63pt too high on non-scrollable pages (the
-          BottomNav visibly jumped between the calendar and longer pages —
-          measured off device screenshots 2026-07-10; header pinned, only the
-          viewport bottom shrank). 1px of scrollable overflow keeps every
-          page "scrollable" — invisible, short pages just gain the natural
-          iOS bounce. */}
-      <div class="relative min-h-svh max-md:min-h-[calc(100svh+1px)]">
+      {/* Below md the min-height spans the LARGE viewport (lvh) + 1px: on
+          pages without scrollable content, iOS 26 standalone shrinks the
+          layout viewport at the BOTTOM by ~63pt — fixed-bottom chrome (nav)
+          and the fixed wash ended visibly above the screen edge (measured
+          off device screenshots 2026-07-10: header pinned, viewport bottom
+          short; the calendar is the first page that's ever this short).
+          lvh, not svh: a stuck-short viewport shrinks svh with it — lvh is
+          the full screen height regardless, so the page always spans the
+          physical screen and stays scrollable, which keeps the viewport
+          fully opened. Short pages just gain the natural iOS bounce. */}
+      <div class="relative min-h-svh max-md:min-h-[calc(100lvh+1px)]">
         <ErrorBoundary
           fallback={(err, reset) => <RouteError error={err} reset={reset} />}
         >
