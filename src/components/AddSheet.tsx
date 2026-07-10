@@ -54,8 +54,10 @@ const MEDIA_FILTERS: { value: MediaType; label: string; disabled?: boolean }[] =
  *                                      ▓▓▓▓▓▓▓ keyboard ▓▓▓▓▓▓▓
  *
  *   The Pill MORPHS from the BottomNav's `+`-button rect: it starts at that
- *   button's exact bounding rect (44×44, fully round) and animates left/top/
- *   width/height in lockstep to its target geometry. The `+` in the nav
+ *   button's exact bounding rect (44×44, fully round) and travels to its
+ *   target geometry — the travel as a compositor `translate3d` (FLIP:
+ *   anchored at the target, offset back to the origin), only width/height
+ *   as layout transitions (see pillStyle for why). The `+` in the nav
  *   fades to opacity-0 on the same curve, so it visually reads as the
  *   button *becoming* the search tool. The Card fades in on the same timing.
  *
@@ -519,17 +521,28 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
   };
 
   /** Pill style — origin-rect while resting, target-rect while entered.
-   *  Border-radius interpolates from full-pill (44/2=22 → matches the nav
-   *  button) to the target's half-height pill. */
+   *  FLIP-shaped: left/top sit at the TARGET rect permanently, the resting
+   *  position is expressed as a `translate3d` back to the origin — so the
+   *  long travel (nav `+` → top of the screen on mobile) runs entirely on
+   *  the compositor. Only width/height remain layout transitions (the pill
+   *  subtree is two elements — cheap), because scaling the capsule instead
+   *  would distort its rounded ends. Animating left/top directly was the
+   *  mobile lag: full-screen-height travel as per-frame main-thread layout,
+   *  concurrent with the keyboard animation. */
   const pillStyle = () => {
     const o = origin();
     if (!o) return { opacity: "0" };
-    const r = props.visible ? targetRect() : o;
+    const t = targetRect();
+    const r = props.visible ? t : o;
     return {
-      left: `${r.left}px`,
-      top: `${r.top}px`,
+      left: `${t.left}px`,
+      top: `${t.top}px`,
       width: `${r.width}px`,
       height: `${r.height}px`,
+      transform: props.visible
+        ? "translate3d(0px, 0px, 0)"
+        : `translate3d(${o.left - t.left}px, ${o.top - t.top}px, 0)`,
+      "will-change": "transform",
       "border-radius": "9999px", // capsule throughout — origin is round too
     };
   };
@@ -576,13 +589,17 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       {/* touch-none: a drag on the backdrop must not become an iOS visual-
           viewport pan (with the keyboard up, Safari grants pan room even on
           a locked page — the sheet could be shoved around). */}
+      {/* NOTE mobile skips the blur: an ANIMATED backdrop-filter re-filters
+          the full viewport every frame on iOS — together with the old
+          layout-property pill morph it was the sheet-open lag. The color
+          fade alone carries the recede-read; desktop (md+) keeps the blur. */}
       <button
         type="button"
         aria-label="Schließen"
         onClick={props.onClose}
         class={`fixed inset-0 z-40 touch-none transition-all duration-500 [transition-timing-function:var(--ease-quart)] ${
           props.visible
-            ? "bg-black/50 backdrop-blur-sm"
+            ? "bg-black/50 md:backdrop-blur-sm"
             : "bg-black/0 backdrop-blur-none"
         }`}
       />
@@ -717,8 +734,7 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
             // the combined alpha of "search-pill OR NavBar at the pill
             // location" stays at 1.0 throughout — no visible crossfade.
             transition: [
-              "left 500ms var(--ease-quart)",
-              "top 500ms var(--ease-quart)",
+              "transform 500ms var(--ease-quart)",
               "width 500ms var(--ease-quart)",
               "height 500ms var(--ease-quart)",
               `opacity 50ms linear ${props.visible ? "0ms" : "450ms"}`,
