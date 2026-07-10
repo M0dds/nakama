@@ -24,6 +24,14 @@
     <!-- iOS home-screen icon (PNG; iOS ignores SVG apple-touch-icons). -->
     <link rel="apple-touch-icon" href="/pwa-icon-180.png" />
     <meta name="apple-mobile-web-app-title" content="Nakama" />
+    <!-- Explicit standalone signals. Safari derives standalone from the
+         manifest's display mode, but home-screen installs from THIRD-PARTY
+         iOS browsers (Chrome et al.) bake the webclip via a different path
+         that leans on these classic metas — without them the install came
+         out with an opaque status bar, i.e. no top bleed (sister-device
+         report, 2026-07-10). Harmless duplication for Safari installs. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <!-- black-translucent is the ONLY status-bar mode that lets the PWA draw
          underneath (default/black are opaque bars pushed above the app).
          Trade-off: iOS renders the system text up there in WHITE — great
