@@ -134,6 +134,18 @@ export default function Calendar() {
     const mon = mondayOf(refDate());
     return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
   });
+  // Wash fallback: the day-pane drives the backdrop from the SELECTED day,
+  // which yields null on quiet days (mobile: today, with no selection UI) —
+  // the calendar then sat washless next to every other page. Fall back to
+  // the viewed week's first event.
+  const weekFirstCover = createMemo(() => {
+    for (const d of weekDays()) {
+      const evs = dayEvents(isoDay(d));
+      if (evs.length > 0)
+        return coverFor(evs[0].coverUrl) ?? evs[0].coverUrl ?? null;
+    }
+    return null;
+  });
   const monthDays = createMemo(() => {
     const mon = mondayOf(startOfMonth(refDate()));
     return Array.from({ length: 42 }, (_, i) => addDays(mon, i));
@@ -171,7 +183,7 @@ export default function Calendar() {
 
   return (
     <main class="w-full">
-      <CoverBackdrop coverUrl={washCover()} />
+      <CoverBackdrop coverUrl={washCover() ?? weekFirstCover()} />
       <PageHeader title="Kalender" />
 
       <ColumnGuide />
@@ -252,6 +264,7 @@ export default function Calendar() {
                     days={weekDays()}
                     events={dayEvents}
                     todayIso={todayIso}
+                    onStep={(dir) => setRefDate((d) => addDays(d, dir * 7))}
                   />
                 </div>
               </Show>
@@ -962,7 +975,10 @@ function WeekAgenda(props: {
   days: Date[];
   events: (iso: string) => CalendarEvent[];
   todayIso: string;
+  onStep: (dir: 1 | -1) => void;
 }) {
+  let rootEl!: HTMLDivElement;
+
   // Only days that actually carry something — the dial above already shows
   // the full week (incl. quiet days), repeating empty rows here was noise
   // (user call, 2026-07-10). Weekday labels via getDay(), NOT the loop
@@ -971,7 +987,56 @@ function WeekAgenda(props: {
     props.days.filter((d) => props.events(isoDay(d)).length > 0);
   const weekdayAbbr = (d: Date) => WEEKDAYS_MON[(d.getDay() + 6) % 7];
 
+  // Horizontal flick on the list steps the week, same result as swiping the
+  // dial. NOT a drag-carousel like dial/drawer: the agenda's height varies
+  // wildly between weeks, a 3-page strip would size to the tallest
+  // neighbor. Instead the flick hard-swaps the content and slides it in
+  // FROM the swipe direction — the WasKommt pager idiom (translateX ±28px,
+  // back-out bounce). Observing listeners only (passive, no preventDefault)
+  // — vertical scrolling stays native, the axis check filters it out.
+  onMount(() => {
+    let sx = 0;
+    let sy = 0;
+    let st = 0;
+    const onStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      sx = t.clientX;
+      sy = t.clientY;
+      st = performance.now();
+    };
+    const onEnd = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx;
+      const dy = t.clientY - sy;
+      const isFlick =
+        Math.abs(dx) > 56 &&
+        Math.abs(dx) > 1.6 * Math.abs(dy) &&
+        performance.now() - st < 600;
+      if (!isFlick) return;
+      const dir: 1 | -1 = dx < 0 ? 1 : -1;
+      // Solid applies the signal synchronously — the animation below already
+      // plays on the NEW week's rows.
+      props.onStep(dir);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        rootEl.animate(
+          {
+            transform: [`translateX(${dir * 28}px)`, "translateX(0)"],
+            opacity: [0, 1],
+          },
+          { duration: 300, easing: "cubic-bezier(0.34, 1.5, 0.5, 1)" },
+        );
+      }
+    };
+    rootEl.addEventListener("touchstart", onStart, { passive: true });
+    rootEl.addEventListener("touchend", onEnd, { passive: true });
+    onCleanup(() => {
+      rootEl.removeEventListener("touchstart", onStart);
+      rootEl.removeEventListener("touchend", onEnd);
+    });
+  });
+
   return (
+    <div ref={rootEl}>
     <Show
       when={activeDays().length > 0}
       fallback={
@@ -1025,6 +1090,7 @@ function WeekAgenda(props: {
         </For>
       </ul>
     </Show>
+    </div>
   );
 }
 

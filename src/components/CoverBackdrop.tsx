@@ -132,12 +132,17 @@ export function CoverBackdrop(props: {
         class="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
       >
         {/* Overall wash intensity lives on this wrapper; the two buffers
-            crossfade 1↔0 within it. Kept gentle (and gentler in dark);
-            boosted below md when the page opts in (glass-sheet read). */}
+            crossfade 1↔0 within it. Desktop stays gentle (and gentler in
+            dark). Below md there are TWO tiers (user call 2026-07-10): the
+            DEFAULT is already stronger than desktop — mobile pages felt
+            washed-out next to the detail pages — and `boostBelowMd` tops it
+            for the glass-sheet pages, where the wash must read as "the
+            cover behind frosted glass". */}
         <div
           class="absolute inset-0 opacity-45 dark:opacity-30"
           classList={{
             "max-md:opacity-70 dark:max-md:opacity-55": props.boostBelowMd,
+            "max-md:opacity-60 dark:max-md:opacity-45": !props.boostBelowMd,
           }}
         >
           <CoverLayer url={slotA()} visible={top() === "a"} />
@@ -146,13 +151,15 @@ export function CoverBackdrop(props: {
         {/* Grade into the page so content stays legible over the whole height:
             a faint atmosphere at the top of the viewport, settling to near-bg
             toward the bottom. Viewport-relative (the layer is fixed). The
-            boosted variant veils less — the cover has to stay readable as an
+            mobile tiers veil less — the cover has to stay readable as an
             image behind the glass. */}
         <div
           class="absolute inset-0 bg-gradient-to-b from-bg/45 via-bg/80 to-bg/96"
           classList={{
             "max-md:from-bg/30 max-md:via-bg/50 max-md:to-bg/65":
               props.boostBelowMd,
+            "max-md:from-bg/40 max-md:via-bg/65 max-md:to-bg/80":
+              !props.boostBelowMd,
           }}
         />
       </div>
