@@ -38,7 +38,6 @@ import {
   typeLabel,
   WEEKDAYS_MON,
 } from "@/lib/format";
-import { useMediaQuery } from "@/lib/media";
 import { useRealtimeInvalidation } from "@/lib/realtime";
 import { PageHeader } from "@/components/PageHeader";
 import { CoverBackdrop } from "@/components/CoverBackdrop";
@@ -67,12 +66,14 @@ const SELECTED_TINT = "color-mix(in srgb, var(--accent) 12%, transparent)";
 
 export default function Calendar() {
   const auth = useAuth();
-  const isMd = useMediaQuery("(min-width: 768px)");
 
   const todayIso = isoDay(new Date());
   const [refDate, setRefDate] = createSignal(new Date());
   const [view, setView] = createSignal<View>("week");
   const [selectedIso, setSelectedIso] = createSignal(todayIso);
+  // Mobile month drawer (the week-dial's tap target). Desktop has the
+  // Woche/Monat Segmented instead.
+  const [monthOpen, setMonthOpen] = createSignal(false);
   // Ambient cover backdrop follows the focused day-pane event (default: the
   // selected day's first event). Driven from DayPane via onActiveCover.
   const [washCover, setWashCover] = createSignal<string | null>(null);
@@ -179,16 +180,32 @@ export default function Calendar() {
         {/* Linke Spalte 2/3 — Controls + Grid. */}
         <div class="md:w-2/3">
           <BentoModule label="Übersicht" number="01">
-            <Controls
-              view={view()}
-              periodLabel={periodLabel()}
+            {/* Desktop instrument row (stepper + picker + heute + Segmented).
+                Mobile ersetzt das komplett durch das Wochen-Dial — die
+                kleinteilige Button-Reihe konkurrierte mit sich selbst
+                (User-Call 2026-07-10). */}
+            <div class="max-md:hidden">
+              <Controls
+                view={view()}
+                periodLabel={periodLabel()}
+                refDate={refDate()}
+                todayIso={todayIso}
+                onPrev={() => step(-1)}
+                onNext={() => step(1)}
+                onToday={goToday}
+                onPick={goToDate}
+                onView={setView}
+              />
+            </div>
+            {/* Mobile week dial: swipe ↔ steps the week, tap opens the month
+                drawer. Always the week — mobile has no month VIEW, the
+                drawer replaces it. */}
+            <WeekDial
               refDate={refDate()}
               todayIso={todayIso}
-              onPrev={() => step(-1)}
-              onNext={() => step(1)}
-              onToday={goToday}
-              onPick={goToDate}
-              onView={setView}
+              events={dayEvents}
+              onStep={(dir) => setRefDate((d) => addDays(d, dir * 7))}
+              onOpenMonth={() => setMonthOpen(true)}
             />
 
             {/* Error gate FIRST — a failed query must not render as an
@@ -206,49 +223,37 @@ export default function Calendar() {
                 when={!eventsQ.isLoading}
                 fallback={<CalendarGridSkeleton view={view()} />}
               >
-                {view() === "week" ? (
-                  <>
-                    {/* Desktop: compact 7-row grid feeding the day-pane. */}
-                    <div class="max-md:hidden">
-                      <WeekGrid
-                        days={weekDays()}
-                        events={dayEvents}
-                        todayIso={todayIso}
-                        selectedIso={selectedIso()}
-                        onSelect={setSelectedIso}
-                      />
-                    </div>
-                    {/* Mobile: the week IS the day list — a vertical agenda
-                        with cover-rows under each day, no selection, no
-                        separate day-pane (mobile rework 2026-07-09). */}
-                    <div class="md:hidden">
-                      <WeekAgenda
-                        days={weekDays()}
-                        events={dayEvents}
-                        todayIso={todayIso}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <MonthGrid
-                    days={monthDays()}
-                    refMonth={refDate().getMonth()}
+                {/* Desktop: week grid or month grid, feeding the day-pane. */}
+                <div class="max-md:hidden">
+                  {view() === "week" ? (
+                    <WeekGrid
+                      days={weekDays()}
+                      events={dayEvents}
+                      todayIso={todayIso}
+                      selectedIso={selectedIso()}
+                      onSelect={setSelectedIso}
+                    />
+                  ) : (
+                    <MonthGrid
+                      days={monthDays()}
+                      refMonth={refDate().getMonth()}
+                      events={dayEvents}
+                      todayIso={todayIso}
+                      selectedIso={selectedIso()}
+                      onSelect={setSelectedIso}
+                    />
+                  )}
+                </div>
+                {/* Mobile: the week IS the day list — a vertical agenda
+                    with cover-rows under each day, no selection, no
+                    separate day-pane (mobile rework 2026-07-09). */}
+                <div class="md:hidden">
+                  <WeekAgenda
+                    days={weekDays()}
                     events={dayEvents}
                     todayIso={todayIso}
-                    selectedIso={selectedIso()}
-                    maxDots={isMd() ? MAX_DOTS : 3}
-                    onSelect={(iso) => {
-                      setSelectedIso(iso);
-                      // Mobile: the month is a NAVIGATOR — tapping a day
-                      // jumps into that week's agenda (there is no day-pane
-                      // to feed). Desktop keeps select-for-pane.
-                      if (!isMd()) {
-                        setRefDate(fromIsoDay(iso));
-                        setView("week");
-                      }
-                    }}
                   />
-                )}
+                </div>
               </Show>
             </Show>
           </BentoModule>
@@ -269,6 +274,24 @@ export default function Calendar() {
           </BentoModule>
         </div>
       </div>
+
+      {/* Mobile month drawer — opened by tapping the week dial. */}
+      <MonthDrawer
+        open={monthOpen()}
+        onClose={() => setMonthOpen(false)}
+        anchor={refDate()}
+        todayIso={todayIso}
+        selectedIso={selectedIso()}
+        events={dayEvents}
+        onPick={(d) => {
+          goToDate(d);
+          setMonthOpen(false);
+        }}
+        onToday={() => {
+          goToday();
+          setMonthOpen(false);
+        }}
+      />
     </main>
   );
 }
@@ -304,45 +327,20 @@ function Controls(props: {
         <button
           type="button"
           onClick={props.onToday}
-          class="ml-1 rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text max-md:hidden"
+          class="ml-1 rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
         >
           heute
         </button>
       </div>
-      {/* View switch + mobile actions. Desktop: "heute" rides the stepper
-          group (above), the Segmented sits right. Mobile: the Segmented was
-          the heaviest of three competing control families (bordered steppers
-          · ghost text · segmented chrome) and wrapped onto its own line —
-          instead ONE quiet mono-ghost pair on the right: "heute · monat"
-          (user call, 2026-07-09). The view toggle names the TARGET view. */}
-      <div class="flex items-center gap-1 md:hidden">
-        <button
-          type="button"
-          onClick={props.onToday}
-          class="rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
-        >
-          heute
-        </button>
-        <button
-          type="button"
-          onClick={() => props.onView(props.view === "week" ? "month" : "week")}
-          aria-label="Ansicht wechseln"
-          class="rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
-        >
-          {props.view === "week" ? "monat" : "woche"}
-        </button>
-      </div>
-      <div class="max-md:hidden">
-        <Segmented
-          value={props.view}
-          onChange={props.onView}
-          ariaLabel="Ansicht"
-          options={[
-            { value: "week", label: "Woche" },
-            { value: "month", label: "Monat" },
-          ]}
-        />
-      </div>
+      <Segmented
+        value={props.view}
+        onChange={props.onView}
+        ariaLabel="Ansicht"
+        options={[
+          { value: "week", label: "Woche" },
+          { value: "month", label: "Monat" },
+        ]}
+      />
     </div>
   );
 }
@@ -641,6 +639,275 @@ function EventChip(props: { ev: CalendarEvent }) {
           "bg-transparent ring-1 ring-border": !props.ev.released,
         }}
       />
+    </div>
+  );
+}
+
+// ── Week dial (mobile) ────────────────────────────────────────────────
+
+/**
+ * Mobile week navigator — an instrument DIAL above the agenda, replacing
+ * the stepper/picker/heute button row (three competing control families;
+ * user call 2026-07-10). Two gestures only: SWIPE ↔ steps the week, TAP
+ * opens the month drawer.
+ *
+ * The swipe is a native scroll-snap carousel: three week pages (prev /
+ * current / next), parked on the middle one. When a swipe settles on a
+ * side page, we report the step and instantly re-center — refDate's change
+ * re-renders the middle page to exactly what's on screen, so nothing
+ * visibly jumps (the classic infinite-carousel recenter). Settling is
+ * detected by scroll-quiet (120 ms) instead of `scrollend` (still patchy
+ * on iOS), and deferred while a finger is down — recentering under a held
+ * touch would yank the strip.
+ *
+ * Native scrolling means the browser's own axis-lock keeps vertical page
+ * scrolls off the dial, and a tap that PANNED never fires click — so the
+ * tap-to-open-drawer and the swipe never fight.
+ */
+function WeekDial(props: {
+  refDate: Date;
+  todayIso: string;
+  events: (iso: string) => CalendarEvent[];
+  onStep: (dir: 1 | -1) => void;
+  onOpenMonth: () => void;
+}) {
+  let scroller!: HTMLDivElement;
+
+  const weekOf = (offset: number) => {
+    const mon = addDays(mondayOf(props.refDate), offset * 7);
+    return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+  };
+  // Cross-month weeks label by their DOMINANT month (the Thursday — ISO
+  // week convention), so "29.06 – 05.07" reads as Juli.
+  const monthLabel = () =>
+    formatMonth(addDays(mondayOf(props.refDate), 3));
+
+  onMount(() => {
+    const center = () => {
+      scroller.scrollLeft = scroller.clientWidth;
+    };
+    center();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let touching = false;
+    const settle = () => {
+      if (touching) return;
+      const w = scroller.clientWidth;
+      if (!w) return;
+      const idx = Math.round(scroller.scrollLeft / w);
+      if (idx !== 1) {
+        props.onStep(idx > 1 ? 1 : -1);
+        center();
+      }
+    };
+    const kick = () => {
+      clearTimeout(timer);
+      timer = setTimeout(settle, 120);
+    };
+    const onTouchStart = () => {
+      touching = true;
+      clearTimeout(timer);
+    };
+    const onTouchEnd = () => {
+      touching = false;
+      kick();
+    };
+    // Resize (incl. crossing the md boundary, where the hidden dial has
+    // width 0): re-park on the middle page.
+    const onResize = () => {
+      clearTimeout(timer);
+      center();
+    };
+    scroller.addEventListener("scroll", kick, { passive: true });
+    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroller.addEventListener("touchend", onTouchEnd, { passive: true });
+    scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    window.addEventListener("resize", onResize);
+    onCleanup(() => {
+      clearTimeout(timer);
+      scroller.removeEventListener("scroll", kick);
+      scroller.removeEventListener("touchstart", onTouchStart);
+      scroller.removeEventListener("touchend", onTouchEnd);
+      scroller.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("resize", onResize);
+    });
+  });
+
+  return (
+    <div class="-mx-5 border-b border-border md:hidden">
+      {/* Dial label = the drawer affordance. */}
+      <button
+        type="button"
+        onClick={props.onOpenMonth}
+        aria-label="Monatskalender öffnen"
+        class="flex w-full items-center justify-center gap-1 pb-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-text"
+      >
+        {monthLabel()}
+        <ChevronDown class="size-3" strokeWidth={1.75} aria-hidden />
+      </button>
+      {/* Week pages. Tap (never fired after a pan) also opens the drawer. */}
+      <div
+        ref={scroller}
+        class="scrollbar-none flex snap-x snap-mandatory overflow-x-auto"
+        onClick={props.onOpenMonth}
+      >
+        <Index each={[-1, 0, 1]}>
+          {(off) => (
+            <div class="grid w-full shrink-0 snap-center grid-cols-7">
+              <For each={weekOf(off())}>
+                {(d, i) => {
+                  const iso = isoDay(d);
+                  const isToday = () => iso === props.todayIso;
+                  // One aggregated dot per day — a dial shows density, the
+                  // agenda below carries the detail. Strongest state wins:
+                  // released-unwatched (hollow accent) > watched (filled) >
+                  // upcoming (hollow grey).
+                  const dot = () => {
+                    const evs = props.events(iso);
+                    if (evs.length === 0) return "none";
+                    if (evs.some((e) => e.released && !e.watched))
+                      return "open";
+                    if (evs.some((e) => e.watched)) return "seen";
+                    return "upcoming";
+                  };
+                  return (
+                    <div class="flex flex-col items-center gap-1 pb-3 pt-1">
+                      <span class="font-mono text-mini uppercase tracking-wider text-text-muted">
+                        {WEEKDAYS_MON[i()]}
+                      </span>
+                      <span
+                        class="font-mono text-body tabular-nums leading-none"
+                        classList={{
+                          "text-accent": isToday(),
+                          "text-text": !isToday(),
+                        }}
+                      >
+                        {String(d.getDate()).padStart(2, "0")}.
+                      </span>
+                      <span
+                        aria-hidden
+                        class="size-1.5 rounded-full"
+                        classList={{
+                          invisible: dot() === "none",
+                          "bg-accent": dot() === "seen",
+                          "bg-transparent ring-1 ring-accent": dot() === "open",
+                          "bg-transparent ring-1 ring-border":
+                            dot() === "upcoming",
+                        }}
+                      />
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          )}
+        </Index>
+      </div>
+    </div>
+  );
+}
+
+// ── Month drawer (mobile) ─────────────────────────────────────────────
+
+/**
+ * Month calendar as a top drawer — the week dial's tap target, replacing
+ * the mobile month VIEW entirely. Browses months with its own state
+ * (re-seeded from the viewed week on every open); picking a day jumps the
+ * agenda to that week and closes. Always mounted (cheap static grid),
+ * animated by class toggles — slide from the top edge + the dialogs' scrim
+ * recipe; pointer-events gate the closed state.
+ */
+function MonthDrawer(props: {
+  open: boolean;
+  onClose: () => void;
+  anchor: Date;
+  todayIso: string;
+  selectedIso: string;
+  events: (iso: string) => CalendarEvent[];
+  onPick: (d: Date) => void;
+  onToday: () => void;
+}) {
+  const [viewMonth, setViewMonth] = createSignal(startOfMonth(props.anchor));
+  createEffect(() => {
+    if (props.open) setViewMonth(startOfMonth(props.anchor));
+  });
+  const days = createMemo(() => {
+    const mon = mondayOf(viewMonth());
+    return Array.from({ length: 42 }, (_, i) => addDays(mon, i));
+  });
+
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && props.open) props.onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  return (
+    <div class="md:hidden">
+      {/* Scrim — the dialogs' recipe. */}
+      <button
+        type="button"
+        aria-label="Schließen"
+        tabindex={props.open ? 0 : -1}
+        onClick={props.onClose}
+        class="fixed inset-0 z-40 transition-all duration-500 [transition-timing-function:var(--ease-quart)]"
+        classList={{
+          "bg-black/50 backdrop-blur-sm": props.open,
+          "pointer-events-none bg-black/0 backdrop-blur-none": !props.open,
+        }}
+      />
+      {/* Sheet from the top edge. Fixed at a viewport edge ⇒ carries the
+          safe-area inset (edge-to-edge rule, handshake §iOS/Mobile). */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Monatskalender"
+        class="fixed inset-x-0 top-0 z-50 border-b border-rule bg-bg px-5 pb-4 shadow-floating transition-transform duration-500 [transition-timing-function:var(--ease-quart)] motion-reduce:transition-none"
+        style={{ "padding-top": "calc(var(--safe-top) + 1rem)" }}
+        classList={{
+          "translate-y-0": props.open,
+          "pointer-events-none -translate-y-full": !props.open,
+        }}
+      >
+        {/* Month pager + heute. */}
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <StepButton
+              label="Vorheriger Monat"
+              onClick={() => setViewMonth((m) => addMonths(m, -1))}
+            >
+              <ChevronLeft class="size-4" strokeWidth={1.75} aria-hidden />
+            </StepButton>
+            <span class="min-w-24 text-center font-mono text-label uppercase tracking-wider text-text">
+              {formatMonth(viewMonth())}
+            </span>
+            <StepButton
+              label="Nächster Monat"
+              onClick={() => setViewMonth((m) => addMonths(m, 1))}
+            >
+              <ChevronRight class="size-4" strokeWidth={1.75} aria-hidden />
+            </StepButton>
+          </div>
+          <button
+            type="button"
+            onClick={props.onToday}
+            class="rounded-xs px-2 py-1 font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:bg-surface hover:text-text"
+          >
+            heute
+          </button>
+        </div>
+        <MonthGrid
+          days={days()}
+          refMonth={viewMonth().getMonth()}
+          events={props.events}
+          todayIso={props.todayIso}
+          selectedIso={props.selectedIso}
+          maxDots={3}
+          onSelect={(iso) => props.onPick(fromIsoDay(iso))}
+        />
+      </div>
     </div>
   );
 }
