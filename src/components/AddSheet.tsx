@@ -576,6 +576,13 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       width: `${t.width}px`,
       // Bottom gap clears the home indicator in the edge-to-edge PWA.
       height: `${Math.max(0, h - top - 16 - safeAreaInset("bottom"))}px`,
+      // Mobile: the card RIDES the pill's upward travel — a short slide-up
+      // into place (compositor transform, like the pill) instead of popping
+      // fully-positioned while the pill is still mid-flight. Desktop keeps
+      // the pure fade (the pill barely travels there; the card sits above).
+      transform: props.visible
+        ? "translate3d(0, 0, 0)"
+        : "translate3d(0, 32px, 0)",
     };
   };
 
@@ -605,18 +612,22 @@ export function AddSheet(props: { visible: boolean; onClose: () => void }) {
       />
 
       {/* Results card — z-50, above the nav. Page-tier styling: bg, hairline
-          rules, hard corners. Pure opacity fade — symmetric in both
-          directions, no scale/translate. Pill morph carries the spatial
-          motion of the entry; the card just fades alongside it. Gated by
-          <Show> on origin() so first render commits with the correct
-          position/size, otherwise the cardStyle transitions would
-          interpolate from their fallback zeros. */}
+          rules, hard corners. Opacity fade + (mobile) a short slide-up that
+          trails the pill's travel — see cardStyle. Only opacity/transform
+          are transitioned: position/size updates (resize, keyboard) stay
+          instant. Gated by <Show> on origin() so first render commits with
+          the correct position/size, otherwise the cardStyle transitions
+          would interpolate from their fallback zeros. */}
       <Show when={origin()}>
         <div
-          class={`fixed z-50 flex flex-col overflow-hidden rounded-sm bg-bg shadow-floating transition-opacity duration-500 [transition-timing-function:var(--ease-quart)] ${
+          class={`fixed z-50 flex flex-col overflow-hidden rounded-sm bg-bg shadow-floating ${
             props.visible ? "opacity-100" : "opacity-0"
           }`}
-          style={cardStyle()}
+          style={{
+            ...cardStyle(),
+            transition:
+              "opacity 500ms var(--ease-quart), transform 500ms var(--ease-quart)",
+          }}
         >
         <header class="flex items-center justify-between gap-3 border-b border-rule px-5 py-4">
           <div class="flex min-w-0 items-center gap-3">
