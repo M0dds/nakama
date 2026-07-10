@@ -643,6 +643,71 @@ function EventChip(props: { ev: CalendarEvent }) {
   );
 }
 
+// ── Snap stepper (mobile swipe) ───────────────────────────────────────
+
+/**
+ * Infinite 3-page snap carousel core, shared by the week dial + the month
+ * drawer: the scroller holds [prev, current, next] pages and parks on the
+ * middle one. When a swipe settles on a side page, report the step and
+ * instantly re-center — the consumer's state change re-renders the middle
+ * page to exactly what's on screen, so nothing visibly jumps. Settling is
+ * detected by scroll-quiet (120 ms) instead of `scrollend` (still patchy on
+ * iOS), and deferred while a finger is down — recentering under a held
+ * touch would yank the strip. Recenters on resize (incl. crossing the md
+ * boundary, where a hidden scroller has width 0). Returns a disposer.
+ */
+function attachSnapStepper(
+  el: HTMLElement,
+  onStep: (dir: 1 | -1) => void,
+): () => void {
+  const center = () => {
+    el.scrollLeft = el.clientWidth;
+  };
+  center();
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let touching = false;
+  const settle = () => {
+    if (touching) return;
+    const w = el.clientWidth;
+    if (!w) return;
+    const idx = Math.round(el.scrollLeft / w);
+    if (idx !== 1) {
+      onStep(idx > 1 ? 1 : -1);
+      center();
+    }
+  };
+  const kick = () => {
+    clearTimeout(timer);
+    timer = setTimeout(settle, 120);
+  };
+  const onTouchStart = () => {
+    touching = true;
+    clearTimeout(timer);
+  };
+  const onTouchEnd = () => {
+    touching = false;
+    kick();
+  };
+  const onResize = () => {
+    clearTimeout(timer);
+    center();
+  };
+  el.addEventListener("scroll", kick, { passive: true });
+  el.addEventListener("touchstart", onTouchStart, { passive: true });
+  el.addEventListener("touchend", onTouchEnd, { passive: true });
+  el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+  window.addEventListener("resize", onResize);
+  return () => {
+    clearTimeout(timer);
+    el.removeEventListener("scroll", kick);
+    el.removeEventListener("touchstart", onTouchStart);
+    el.removeEventListener("touchend", onTouchEnd);
+    el.removeEventListener("touchcancel", onTouchEnd);
+    window.removeEventListener("resize", onResize);
+  };
+}
+
 // ── Week dial (mobile) ────────────────────────────────────────────────
 
 /**
@@ -651,15 +716,7 @@ function EventChip(props: { ev: CalendarEvent }) {
  * user call 2026-07-10). Two gestures only: SWIPE ↔ steps the week, TAP
  * opens the month drawer.
  *
- * The swipe is a native scroll-snap carousel: three week pages (prev /
- * current / next), parked on the middle one. When a swipe settles on a
- * side page, we report the step and instantly re-center — refDate's change
- * re-renders the middle page to exactly what's on screen, so nothing
- * visibly jumps (the classic infinite-carousel recenter). Settling is
- * detected by scroll-quiet (120 ms) instead of `scrollend` (still patchy
- * on iOS), and deferred while a finger is down — recentering under a held
- * touch would yank the strip.
- *
+ * The swipe rides `attachSnapStepper` (shared with the month drawer).
  * Native scrolling means the browser's own axis-lock keeps vertical page
  * scrolls off the dial, and a tap that PANNED never fires click — so the
  * tap-to-open-drawer and the swipe never fight.
@@ -683,54 +740,7 @@ function WeekDial(props: {
     formatMonth(addDays(mondayOf(props.refDate), 3));
 
   onMount(() => {
-    const center = () => {
-      scroller.scrollLeft = scroller.clientWidth;
-    };
-    center();
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let touching = false;
-    const settle = () => {
-      if (touching) return;
-      const w = scroller.clientWidth;
-      if (!w) return;
-      const idx = Math.round(scroller.scrollLeft / w);
-      if (idx !== 1) {
-        props.onStep(idx > 1 ? 1 : -1);
-        center();
-      }
-    };
-    const kick = () => {
-      clearTimeout(timer);
-      timer = setTimeout(settle, 120);
-    };
-    const onTouchStart = () => {
-      touching = true;
-      clearTimeout(timer);
-    };
-    const onTouchEnd = () => {
-      touching = false;
-      kick();
-    };
-    // Resize (incl. crossing the md boundary, where the hidden dial has
-    // width 0): re-park on the middle page.
-    const onResize = () => {
-      clearTimeout(timer);
-      center();
-    };
-    scroller.addEventListener("scroll", kick, { passive: true });
-    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
-    scroller.addEventListener("touchend", onTouchEnd, { passive: true });
-    scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    window.addEventListener("resize", onResize);
-    onCleanup(() => {
-      clearTimeout(timer);
-      scroller.removeEventListener("scroll", kick);
-      scroller.removeEventListener("touchstart", onTouchStart);
-      scroller.removeEventListener("touchend", onTouchEnd);
-      scroller.removeEventListener("touchcancel", onTouchEnd);
-      window.removeEventListener("resize", onResize);
-    });
+    onCleanup(attachSnapStepper(scroller, props.onStep));
   });
 
   return (
@@ -829,16 +839,22 @@ function MonthDrawer(props: {
   onPick: (d: Date) => void;
   onToday: () => void;
 }) {
+  let scroller!: HTMLDivElement;
   const [viewMonth, setViewMonth] = createSignal(startOfMonth(props.anchor));
   createEffect(() => {
     if (props.open) setViewMonth(startOfMonth(props.anchor));
   });
-  const days = createMemo(() => {
-    const mon = mondayOf(viewMonth());
+  const days42 = (m: Date) => {
+    const mon = mondayOf(m);
     return Array.from({ length: 42 }, (_, i) => addDays(mon, i));
-  });
+  };
 
   onMount(() => {
+    onCleanup(
+      attachSnapStepper(scroller, (dir) =>
+        setViewMonth((m) => addMonths(m, dir)),
+      ),
+    );
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && props.open) props.onClose();
     };
@@ -900,15 +916,32 @@ function MonthDrawer(props: {
             heute
           </button>
         </div>
-        <MonthGrid
-          days={days()}
-          refMonth={viewMonth().getMonth()}
-          events={props.events}
-          todayIso={props.todayIso}
-          selectedIso={props.selectedIso}
-          maxDots={3}
-          onSelect={(iso) => props.onPick(fromIsoDay(iso))}
-        />
+        {/* Static weekday header — the pages below swipe, identical header
+            copy sliding along would read as jitter. */}
+        <WeekdayHeader />
+        {/* Month pages: swipe ↔ steps the month (same carousel core as the
+            week dial), chevrons above stay as the discrete/a11y path. */}
+        <div
+          ref={scroller}
+          class="scrollbar-none flex snap-x snap-mandatory overflow-x-auto"
+        >
+          <Index each={[-1, 0, 1]}>
+            {(off) => (
+              <div class="w-full shrink-0 snap-center">
+                <MonthGrid
+                  days={days42(addMonths(viewMonth(), off()))}
+                  refMonth={addMonths(viewMonth(), off()).getMonth()}
+                  events={props.events}
+                  todayIso={props.todayIso}
+                  selectedIso={props.selectedIso}
+                  maxDots={3}
+                  hideWeekdayHeader
+                  onSelect={(iso) => props.onPick(fromIsoDay(iso))}
+                />
+              </div>
+            )}
+          </Index>
+        </div>
       </div>
     </div>
   );
@@ -999,6 +1032,23 @@ function WeekAgenda(props: {
 
 const MAX_DOTS = 6;
 
+/** Weekday header row — the 7-col track matching the month cells. Also
+ *  rendered standalone by the month drawer, ABOVE its swipe pages, so the
+ *  header stays put while the cells slide. */
+function WeekdayHeader() {
+  return (
+    <div class="grid grid-cols-7 border-b border-border pb-2">
+      <For each={WEEKDAYS_MON}>
+        {(wd) => (
+          <div class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
+            {wd}
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
 function MonthGrid(props: {
   days: Date[];
   refMonth: number;
@@ -1007,20 +1057,15 @@ function MonthGrid(props: {
   selectedIso: string;
   /** Dot budget per cell — the mobile navigator cells fit fewer. */
   maxDots?: number;
+  /** The drawer renders ONE static header above its swiping pages. */
+  hideWeekdayHeader?: boolean;
   onSelect: (iso: string) => void;
 }) {
   return (
     <div>
-      {/* Weekday header — same 7-col track as the cells so columns align. */}
-      <div class="grid grid-cols-7 border-b border-border pb-2">
-        <For each={WEEKDAYS_MON}>
-          {(wd) => (
-            <div class="text-center font-mono text-mini uppercase tracking-wider text-text-muted">
-              {wd}
-            </div>
-          )}
-        </For>
-      </div>
+      <Show when={!props.hideWeekdayHeader}>
+        <WeekdayHeader />
+      </Show>
 
       {/* 6×7 day cells. */}
       <div class="grid grid-cols-7">
