@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { ArrowRightLeft, Ellipsis, ListX, RotateCcw, X } from "lucide-solid";
+import { ArrowRightLeft, Ellipsis, ListX, RotateCcw, Trash2 } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
 import { PinButton } from "@/components/PinButton";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -211,7 +211,9 @@ export function RowActions(props: Props) {
                   aria-label={`${getD().itemTitle} aus Liste entfernen`}
                   class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-bg hover:text-accent"
                 >
-                  <X class="size-4" strokeWidth={1.75} aria-hidden />
+                  {/* Trash, not X: an X reads as "close/dismiss" — the bin
+                      says "this removes something" (user call, 2026-07-15). */}
+                  <Trash2 class="size-4" strokeWidth={1.75} aria-hidden />
                 </button>
               </Tooltip>
             </div>

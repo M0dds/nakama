@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import { createMutation, useQueryClient } from "@tanstack/solid-query";
-import { ArrowRightLeft, ListX, RotateCcw, X } from "lucide-solid";
+import { ArrowRightLeft, ListX, RotateCcw, Trash2 } from "lucide-solid";
 import { Tooltip } from "@/components/Tooltip";
 import { RowActionsToggle } from "@/components/RowActions";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -173,7 +173,8 @@ export function ItemHeaderActions(props: {
               aria-label={`${props.itemTitle} aus Liste entfernen`}
               class={`${iconBtn} hover:text-accent`}
             >
-              <X class="size-4" strokeWidth={1.75} aria-hidden />
+              {/* Trash, not X — matches RowActions' remove (user call). */}
+              <Trash2 class="size-4" strokeWidth={1.75} aria-hidden />
             </button>
           </Tooltip>
         </Show>

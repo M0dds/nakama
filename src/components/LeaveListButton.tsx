@@ -10,9 +10,10 @@ import { leaveList } from "@/lib/queries/sharing";
 
 /**
  * "Liste verlassen" for the PageHeader aside — the member's counterpart to the
- * owner's DeleteListButton (same slot, same vocabulary, same ConfirmDialog).
- * Shown when the caller is a member but NOT the owner; the owner transfers
- * ownership or deletes instead.
+ * owner's DeleteListButton (same slot, same vocabulary, same ConfirmDialog,
+ * same responsive trigger: text on desktop, icon-only below md so the title
+ * keeps its width on phones). Shown when the caller is a member but NOT the
+ * owner; the owner transfers ownership or deletes instead.
  *
  * On success the list leaves the caller's overview (RLS drops it once they're
  * no longer a member), so we patch the overview cache + navigate back to /lists.
@@ -49,9 +50,17 @@ export function LeaveListButton(props: { listId: string; listName: string }) {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+        class="hidden font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent md:block"
       >
         Liste verlassen
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        aria-label="Liste verlassen"
+        class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent md:hidden"
+      >
+        <LogOut class="size-4" strokeWidth={1.75} aria-hidden />
       </button>
       <ConfirmDialog
         open={confirming()}

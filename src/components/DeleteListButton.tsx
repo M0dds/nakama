@@ -11,9 +11,11 @@ import {
 } from "@/lib/queries/lists";
 
 /**
- * Delete a list. The trigger is a plain text button in the PageHeader aside;
- * tapping it opens the app-wide ConfirmDialog (replacing the former inline
- * "Wirklich löschen? · ✓ / ✗" — see ConfirmDialog for why).
+ * Delete a list. The trigger lives in the PageHeader aside: spelled out on
+ * desktop, icon-only (trash) below md — the aside is shrink-0, so the text
+ * button ate the title's width on phones and truncated it early (user call,
+ * 2026-07-15). Either trigger opens the app-wide ConfirmDialog (replacing the
+ * former inline "Wirklich löschen? · ✓ / ✗" — see ConfirmDialog for why).
  */
 export function DeleteListButton(props: {
   listId: string;
@@ -51,9 +53,17 @@ export function DeleteListButton(props: {
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        class="font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent"
+        class="hidden font-mono text-mini uppercase tracking-wider text-text-muted transition-colors hover:text-accent md:block"
       >
         Liste löschen
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        aria-label="Liste löschen"
+        class="inline-flex size-7 items-center justify-center rounded-xs text-text-muted transition-colors hover:bg-surface hover:text-accent md:hidden"
+      >
+        <Trash2 class="size-4" strokeWidth={1.75} aria-hidden />
       </button>
       <ConfirmDialog
         open={confirming()}
