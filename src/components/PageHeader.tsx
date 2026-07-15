@@ -118,7 +118,16 @@ export function PageHeader(props: {
               <BackButton onClick={goBack} fallbackHref={fallback()} />
             )}
           </Show>
-          <h1 class="min-w-0 text-heading font-medium tracking-tight text-text">
+          {/* flex-1: the h1 takes the row's remaining width as a DEFINITE
+              size instead of sizing to content. Content-sized, the title
+              chain was circular — EditableListName's button carries -ml-1
+              (-4px) and max-w-full, so the h1's max-content came out 4px
+              narrower than the button's own content and the percentage cap
+              then clamped the name 4px short → every list name ellipsized
+              by a few pixels even with a whole free line (repro'd
+              2026-07-15). A definite width breaks the cycle: the title
+              runs until it actually meets the aside icons. */}
+          <h1 class="min-w-0 flex-1 text-heading font-medium tracking-tight text-text">
             {props.title}
           </h1>
         </div>
