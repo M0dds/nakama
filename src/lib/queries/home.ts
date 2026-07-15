@@ -93,7 +93,7 @@ export interface UpcomingItem {
   listShortCode?: string | null;
 }
 
-/** Logbuch — a discriminated union of factual events. Five kinds:
+/** Logbuch — a discriminated union of factual events. Six kinds:
  *
  *  - watch              : a bundled watch session ("Du hast S2 · E03–E08 gesehen"),
  *                         clustered by SESSION_GAP_MS so cascades collapse to one row
@@ -108,6 +108,13 @@ export interface UpcomingItem {
  *                         abgeschlossen" (episodic Abschluss stamp, Review P3 #2).
  *                         Same shared-vs-private visibility as list_add.
  *  - ownership_transfer : a logged list ownership handover on a list you're in.
+ *  - note               : someone left a note on an item's shared board ("@aki
+ *                         hat eine Notiz zu Frieren hinterlassen") — the notes
+ *                         board is the couple's only coordination channel, and
+ *                         without this event a new note was typically never
+ *                         seen (Review P3 #4). Clustered per (author, board)
+ *                         by SESSION_GAP_MS like watch bundles, so adding a
+ *                         text + a link in one sitting reads as one row.
  *
  *  The display label for `actor` uses "@username" first, then display_name,
  *  then null (component falls back to "Jemand"). For self-events actorName
@@ -117,7 +124,8 @@ export type LogbookEvent =
   | ListAddEvent
   | MissedEvent
   | TransferEvent
-  | StatusEvent;
+  | StatusEvent
+  | NoteEvent;
 
 /** Common to every event — the sort key + actor attribution. */
 interface BaseLogbookEvent {
@@ -173,6 +181,17 @@ export interface ListAddEvent extends ItemLogbookEvent {
   listId: string;
   listShortCode: string;
   listName: string;
+}
+
+/** note — one note-writing session on an item's shared board (item_notes).
+ *  Visibility rides the is_list_member RLS exactly like list_add: co-member
+ *  notes in shared lists land automatically, private boards stay own-only.
+ *  The sentence stays factual and body-less — the Logbuch announces the note,
+ *  reading it happens on the item page. */
+export interface NoteEvent extends ItemLogbookEvent {
+  kind: "note";
+  /** Blocks in this session — 1 = "eine Notiz", n = "3 Notizen". */
+  noteCount: number;
 }
 
 /** missed — the most recent released episode of a tracked item the caller
@@ -688,6 +707,14 @@ interface StatusRow {
   updated_at: string;
 }
 
+interface NoteRow {
+  id: string;
+  item_id: string;
+  list_id: string;
+  author_user_id: string;
+  created_at: string;
+}
+
 /** One candidate for a `missed` event — a released episode of a tracked item,
  *  before the watched-state filter narrows it to the actually-unticked ones. */
 interface MissedCandidate {
@@ -804,9 +831,10 @@ async function fetchMissedCandidates(
  *  adds and transfers in shared lists land automatically. Private lists return
  *  only the caller's own rows because they're the only member.
  *
- *  Four kinds: bundled-watch sessions (SESSION_GAP_MS clustered), list_add
+ *  Six kinds: bundled-watch sessions (SESSION_GAP_MS clustered), list_add
  *  ("X hat <item> zu <list> hinzugefügt"), missed (latest released-but-unticked
- *  episode of a tracked item, with a quick-tick CTA) and ownership_transfer. */
+ *  episode of a tracked item, with a quick-tick CTA), completions, notes
+ *  (SESSION_GAP_MS clustered per author+board) and ownership_transfer. */
 async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[]> {
   const sinceIso = new Date(Date.now() - LOGBOOK_DAYS * 86_400_000).toISOString();
   const missedSinceIso = new Date(
@@ -815,7 +843,7 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
 
   // trackedItemIds (home scope) feeds the missed query; it's independent of the
   // activity sources so it rides in the same fan-out.
-  const [trackedIds, bundlesRes, addsRes, transfersRes, statusRes] =
+  const [trackedIds, bundlesRes, addsRes, transfersRes, statusRes, notesRes] =
     await Promise.all([
       trackedItemIds(currentUserId),
       supabase.rpc("home_watch_bundles", {
@@ -852,6 +880,16 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
         .gte("updated_at", sinceIso)
         .order("updated_at", { ascending: false })
         .limit(LOGBOOK_LIMIT),
+      // Notes on shared boards. RLS (is_list_member) spans own + co-member
+      // rows in shared lists, private boards return only the caller's own —
+      // the same visibility contract as list_add. Body deliberately not
+      // selected: the feed announces the note, it doesn't quote it.
+      supabase
+        .from("item_notes")
+        .select("id, item_id, list_id, author_user_id, created_at")
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .limit(LOGBOOK_LIMIT),
     ]);
 
   if (bundlesRes.error) console.error("home_watch_bundles RPC failed", bundlesRes.error);
@@ -860,11 +898,14 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     console.error("list_ownership_transfers query failed", transfersRes.error);
   if (statusRes.error)
     console.error("item_history completions query failed", statusRes.error);
+  if (notesRes.error)
+    console.error("item_notes recent-notes query failed", notesRes.error);
 
   const bundles = (bundlesRes.data ?? []) as BundleRow[];
   const adds = (addsRes.data ?? []) as unknown as AddRow[];
   const transfers = (transfersRes.data ?? []) as unknown as TransferRow[];
   const statuses = (statusRes.data ?? []) as StatusRow[];
+  const notes = (notesRes.data ?? []) as NoteRow[];
 
   // Missed depends on the tracked-item scope, so it can't ride the fan-out
   // above; it's its own (cheap, windowed) two-query step.
@@ -879,17 +920,19 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
     adds.length === 0 &&
     transfers.length === 0 &&
     missed.length === 0 &&
-    statuses.length === 0
+    statuses.length === 0 &&
+    notes.length === 0
   )
     return [];
 
-  // Item meta covers every item-centric kind — bundles, adds, missed, and
-  // completions (it also gates completions to movie/game types).
+  // Item meta covers every item-centric kind — bundles, adds, missed,
+  // completions (it also gates completions to movie/game types) and notes.
   const itemIds = unique([
     ...bundles.map((b) => b.item_id),
     ...adds.map((a) => a.item_id),
     ...missed.map((m) => m.itemId),
     ...statuses.map((s) => s.item_id),
+    ...notes.map((n) => n.item_id),
   ]);
   const meta = await itemMeta(itemIds);
 
@@ -905,6 +948,9 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       .filter((id): id is string => id !== null && id !== currentUserId),
     ...statuses
       .map((s) => s.user_id)
+      .filter((id) => id !== currentUserId),
+    ...notes
+      .map((n) => n.author_user_id)
       .filter((id) => id !== currentUserId),
     ...transfers
       .flatMap((t) => [t.from_user_id, t.to_user_id])
@@ -1018,6 +1064,62 @@ async function fetchRecentlyTicked(currentUserId: string): Promise<LogbookEvent[
       actorAvatarUrl: actor?.avatarUrl ?? null,
       isSelf,
     });
+  }
+
+  // ── Notes (clustered per author+board, SESSION_GAP_MS like watches) ─────
+  // Adding a text block + a link block in one sitting is one act of leaving a
+  // note — without clustering it would read as two feed rows. The rows arrive
+  // created_at DESC, so walking each (author, list, item) group in order and
+  // cutting where the gap exceeds SESSION_GAP_MS yields sessions; the newest
+  // block stamps the session's ts + eventId.
+  {
+    const groups = new Map<string, NoteRow[]>();
+    for (const n of notes) {
+      const key = `${n.author_user_id}:${n.list_id}:${n.item_id}`;
+      const g = groups.get(key);
+      if (g) g.push(n);
+      else groups.set(key, [n]);
+    }
+    for (const g of groups.values()) {
+      let session: NoteRow[] = [];
+      const flush = () => {
+        const head = session[0];
+        if (!head) return;
+        const m = meta.get(head.item_id);
+        if (!m) return;
+        const isSelf = head.author_user_id === currentUserId;
+        const actor = isSelf ? undefined : actors.get(head.author_user_id);
+        events.push({
+          kind: "note",
+          eventId: `n:${head.id}`,
+          ts: head.created_at,
+          itemId: head.item_id,
+          title: m.title,
+          type: m.type,
+          slug: m.slug,
+          coverUrl: m.coverUrl,
+          noteCount: session.length,
+          actorUserId: head.author_user_id,
+          actorName: actor?.name ?? null,
+          actorHandle: actor?.handle ?? null,
+          actorAvatarUrl: actor?.avatarUrl ?? null,
+          isSelf,
+        });
+      };
+      for (const n of g) {
+        const prev = session[session.length - 1];
+        if (
+          prev &&
+          Date.parse(prev.created_at) - Date.parse(n.created_at) >
+            SESSION_GAP_MS
+        ) {
+          flush();
+          session = [];
+        }
+        session.push(n);
+      }
+      flush();
+    }
   }
 
   // ── Ownership transfers ─────────────────────────────────────────────────

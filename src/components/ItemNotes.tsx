@@ -3,6 +3,7 @@ import { createMutation, createQuery, useQueryClient } from "@tanstack/solid-que
 import { ExternalLink, Link2, Type, X } from "lucide-solid";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { homeQueryKey } from "@/lib/queries/home";
 import { UserChip } from "@/components/UserChip";
 import {
   addLinkNote,
@@ -35,7 +36,12 @@ export function ItemNotes(props: { listId: string; itemId: string }) {
   }));
 
   const key = () => itemNotesKey(props.listId, props.itemId);
-  const invalidate = () => qc.invalidateQueries({ queryKey: key() });
+  // Cross-cutting fan-out: notes surface in the Logbuch feed (note events),
+  // and Home's realtime channel isn't mounted while we're on the item page.
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: key() });
+    void qc.invalidateQueries({ queryKey: homeQueryKey });
+  };
 
   // ── Add (optimistic append) ──────────────────────────────────────────────
   const optimisticAppend = (n: ItemNote) => {

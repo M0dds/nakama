@@ -22,6 +22,7 @@ import {
   Gamepad2,
   List,
   ListPlus,
+  StickyNote,
 } from "lucide-solid";
 import { coverFor } from "@/lib/cover";
 import { fadeOnLoad } from "@/lib/image-fade";
@@ -38,6 +39,7 @@ import {
   type LogbookEvent,
   type MissedEvent,
   type NextUpItem,
+  type NoteEvent,
   type StatusEvent,
   type TransferEvent,
   type UpcomingItem,
@@ -149,6 +151,7 @@ export default function Home() {
     { table: "list_members", invalidates: [homeQueryKey] },
     { table: "list_ownership_transfers", invalidates: [homeQueryKey] },
     { table: "item_history", invalidates: [homeQueryKey] },
+    { table: "item_notes", invalidates: [homeQueryKey] },
   ]);
 
   return (
@@ -1417,6 +1420,8 @@ function Logbuch(props: { events: LogbookEvent[] }) {
                       <MissedSentence ev={ev} />
                     ) : ev.kind === "status" ? (
                       <StatusSentence ev={ev} />
+                    ) : ev.kind === "note" ? (
+                      <NoteSentence ev={ev} />
                     ) : (
                       <TransferSentence ev={ev} />
                     )}
@@ -1492,6 +1497,9 @@ function KindBadge(props: { ev: LogbookEvent }) {
       <Match when={props.ev.kind === "list_add"}>
         <ListPlus class={cls} strokeWidth={2} aria-hidden />
       </Match>
+      <Match when={props.ev.kind === "note"}>
+        <StickyNote class={cls} strokeWidth={2} aria-hidden />
+      </Match>
       <Match when={props.ev.kind === "status"}>
         <StatusKindIcon
           type={(props.ev as StatusEvent).type}
@@ -1552,6 +1560,15 @@ function EventIcon(props: { ev: LogbookEvent }) {
         <ListPlus
           class={`${base} text-text-muted`}
           classList={{ "opacity-60": props.ev.isSelf }}
+          strokeWidth={1.75}
+          aria-hidden
+        />
+      </Match>
+      <Match when={props.ev.kind === "note"}>
+        {/* Like status: EventIcon only renders for self-events here (co-member
+            notes get the avatar + KindBadge), so always dimmed. */}
+        <StickyNote
+          class={`${base} text-text-muted opacity-60`}
           strokeWidth={1.75}
           aria-hidden
         />
@@ -1655,6 +1672,27 @@ function StatusSentence(props: { ev: StatusEvent }) {
       {props.ev.isSelf ? "hast" : "hat"}{" "}
       <span class="font-medium">{props.ev.title}</span>{" "}
       {verb()}.
+    </>
+  );
+}
+
+/** "Du hast eine Notiz zu Frieren hinterlassen." / "@aki hat 2 Notizen zu
+ *  Frieren hinterlassen." — announces the note, doesn't quote it. Read-only
+ *  like every Logbuch row; reading happens on the item page. */
+function NoteSentence(props: { ev: NoteEvent }) {
+  return (
+    <>
+      <ActorName
+        isSelf={props.ev.isSelf}
+        name={props.ev.actorName}
+        handle={props.ev.actorHandle}
+        avatarUrl={props.ev.actorAvatarUrl}
+      />{" "}
+      {props.ev.isSelf ? "hast" : "hat"}{" "}
+      {props.ev.noteCount === 1
+        ? "eine Notiz"
+        : `${props.ev.noteCount} Notizen`}{" "}
+      zu <span class="font-medium">{props.ev.title}</span> hinterlassen.
     </>
   );
 }
